@@ -1,3 +1,13 @@
 spring:
   application:
     name: credit-service
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    default-schema: users
+  threads:
+    virtual:
+      enabled: true
+server:
+  port: 8083

@@ -2,7 +2,7 @@
 dist/
 build/
 out/
-
+.gradle
 # Environment / secrets
 .env
 .env.local
