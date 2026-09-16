@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    volumes:
+      - pg_data:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: foc
+      POSTGRES_USER: foc
+      POSTGRES_PASSWORD: pass
+    ports:
+      - "5432:5432"
+volumes:
+  pg_data:
