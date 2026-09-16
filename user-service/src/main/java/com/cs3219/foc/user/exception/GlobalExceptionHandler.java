@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(EntityAlreadyExists.class)
-    ResponseEntity<ErrorResponse> handleEntityAlreadyExists(EntityAlreadyExists ex) {
+    @ExceptionHandler(EntityAlreadyExistsException.class)
+    ResponseEntity<ErrorResponse> handleEntityAlreadyExists(EntityAlreadyExistsException ex) {
         return ResponseEntity.badRequest().body(new ErrorResponse(ex.getMessage()));
     }
 }
