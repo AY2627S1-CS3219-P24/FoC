@@ -9,5 +9,19 @@ spring:
   threads:
     virtual:
       enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jws-algorithms: ES256
+          public-key-location: ${jwt.public-key-location}
+
+auth:
+  access-token-ttl: 5m
+  refresh-token-ttl: 30d
+  refresh-cookie-secure: true
+  private-key-location: classpath:keys/private.pem
+  public-key-location: classpath:keys/public.pem
+  key-id: user-service
 server:
   port: 8080
