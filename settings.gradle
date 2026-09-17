@@ -1,0 +1,6 @@
+rootProject.name = 'foc'
+
+include 'user-service'
+include 'order-service'
+include 'credit-service'
+include 'supplier-service'

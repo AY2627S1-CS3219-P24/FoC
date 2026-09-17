@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="SupplierServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <option name="ACTIVE_PROFILES" value="dev" />
+    <envs>
+      <env name="SPRING_DATASOURCE_PASSWORD" value="pass" />
+      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://localhost:5432/foc?currentSchema=suppliers" />
+      <env name="SPRING_DATASOURCE_USERNAME" value="foc" />
+    </envs>
+    <module name="foc.supplier-service.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.cs3219.foc.supplier.SupplierServiceApplication" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
