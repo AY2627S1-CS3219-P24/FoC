@@ -17,6 +17,21 @@ Create the local environment file and start PostgreSQL:
 
 You only need to create `.env` once.
 
+Also set up the keys needed for signing and verifying JWT tokens:
+
+```bash
+  mkdir -p user-service/src/main/resources/keys/
+  cd user-service/src/main/resources/keys/
+  openssl genpkey \
+  -algorithm EC \
+  -pkeyopt ec_paramgen_curve:P-256 \
+  -out private.pem
+  openssl pkey \
+  -in private.pem \
+  -pubout \
+  -out public.pem
+```
+
 Open the repository root in IntelliJ IDEA and wait for Gradle synchronization to finish. Ensure the project uses JDK 25.
 
 Select the **Start all microservices** run configuration and click **Run**. Individual service configurations are also available.
