@@ -1,6 +1,6 @@
 package com.cs3219.foc.user.service;
 
-import com.cs3219.foc.user.exception.EntityAlreadyExists;
+import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
@@ -24,7 +24,7 @@ public class UserService {
     public UserProfileDto registerUser(RegisterUserRequest request) {
         var email = request.email().strip().toLowerCase();
         if (userRepository.existsByEmail(email)) {
-            throw new EntityAlreadyExists("User already exists with this email");
+            throw new EntityAlreadyExistsException("User already exists with this email");
         }
 
         var name = request.name().strip();
