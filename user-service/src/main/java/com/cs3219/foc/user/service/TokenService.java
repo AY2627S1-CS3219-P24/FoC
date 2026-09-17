@@ -78,7 +78,9 @@ public class TokenService {
         }
 
         var tokenHash = hashRefreshToken(refreshToken);
-        var token = refreshTokenRepository.findByTokenHash(tokenHash).orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
+        var token = refreshTokenRepository
+                .findByTokenHash(tokenHash)
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
         if (!token.getExpiresAt().isAfter(OffsetDateTime.now(clock))) {
             throw new InvalidRefreshTokenException("Refresh token has expired");
@@ -103,6 +105,11 @@ public class TokenService {
 
         var tokenHash = hashRefreshToken(refreshToken);
         refreshTokenRepository.deleteByTokenHash(tokenHash);
+    }
+
+    public void cleanExpiredRefreshTokens() {
+        var now = OffsetDateTime.now(clock);
+        refreshTokenRepository.deleteAllByExpiresAtBefore(now);
     }
 
     private static String generateRefreshToken() {
