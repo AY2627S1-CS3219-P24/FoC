@@ -3,6 +3,7 @@ package com.cs3219.foc.user.service;
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.model.dto.AccessTokenDto;
+import com.cs3219.foc.user.model.dto.RefreshTokenDto;
 import com.cs3219.foc.user.model.entity.RefreshToken;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
@@ -34,13 +35,13 @@ public class TokenService {
     private final JwtEncoder jwtEncoder;
 
     public AccessTokenDto createAccessToken(UUID userId, List<UserRole> roles) {
-        var now = clock.instant();
+        var now = OffsetDateTime.now(clock);
         var expiresAt = now.plus(authProperties.accessTokenTtl());
 
         var claims = JwtClaimsSet.builder()
                 .subject(userId.toString())
-                .issuedAt(now)
-                .expiresAt(expiresAt)
+                .issuedAt(now.toInstant())
+                .expiresAt(expiresAt.toInstant())
                 .claim("roles", roles.stream().map(UserRole::name).toList())
                 .build();
 
@@ -53,7 +54,7 @@ public class TokenService {
     }
 
     @Transactional
-    public String createRefreshToken(UUID userId) {
+    public RefreshTokenDto createRefreshToken(UUID userId) {
         var refreshToken = generateRefreshToken();
         var refreshTokenHash = hashRefreshToken(refreshToken);
         var now = OffsetDateTime.now(clock);
@@ -68,31 +69,28 @@ public class TokenService {
 
         refreshTokenRepository.save(refreshTokenEntity);
 
-        return refreshToken;
+        return new RefreshTokenDto(refreshToken, userId, expiresAt);
     }
 
-    @Transactional(readOnly = true)
-    public RefreshToken validateRefreshToken(String refreshToken) {
+    @Transactional
+    public RefreshTokenDto rotateRefreshToken(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new InvalidRefreshTokenException("Invalid refresh token");
         }
 
         var tokenHash = hashRefreshToken(refreshToken);
-        var token = refreshTokenRepository
+        var storedToken = refreshTokenRepository
                 .findByTokenHash(tokenHash)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
-        if (!token.getExpiresAt().isAfter(OffsetDateTime.now(clock))) {
+        var now = OffsetDateTime.now(clock);
+        if (!storedToken.getExpiresAt().isAfter(now)) {
             throw new InvalidRefreshTokenException("Refresh token has expired");
         }
 
-        return token;
-    }
+        var userId = storedToken.getUserId();
 
-    @Transactional
-    public String rotateRefreshToken(RefreshToken token) {
-        var userId = token.getUserId();
-        refreshTokenRepository.delete(token);
+        refreshTokenRepository.delete(storedToken);
 
         return createRefreshToken(userId);
     }

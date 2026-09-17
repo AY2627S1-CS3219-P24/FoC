@@ -34,24 +34,22 @@ public class AuthService {
         var accessToken = tokenService.createAccessToken(userId, roles);
         var refreshToken = tokenService.createRefreshToken(userId);
 
-        return new AuthTokens(accessToken.accessToken(), refreshToken, accessToken.expiresAt());
+        return new AuthTokens(accessToken.value(), refreshToken.value(), accessToken.expiresAt());
     }
 
     @Transactional
     public AuthTokens refreshAccessToken(String refreshToken) {
-        var storedRefreshToken = tokenService.validateRefreshToken(refreshToken);
-        var userId = storedRefreshToken.getUserId();
+        var newRefreshToken = tokenService.rotateRefreshToken(refreshToken);
         var user = userRepository
-                .findById(userId)
+                .findById(newRefreshToken.userId())
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
-        var accessToken = tokenService.createAccessToken(userId, user.getRoles());
-        var newRefreshToken = tokenService.rotateRefreshToken(storedRefreshToken);
+        var accessToken = tokenService.createAccessToken(user.getId(), user.getRoles());
 
-        log.info("Refresh and access tokens created for userId: {}", userId);
-        return new AuthTokens(accessToken.accessToken(), newRefreshToken, accessToken.expiresAt());
+        return new AuthTokens(accessToken.value(), newRefreshToken.value(), accessToken.expiresAt());
     }
 
+    @Transactional
     public void logout(String refreshToken) {
         tokenService.revokeRefreshToken(refreshToken);
     }

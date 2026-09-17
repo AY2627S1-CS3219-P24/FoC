@@ -1,11 +1,9 @@
 package com.cs3219.foc.user.controller;
 
-import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.model.dto.*;
 import com.cs3219.foc.user.service.AuthCookieFactory;
 import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.UserService;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -27,15 +25,15 @@ public class AuthController {
     }
 
     @PostMapping("/auth/login")
-    public ResponseEntity<AccessTokenDto> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AccessTokenResponse> login(@Valid @RequestBody LoginRequest request) {
         var tokens = authService.login(request);
         var cookie = authCookieFactory.createRefreshTokenCookie(tokens.refreshToken());
 
-        var accessTokenDto = new AccessTokenDto(tokens.accessToken(), tokens.accessTokenExpiresAt());
+        var accessTokenResponse = new AccessTokenResponse(tokens.accessToken(), tokens.accessTokenExpiresAt());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .body(accessTokenDto);
+                .body(accessTokenResponse);
     }
 
     @PostMapping("/auth/logout")
@@ -49,20 +47,15 @@ public class AuthController {
     }
 
     @PostMapping("/auth/refresh")
-    public ResponseEntity<AccessTokenDto> refresh(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken, HttpServletResponse response) {
-        try {
-            var tokens = authService.refreshAccessToken(refreshToken);
+    public ResponseEntity<AccessTokenResponse> refresh(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        var tokens = authService.refreshAccessToken(refreshToken);
+        var cookie = authCookieFactory.createRefreshTokenCookie(tokens.refreshToken());
 
-            var cookie = authCookieFactory.createRefreshTokenCookie(tokens.refreshToken());
+        var accessTokenResponse = new AccessTokenResponse(tokens.accessToken(), tokens.accessTokenExpiresAt());
 
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                    .body(new AccessTokenDto(tokens.accessToken(), tokens.accessTokenExpiresAt()));
-        } catch (InvalidRefreshTokenException e) {
-            var cookie = authCookieFactory.clearRefreshTokenCookie();
-            response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-            throw e;
-        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .body(accessTokenResponse);
     }
 }
