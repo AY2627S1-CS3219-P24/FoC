@@ -7,7 +7,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.validation.annotation.Validated;
 
-
 @ConfigurationProperties(prefix = "auth")
 @Validated
 public record AuthProperties(

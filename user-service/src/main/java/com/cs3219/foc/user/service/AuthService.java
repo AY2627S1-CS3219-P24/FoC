@@ -41,7 +41,9 @@ public class AuthService {
     public AuthTokens refreshAccessToken(String refreshToken) {
         var storedRefreshToken = tokenService.validateRefreshToken(refreshToken);
         var userId = storedRefreshToken.getUserId();
-        var user = userRepository.findById(userId).orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
+        var user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
 
         var accessToken = tokenService.createAccessToken(userId, user.getRoles());
         var newRefreshToken = tokenService.rotateRefreshToken(storedRefreshToken);
