@@ -14,7 +14,7 @@ spring:
       resourceserver:
         jwt:
           jws-algorithms: ES256
-          public-key-location: ${jwt.public-key-location}
+          public-key-location: ${auth.public-key-location}
 
 auth:
   access-token-ttl: 5m
