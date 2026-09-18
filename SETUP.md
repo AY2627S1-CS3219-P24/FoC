@@ -8,14 +8,16 @@
 
 ## Setup
 
-Create the local environment file and start PostgreSQL:
+Create the local environment file and start **Postgres + RabbitMQ**:
 
 ```bash
   cp .env.example .env
   docker compose up -d
 ```
 
-You only need to create `.env` once.
+You only need to create `.env` once. RabbitMQ for the Spring apps is configured via
+`SPRING_RABBITMQ_ADDRESSES` in the IntelliJ run configurations
+(`amqp://foc:pass@localhost:5672`).
 
 Also set up the keys needed for signing and verifying JWT tokens:
 
@@ -32,6 +34,13 @@ Also set up the keys needed for signing and verifying JWT tokens:
   -out public.pem
 ```
 
+Copy run configurations for IntelliJ:
+
+```bash
+  mkdir -p .run/
+  cp -r docs/run-configs/ .run/
+```
+
 Open the repository root in IntelliJ IDEA and wait for Gradle synchronization to finish. Ensure the project uses JDK 25.
 
 Select the **Start all microservices** run configuration and click **Run**. Individual service configurations are also available.
@@ -45,7 +54,7 @@ Select the **Start all microservices** run configuration and click **Run**. Indi
 
 ## Stop
 
-Stop the services in IntelliJ, then stop PostgreSQL:
+Stop the services in IntelliJ, then stop Postgres and RabbitMQ:
 
 ```bash
 docker compose down

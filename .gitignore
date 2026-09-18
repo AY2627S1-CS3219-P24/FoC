@@ -17,3 +17,4 @@ Thumbs.db
 # IDE
 .idea/
 *.iml
+.run/
