@@ -5,7 +5,7 @@ spring:
     hibernate:
       ddl-auto: validate
   flyway:
-    default-schema: users
+    default-schema: orders
   threads:
     virtual:
       enabled: true
