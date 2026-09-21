@@ -1,4 +1,5 @@
 @forward 'normalize';
+@forward 'tokens';
 
 *,
 *::before,
@@ -14,6 +15,8 @@ body,
 
 body {
   position: relative;
+  font-family: var(--font-family-base);
+  color: var(--color-text);
 }
 
 #app {
