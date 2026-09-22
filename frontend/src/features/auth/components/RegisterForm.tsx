@@ -7,6 +7,8 @@ import './RegisterForm.scss'
 
 type RegisterFormProps = {
   onValidSubmit?: (values: RegisterFormValues) => void
+  isSubmitting?: boolean
+  submitError?: string
 }
 
 type RegisterFieldErrors = Partial<Record<keyof RegisterFormValues, string>>
@@ -15,7 +17,11 @@ type RegisterFieldErrors = Partial<Record<keyof RegisterFormValues, string>>
  * Validates registration input and passes normalized values to the caller.
  * Revalidates all fields after the first submission attempt.
  */
-export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
+export const RegisterForm = ({
+  onValidSubmit,
+  isSubmitting = false,
+  submitError,
+}: RegisterFormProps) => {
   const [values, setValues] = useState<RegisterFormValues>({
     name: '',
     email: '',
@@ -66,8 +72,15 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
     <form
       className="register-form"
       noValidate
+      aria-busy={isSubmitting}
       onSubmit={(event) => {
         event.preventDefault()
+
+        // Ignore further submissions while the request is in progress.
+        if (isSubmitting) {
+          return
+        }
+
         setHasSubmitted(true)
 
         const result = validate(values)
@@ -85,6 +98,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
           type="text"
           autoComplete="name"
           required
+          disabled={isSubmitting}
           value={values.name}
           onValueChange={(value) => {
             updateField('name', value)
@@ -112,6 +126,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
           type="email"
           autoComplete="username"
           required
+          disabled={isSubmitting}
           value={values.email}
           onValueChange={(value) => {
             updateField('email', value)
@@ -139,6 +154,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
           type="password"
           autoComplete="new-password"
           required
+          disabled={isSubmitting}
           value={values.password}
           onValueChange={(value) => {
             updateField('password', value)
@@ -168,6 +184,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
           type="password"
           autoComplete="new-password"
           required
+          disabled={isSubmitting}
           value={values.confirmPassword}
           onValueChange={(value) => {
             updateField('confirmPassword', value)
@@ -191,8 +208,18 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
         )}
       </div>
 
-      <PrimaryButton className="register-form__submit" type="submit">
-        Create Account
+      {submitError && (
+        <p className="register-form__error" role="alert">
+          {submitError}
+        </p>
+      )}
+
+      <PrimaryButton
+        className="register-form__submit"
+        type="submit"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? 'Creating account…' : 'Create Account'}
       </PrimaryButton>
     </form>
   )

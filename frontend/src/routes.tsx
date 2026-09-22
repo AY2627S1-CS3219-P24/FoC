@@ -20,9 +20,14 @@ const authLayoutRoute = createRoute({
 })
 
 const loginRoute = createRoute({
-  getParentRoute: () => authLayoutRoute,
-  component: LoginPage,
-  path: '/login',
+    getParentRoute: () => authLayoutRoute,
+    component: LoginPage,
+    path: '/login',
+    validateSearch: (
+        search: Record<string, unknown>,
+    ): { registered?: boolean } => ({
+        registered: search.registered === true ? true : undefined,
+    }),
 })
 
 const registerRoute = createRoute({

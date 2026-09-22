@@ -15,4 +15,9 @@
     outline: 2px solid var(--color-primary);
     outline-offset: 3px;
   }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
 }
