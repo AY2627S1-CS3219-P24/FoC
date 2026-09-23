@@ -11,7 +11,10 @@ export default [
       'sort-imports': 'off',
       '@typescript-eslint/array-type': 'off',
       '@typescript-eslint/require-await': 'off',
+      // This frontend uses npm without pnpm catalogs or workspace settings.
       'pnpm/json-enforce-catalog': 'off',
+      'pnpm/json-valid-catalog': 'off',
+      'pnpm/json-prefer-workspace-settings': 'off',
     },
   },
   {
