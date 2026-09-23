@@ -79,13 +79,15 @@ class UserProfilePersistenceTests {
     void persistsProfileAndAllowsUsersToShareARealName() {
         var first = createUser("first@example.com");
         createUser("second@example.com");
-        service.updateUserProfile(first.getId(), new UpdateUserProfileRequest("Alex Tan", " NEW@EXAMPLE.COM "));
+        service.updateUserProfile(
+                first.getId(), new UpdateUserProfileRequest("Alex Tan", " NEW@EXAMPLE.COM ", null, null));
         var reloaded = repository.findById(first.getId()).orElseThrow();
         assertThat(reloaded.getEmail()).isEqualTo("new@example.com");
         assertThat(reloaded.getName()).isEqualTo("Alex Tan");
         assertThat(reloaded.getPasswordHash()).isEqualTo("unchanged-hash");
         assertThat(reloaded.getRoles()).containsExactly(UserRole.USER);
-        service.updateUserProfile(first.getId(), new UpdateUserProfileRequest("Alex Tan", "new@example.com"));
+        service.updateUserProfile(
+                first.getId(), new UpdateUserProfileRequest("Alex Tan", "new@example.com", null, null));
     }
 
     @Test
@@ -93,11 +95,84 @@ class UserProfilePersistenceTests {
         var first = createUser("first@example.com");
         createUser("taken@example.com");
         assertThatThrownBy(() -> service.updateUserProfile(
-                        first.getId(), new UpdateUserProfileRequest("Changed Name", "taken@example.com")))
+                        first.getId(), new UpdateUserProfileRequest("Changed Name", "taken@example.com", null, null)))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         var reloaded = repository.findById(first.getId()).orElseThrow();
         assertThat(reloaded.getName()).isEqualTo("Alex Tan");
         assertThat(reloaded.getEmail()).isEqualTo("first@example.com");
+    }
+
+    @Test
+    void persistsReadsAndClearsOptionalDetails() {
+        var user = createUser("details@example.com");
+        assertThat(service.getUserProfile(user.getId()).phoneNumber()).isNull();
+        assertThat(service.getUserProfile(user.getId()).faculty()).isNull();
+        service.updateUserProfile(
+                user.getId(),
+                new UpdateUserProfileRequest(
+                        "Alex Tan", "details@example.com", " +65 9123-5436 ", " School of Computing "));
+        var profile = service.getUserProfile(user.getId());
+        assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
+        assertThat(profile.faculty()).isEqualTo("School of Computing");
+        service.updateUserProfile(
+                user.getId(), new UpdateUserProfileRequest("Alex Tan", "details@example.com", " ", " "));
+        var reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getPhoneNumber()).isNull();
+        assertThat(reloaded.getFaculty()).isNull();
+    }
+
+    @Test
+    void migrationPreservesAnExistingAccount() throws Exception {
+        var schema = "profile_test_" + UUID.randomUUID().toString().replace("-", "");
+        var source = new DriverManagerDataSource(
+                System.getenv("FOC_TEST_DATABASE_URL"),
+                System.getenv("FOC_TEST_DATABASE_USERNAME"),
+                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
+        try (var connection = source.getConnection();
+                var statement = connection.createStatement()) {
+            try {
+                var config = Flyway.configure()
+                        .dataSource(source)
+                        .schemas(schema)
+                        .defaultSchema(schema)
+                        .locations("classpath:db/migration");
+                config.target("2").load().migrate();
+                connection.setSchema(schema);
+                statement.execute("""
+                        INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at)
+                        VALUES ('00000000-0000-0000-0000-000000000001', 'old@example.com', 'Existing User',
+                                ARRAY['USER'], 'existing-hash', now(), now())
+                        """);
+                config.target("latest").load().migrate();
+                try (var rows = statement.executeQuery("SELECT * FROM users")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString("email")).isEqualTo("old@example.com");
+                    assertThat(rows.getString("name")).isEqualTo("Existing User");
+                    assertThat(rows.getString("password_hash")).isEqualTo("existing-hash");
+                    assertThat(rows.getString("phone_number")).isNull();
+                    assertThat(rows.getString("faculty")).isNull();
+                    assertThat(rows.next()).isFalse();
+                }
+            } finally {
+                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
+    void duplicateEmailDoesNotChangeOptionalDetails() {
+        var user = createUser("details@example.com");
+        createUser("taken@example.com");
+        service.updateUserProfile(
+                user.getId(),
+                new UpdateUserProfileRequest("Alex Tan", "details@example.com", "+6591235436", "School of Computing"));
+        assertThatThrownBy(() -> service.updateUserProfile(
+                        user.getId(),
+                        new UpdateUserProfileRequest("Changed", "taken@example.com", "+6591239999", "Changed faculty")))
+                .isInstanceOf(EntityAlreadyExistsException.class);
+        var profile = service.getUserProfile(user.getId());
+        assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
+        assertThat(profile.faculty()).isEqualTo("School of Computing");
     }
 
     @Test
@@ -124,7 +199,8 @@ class UserProfilePersistenceTests {
         return () -> {
             barrier.await(10, TimeUnit.SECONDS);
             try {
-                service.updateUserProfile(id, new UpdateUserProfileRequest("Changed", "shared@example.com"));
+                service.updateUserProfile(
+                        id, new UpdateUserProfileRequest("Changed", "shared@example.com", null, null));
                 return true;
             } catch (EntityAlreadyExistsException exception) {
                 return false;

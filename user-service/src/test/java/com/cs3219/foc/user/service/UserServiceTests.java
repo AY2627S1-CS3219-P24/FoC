@@ -56,8 +56,8 @@ class UserServiceTests {
     void missingUserCannotBeReadOrUpdated() {
         when(repository.findById(userId)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getUserProfile(userId)).isInstanceOf(UserNotFoundException.class);
-        assertThatThrownBy(() ->
-                        service.updateUserProfile(userId, new UpdateUserProfileRequest("Alex", "alex@example.com")))
+        assertThatThrownBy(() -> service.updateUserProfile(
+                        userId, new UpdateUserProfileRequest("Alex", "alex@example.com", null, null)))
                 .isInstanceOf(UserNotFoundException.class);
         verify(repository, never()).saveAndFlush(any());
     }
@@ -67,9 +67,12 @@ class UserServiceTests {
         when(repository.findById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
         var result = service.updateUserProfile(
-                userId, new UpdateUserProfileRequest("  Jamie Tan  ", "  JAMIE@EXAMPLE.COM  "));
+                userId,
+                new UpdateUserProfileRequest("  Jamie Tan  ", "  JAMIE@EXAMPLE.COM  ", "+65 9123 5436", " Computing "));
         assertThat(result.name()).isEqualTo("Jamie Tan");
         assertThat(result.email()).isEqualTo("jamie@example.com");
+        assertThat(result.phoneNumber()).isEqualTo("+6591235436");
+        assertThat(result.faculty()).isEqualTo("Computing");
         assertThat(user.getId()).isEqualTo(userId);
         assertThat(user.getPasswordHash()).isEqualTo("stored-hash");
         assertThat(user.getRoles()).containsExactly(UserRole.USER);
@@ -80,7 +83,8 @@ class UserServiceTests {
     void unchangedEmailAndSharedRealNameAreAllowed() {
         when(repository.findById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
-        var result = service.updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com"));
+        var result = service.updateUserProfile(
+                userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
         assertThat(result.name()).isEqualTo("Alex Tan");
         verify(repository).existsByEmailAndIdNot("alex@example.com", userId);
         verify(repository).saveAndFlush(user);
@@ -91,7 +95,7 @@ class UserServiceTests {
         when(repository.findById(userId)).thenReturn(Optional.of(user));
         when(repository.existsByEmailAndIdNot("taken@example.com", userId)).thenReturn(true);
         assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("New Name", "taken@example.com")))
+                        userId, new UpdateUserProfileRequest("New Name", "taken@example.com", null, null)))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         assertThat(user.getName()).isEqualTo("Alex Tan");
         assertThat(user.getEmail()).isEqualTo("alex@example.com");
@@ -104,8 +108,8 @@ class UserServiceTests {
         var cause = new ConstraintViolationException(
                 "duplicate", new SQLException("duplicate", "23505"), "users_email_key");
         when(repository.saveAndFlush(user)).thenThrow(new DataIntegrityViolationException("duplicate", cause));
-        assertThatThrownBy(() ->
-                        service.updateUserProfile(userId, new UpdateUserProfileRequest("Alex", "taken@example.com")))
+        assertThatThrownBy(() -> service.updateUserProfile(
+                        userId, new UpdateUserProfileRequest("Alex", "taken@example.com", null, null)))
                 .isInstanceOf(EntityAlreadyExistsException.class)
                 .hasMessage("Email is already associated with another account");
     }
@@ -116,8 +120,8 @@ class UserServiceTests {
         var cause = new ConstraintViolationException("other", new SQLException("other", "23505"), "other_key");
         var failure = new DataIntegrityViolationException("other", cause);
         when(repository.saveAndFlush(user)).thenThrow(failure);
-        assertThatThrownBy(() ->
-                        service.updateUserProfile(userId, new UpdateUserProfileRequest("Alex", "alex@example.com")))
+        assertThatThrownBy(() -> service.updateUserProfile(
+                        userId, new UpdateUserProfileRequest("Alex", "alex@example.com", null, null)))
                 .isSameAs(failure);
     }
 }

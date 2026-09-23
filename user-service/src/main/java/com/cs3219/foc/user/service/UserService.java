@@ -39,6 +39,8 @@ public class UserService {
 
         user.setName(request.name());
         user.setEmail(request.email());
+        user.setPhoneNumber(request.phoneNumber());
+        user.setFaculty(request.faculty());
         try {
             return userMapper.toUserProfileDto(userRepository.saveAndFlush(user));
         } catch (DataIntegrityViolationException exception) {

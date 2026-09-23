@@ -61,7 +61,13 @@ class UserControllerTests {
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
-        profile = new UserProfileDto(userId.toString(), "alex@example.com", "Alex Tan", List.of("USER"));
+        profile = new UserProfileDto(
+                userId.toString(),
+                "alex@example.com",
+                "Alex Tan",
+                List.of("USER"),
+                "+6591235436",
+                "School of Computing");
     }
 
     @Test
@@ -73,6 +79,8 @@ class UserControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId.toString()))
                 .andExpect(jsonPath("$.name").value("Alex Tan"))
+                .andExpect(jsonPath("$.phoneNumber").value("+6591235436"))
+                .andExpect(jsonPath("$.faculty").value("School of Computing"))
                 .andExpect(jsonPath("$.roles[0]").value("USER"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.refreshToken").doesNotExist());
@@ -88,7 +96,8 @@ class UserControllerTests {
                         .content("{\"name\":\" Alex Tan \",\"email\":\" ALEX@EXAMPLE.COM \"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("alex@example.com"));
-        verify(service).updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com"));
+        verify(service)
+                .updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
     }
 
     @Test
@@ -98,6 +107,68 @@ class UserControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Alex\",\"email\":\"alex@example.com\"}"))
                 .andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void normalizesOptionalProfileDetails() throws Exception {
+        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        mvc.perform(put("/users/me")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Alex Tan","email":"alex@example.com",
+                                 "phoneNumber":" +65 9123-5436 ","faculty":" School of Computing "}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phoneNumber").value("+6591235436"));
+        verify(service)
+                .updateUserProfile(
+                        userId,
+                        new UpdateUserProfileRequest(
+                                "Alex Tan", "alex@example.com", "+6591235436", "School of Computing"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {"{}", "{\"phoneNumber\":null,\"faculty\":null}", "{\"phoneNumber\":\"   \",\"faculty\":\"   \"}"
+            })
+    void acceptsEmptyOptionalDetails(String optionalFields) throws Exception {
+        var fields = optionalFields.substring(1, optionalFields.length() - 1);
+        var body =
+                "{\"name\":\"Alex Tan\",\"email\":\"alex@example.com\"" + (fields.isEmpty() ? "" : "," + fields) + "}";
+        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        mvc.perform(put("/users/me")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+        verify(service)
+                .updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"91235436", "+012345678", "+65abc123", "+1234567890123456", "+1", "---"})
+    void rejectsInvalidPhoneNumbers(String phone) throws Exception {
+        mvc.perform(put("/users/me")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"name\":\"Alex\",\"email\":\"alex@example.com\",\"phoneNumber\":\"" + phone + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.phoneNumber").exists());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsOversizedFaculty() throws Exception {
+        mvc.perform(put("/users/me")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Alex\",\"email\":\"alex@example.com\",\"faculty\":\"" + "a".repeat(256)
+                                + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.faculty").exists());
         verifyNoInteractions(service);
     }
 
