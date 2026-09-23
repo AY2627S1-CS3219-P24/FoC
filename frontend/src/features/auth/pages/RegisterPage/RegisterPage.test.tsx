@@ -103,27 +103,27 @@ const fillValidForm = async () => {
 }
 
 beforeEach(() => {
-    // jsdom has no scrolling implementation; these tests verify auth behavior.
-    vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
+  // jsdom has no scrolling implementation; these tests verify auth behavior.
+  vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
 
-    registerUserMock.mockReset()
-    previousOnlineState = onlineManager.isOnline()
-    onlineManager.setOnline(true)
+  registerUserMock.mockReset()
+  previousOnlineState = onlineManager.isOnline()
+  onlineManager.setOnline(true)
 })
 
 afterEach(() => {
-    // Unmount observers before clearing their clients.
-    cleanup()
+  // Unmount observers before clearing their clients.
+  cleanup()
 
-    for (const client of clients) {
-        client.clear()
-    }
+  for (const client of clients) {
+    client.clear()
+  }
 
-    clients.length = 0
-    onlineManager.setOnline(previousOnlineState)
+  clients.length = 0
+  onlineManager.setOnline(previousOnlineState)
 
-    // Restore browser methods replaced with spies.
-    vi.restoreAllMocks()
+  // Restore browser methods replaced with spies.
+  vi.restoreAllMocks()
 })
 
 describe('RegisterPage', () => {

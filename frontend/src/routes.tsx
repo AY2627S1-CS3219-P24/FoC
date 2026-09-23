@@ -1,15 +1,16 @@
-import { createRootRoute, createRoute } from '@tanstack/react-router'
-import { HomePage } from '#/pages/Home/HomePage'
+import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout'
-import { LoginPage } from '#/features/auth/pages/LoginPage'
-import { RegisterPage } from '#/features/auth/pages/RegisterPage'
+import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
+import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 
 const rootRoute = createRootRoute()
 
-const homeRoute = createRoute({
+const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
-  component: HomePage,
   path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/login', replace: true })
+  },
 })
 
 // Share the auth layout without adding a URL prefix.
@@ -20,14 +21,14 @@ const authLayoutRoute = createRoute({
 })
 
 const loginRoute = createRoute({
-    getParentRoute: () => authLayoutRoute,
-    component: LoginPage,
-    path: '/login',
-    validateSearch: (
-        search: Record<string, unknown>,
-    ): { registered?: boolean } => ({
-        registered: search.registered === true ? true : undefined,
-    }),
+  getParentRoute: () => authLayoutRoute,
+  component: LoginPage,
+  path: '/login',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { registered?: boolean } => ({
+    registered: search.registered === true ? true : undefined,
+  }),
 })
 
 const registerRoute = createRoute({
@@ -37,6 +38,6 @@ const registerRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
-  homeRoute,
+  indexRoute,
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])
