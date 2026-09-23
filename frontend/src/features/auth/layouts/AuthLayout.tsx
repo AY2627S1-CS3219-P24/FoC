@@ -1,15 +1,11 @@
 import { Outlet } from '@tanstack/react-router'
-import './AuthLayout.scss'
+import styles from './AuthLayout.module.scss'
 
-/**
- * Shared layout for registration and login pages.
- * Provides the background, card, and branding for auth routes.
- */
 export const AuthLayout = () => {
   return (
-    <main className="auth-layout">
-      <div className="auth-layout__card">
-        <p className="auth-layout__brand">FoC</p>
+    <main className={styles.layout}>
+      <div className={styles.card}>
+        <p className={styles.brand}>FoC</p>
         <Outlet />
       </div>
     </main>

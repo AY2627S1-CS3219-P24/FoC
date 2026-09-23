@@ -1,9 +1,6 @@
 import { z } from 'zod'
 
-/**
- * Login validation and email normalization.
- * Nonblank passwords are preserved exactly as entered.
- */
+// Check for blank input without trimming the submitted password.
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, 'Please enter your email.'),
 
