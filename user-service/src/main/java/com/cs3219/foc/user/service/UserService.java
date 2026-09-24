@@ -32,7 +32,9 @@ public class UserService {
 
     @Transactional
     public UserProfileDto updateUserProfile(UUID userId, UpdateUserProfileRequest request) {
-        var user = findUser(userId);
+        // Avoid saving a stale password hash if a password change happens concurrently.
+        var user =
+                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
         if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
             throw new EntityAlreadyExistsException("Email is already associated with another account");
         }

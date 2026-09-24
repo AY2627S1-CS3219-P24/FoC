@@ -3,14 +3,23 @@ package com.cs3219.foc.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
+import com.cs3219.foc.user.exception.InvalidPasswordException;
+import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.mapper.UserMapper;
+import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
+import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CustomUserDetailsService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,14 +37,24 @@ import org.mapstruct.factory.Mappers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Runs the real migrations and service transactions in a disposable PostgreSQL schema. */
 @SpringJUnitConfig(UserProfilePersistenceTests.TestConfig.class)
@@ -49,6 +68,24 @@ class UserProfilePersistenceTests {
 
     @Autowired
     private UserService service;
+
+    @Autowired
+    private PasswordService passwordService;
+
+    @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private TokenService tokenService;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokens;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void cleanUsers() {
@@ -73,6 +110,143 @@ class UserProfilePersistenceTests {
                 .roles(List.of(UserRole.USER))
                 .passwordHash("unchanged-hash")
                 .build());
+    }
+
+    private User createPasswordUser(String email) {
+        var user = createUser(email);
+        user.setPasswordHash(passwordEncoder.encode("CurrentPassword1"));
+        return repository.saveAndFlush(user);
+    }
+
+    @Test
+    void passwordChangeRequiresNewLoginAndRevokesAllOfOnlyThisUsersSessions() {
+        var user = createPasswordUser("password@example.com");
+        createPasswordUser("other@example.com");
+        var first = authService.login(new LoginRequest("password@example.com", "CurrentPassword1"));
+        var second = authService.login(new LoginRequest("password@example.com", "CurrentPassword1"));
+        var other = authService.login(new LoginRequest("other@example.com", "CurrentPassword1"));
+        passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+        assertThatThrownBy(() -> authService.login(new LoginRequest("password@example.com", "CurrentPassword1")))
+                .isInstanceOf(BadCredentialsException.class);
+        assertThat(authService
+                        .login(new LoginRequest("password@example.com", "NewPassword2"))
+                        .accessToken())
+                .isNotBlank();
+        assertThatThrownBy(() -> authService.refreshAccessToken(first.refreshToken()))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> authService.refreshAccessToken(second.refreshToken()))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        assertThat(authService.refreshAccessToken(other.refreshToken()).refreshToken())
+                .isNotBlank();
+    }
+
+    @Test
+    void wrongPasswordPreservesPasswordAndSession() {
+        var user = createPasswordUser("password@example.com");
+        var login = authService.login(new LoginRequest("password@example.com", "CurrentPassword1"));
+        assertThatThrownBy(() -> passwordService.changePassword(
+                        user.getId(), new ChangePasswordRequest("IncorrectPassword", "NewPassword2")))
+                .isInstanceOf(InvalidPasswordException.class);
+        assertThat(passwordEncoder.matches(
+                        "CurrentPassword1",
+                        repository.findById(user.getId()).orElseThrow().getPasswordHash()))
+                .isTrue();
+        assertThat(authService.refreshAccessToken(login.refreshToken()).accessToken())
+                .isNotBlank();
+    }
+
+    @Test
+    void transactionRollbackRestoresBothPasswordAndRefreshTokens() {
+        var user = createPasswordUser("password@example.com");
+        var login = authService.login(new LoginRequest("password@example.com", "CurrentPassword1"));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+            status.setRollbackOnly();
+        });
+        assertThat(passwordEncoder.matches(
+                        "CurrentPassword1",
+                        repository.findById(user.getId()).orElseThrow().getPasswordHash()))
+                .isTrue();
+        assertThat(authService.refreshAccessToken(login.refreshToken()).accessToken())
+                .isNotBlank();
+    }
+
+    @Test
+    void concurrentPasswordChangesCannotBothUseTheOldPassword() throws Exception {
+        var user = createPasswordUser("password@example.com");
+        var barrier = new CyclicBarrier(2);
+        Callable<Boolean> change = () -> {
+            barrier.await(10, TimeUnit.SECONDS);
+            try {
+                passwordService.changePassword(
+                        user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+                return true;
+            } catch (InvalidPasswordException exception) {
+                return false;
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(change);
+            var second = executor.submit(change);
+            assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+    }
+
+    @Test
+    void simultaneousRefreshCannotLeaveASessionAfterPasswordChange() throws Exception {
+        var user = createPasswordUser("password@example.com");
+        var login = authService.login(new LoginRequest("password@example.com", "CurrentPassword1"));
+        var barrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var refresh = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                try {
+                    return authService.refreshAccessToken(login.refreshToken());
+                } catch (InvalidRefreshTokenException exception) {
+                    return null;
+                }
+            });
+            var change = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                passwordService.changePassword(
+                        user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+                return true;
+            });
+            var rotated = refresh.get(20, TimeUnit.SECONDS);
+            assertThat(change.get(20, TimeUnit.SECONDS)).isTrue();
+            assertThat(refreshTokens.findAll()).isEmpty();
+            if (rotated != null) {
+                assertThatThrownBy(() -> authService.refreshAccessToken(rotated.refreshToken()))
+                        .isInstanceOf(InvalidRefreshTokenException.class);
+            }
+        }
+    }
+
+    @Test
+    void simultaneousProfileSaveCannotRestoreThePreviousPassword() throws Exception {
+        var user = createPasswordUser("password@example.com");
+        var barrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var profile = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return service.updateUserProfile(
+                        user.getId(),
+                        new UpdateUserProfileRequest("Changed Name", "password@example.com", null, "Computing"));
+            });
+            var password = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                passwordService.changePassword(
+                        user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+                return true;
+            });
+            profile.get(20, TimeUnit.SECONDS);
+            assertThat(password.get(20, TimeUnit.SECONDS)).isTrue();
+        }
+        var reloaded = repository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getName()).isEqualTo("Changed Name");
+        assertThat(passwordEncoder.matches("NewPassword2", reloaded.getPasswordHash()))
+                .isTrue();
     }
 
     @Test
@@ -212,6 +386,41 @@ class UserProfilePersistenceTests {
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     static class TestConfig {
+        @Bean
+        PasswordEncoder passwordEncoder() {
+            return new BCryptPasswordEncoder(4);
+        }
+
+        @Bean
+        PasswordService passwordService(UserRepository users, RefreshTokenRepository tokens, PasswordEncoder encoder) {
+            return new PasswordService(users, tokens, encoder);
+        }
+
+        @Bean
+        TokenService tokenService(RefreshTokenRepository tokens, UserRepository users) {
+            var properties = new AuthProperties(
+                    Duration.ofMinutes(5),
+                    Duration.ofDays(30),
+                    new ClassPathResource("unused-private.pem"),
+                    new ClassPathResource("unused-public.pem"),
+                    "test",
+                    false);
+            // Exercise credentials and database sessions without testing JWT cryptography here.
+            JwtEncoder encoder = parameters -> Jwt.withTokenValue("test-access-token")
+                    .header("alg", "ES256")
+                    .subject("test-user")
+                    .build();
+            return new TokenService(tokens, users, Clock.systemUTC(), properties, encoder);
+        }
+
+        @Bean
+        AuthService authService(UserRepository users, TokenService tokens, PasswordEncoder encoder) {
+            var provider = new DaoAuthenticationProvider(new CustomUserDetailsService(users));
+            provider.setPasswordEncoder(encoder);
+            AuthenticationManager manager = new ProviderManager(provider);
+            return new AuthService(manager, tokens, users);
+        }
+
         @Bean
         DataSource dataSource() {
             var url = System.getenv("FOC_TEST_DATABASE_URL");

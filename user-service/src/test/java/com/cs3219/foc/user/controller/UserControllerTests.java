@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.config.SecurityConfig;
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.GlobalExceptionHandler;
@@ -16,6 +17,8 @@ import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.security.JsonAccessDeniedHandler;
 import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
+import com.cs3219.foc.user.service.AuthCookieFactory;
+import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
 import java.util.List;
 import java.util.UUID;
@@ -245,12 +248,25 @@ class UserControllerTests {
     @EnableWebSecurity
     @Import({
         UserController.class,
+        PasswordController.class,
         SecurityConfig.class,
         GlobalExceptionHandler.class,
         JsonAuthenticationEntryPoint.class,
         JsonAccessDeniedHandler.class
     })
     static class TestConfig {
+        @Bean
+        PasswordService passwordService() {
+            return mock(PasswordService.class);
+        }
+
+        @Bean
+        AuthCookieFactory authCookieFactory() {
+            var properties = mock(AuthProperties.class);
+            when(properties.refreshCookieSecure()).thenReturn(true);
+            return new AuthCookieFactory(properties);
+        }
+
         @Bean
         UserDetailsService userDetailsService() {
             // The production configuration also has a username/password provider.

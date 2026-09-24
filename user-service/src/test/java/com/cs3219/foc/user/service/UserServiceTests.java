@@ -64,7 +64,7 @@ class UserServiceTests {
 
     @Test
     void updatesNormalizedProfileWithoutChangingIdentityOrCredentials() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
         var result = service.updateUserProfile(
                 userId,
@@ -81,7 +81,7 @@ class UserServiceTests {
 
     @Test
     void unchangedEmailAndSharedRealNameAreAllowed() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
         var result = service.updateUserProfile(
                 userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
@@ -92,7 +92,7 @@ class UserServiceTests {
 
     @Test
     void rejectsDuplicateEmailBeforeMutatingUser() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.existsByEmailAndIdNot("taken@example.com", userId)).thenReturn(true);
         assertThatThrownBy(() -> service.updateUserProfile(
                         userId, new UpdateUserProfileRequest("New Name", "taken@example.com", null, null)))
@@ -104,7 +104,7 @@ class UserServiceTests {
 
     @Test
     void translatesEmailConstraintViolationAfterConcurrentUpdate() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         var cause = new ConstraintViolationException(
                 "duplicate", new SQLException("duplicate", "23505"), "users_email_key");
         when(repository.saveAndFlush(user)).thenThrow(new DataIntegrityViolationException("duplicate", cause));
@@ -116,7 +116,7 @@ class UserServiceTests {
 
     @Test
     void doesNotMislabelOtherDatabaseFailuresAsDuplicateEmail() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         var cause = new ConstraintViolationException("other", new SQLException("other", "23505"), "other_key");
         var failure = new DataIntegrityViolationException("other", cause);
         when(repository.saveAndFlush(user)).thenThrow(failure);
