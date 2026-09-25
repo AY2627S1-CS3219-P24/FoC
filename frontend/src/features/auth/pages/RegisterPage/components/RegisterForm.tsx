@@ -2,8 +2,10 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@base-ui/react/input'
 import { Button } from '@base-ui/react/button'
+
 import { registerSchema } from '../schemas/register.schema'
 import type { RegisterFormValues } from '../schemas/register.schema'
+
 import styles from '#/features/auth/styles/authForm.module.scss'
 
 type RegisterFormProps = {
@@ -45,6 +47,7 @@ export const RegisterForm = ({
           event.preventDefault()
           return
         }
+
         void handleSubmit((values) => onValidSubmit?.(values))(event)
       }}
     >
@@ -122,6 +125,7 @@ export const RegisterForm = ({
               required
               onValueChange={(value) => {
                 onChange(value)
+
                 // The mismatch error belongs to confirmation, not this field.
                 if (isSubmitted) {
                   void trigger('confirmPassword')

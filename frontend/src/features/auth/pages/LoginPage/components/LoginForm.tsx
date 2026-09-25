@@ -2,15 +2,27 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@base-ui/react/input'
 import { Button } from '@base-ui/react/button'
+
 import { loginSchema } from '../schemas/login.schema'
 import type { LoginFormValues } from '../schemas/login.schema'
+
 import styles from '#/features/auth/styles/authForm.module.scss'
 
 type LoginFormProps = {
   onValidSubmit?: (values: LoginFormValues) => void
+  isSubmitting?: boolean
+  isSuccess?: boolean
+  submitError?: string
 }
 
-export const LoginForm = ({ onValidSubmit }: LoginFormProps) => {
+export const LoginForm = ({
+  onValidSubmit,
+  isSubmitting = false,
+  isSuccess = false,
+  submitError,
+}: LoginFormProps) => {
+  const disabled = isSubmitting || isSuccess
+
   const {
     control,
     handleSubmit,
@@ -27,7 +39,15 @@ export const LoginForm = ({ onValidSubmit }: LoginFormProps) => {
     <form
       className={styles.form}
       noValidate
-      onSubmit={handleSubmit((values) => onValidSubmit?.(values))}
+      aria-busy={isSubmitting}
+      onSubmit={(event) => {
+        if (disabled) {
+          event.preventDefault()
+          return
+        }
+
+        void handleSubmit((values) => onValidSubmit?.(values))(event)
+      }}
     >
       <div className={styles.field}>
         <label htmlFor="login-email">Email</label>
@@ -39,6 +59,7 @@ export const LoginForm = ({ onValidSubmit }: LoginFormProps) => {
               {...field}
               className={styles.input}
               id="login-email"
+              disabled={disabled}
               type="email"
               autoComplete="username"
               required
@@ -66,6 +87,7 @@ export const LoginForm = ({ onValidSubmit }: LoginFormProps) => {
               {...field}
               className={styles.input}
               id="login-password"
+              disabled={disabled}
               type="password"
               autoComplete="current-password"
               required
@@ -85,8 +107,14 @@ export const LoginForm = ({ onValidSubmit }: LoginFormProps) => {
         )}
       </div>
 
-      <Button className={styles.submit} type="submit">
-        Log In
+      {submitError && (
+        <p className={styles.error} role="alert">
+          {submitError}
+        </p>
+      )}
+
+      <Button className={styles.submit} type="submit" disabled={disabled}>
+        {isSubmitting ? 'Logging in…' : 'Log In'}
       </Button>
     </form>
   )

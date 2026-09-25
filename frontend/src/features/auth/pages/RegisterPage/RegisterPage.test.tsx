@@ -42,7 +42,6 @@ const successMessage = 'Account created successfully. Please log in.'
 const clients: Array<QueryClient> = []
 let previousOnlineState = true
 
-// Construct an Axios error with a response matching the backend's shape.
 const createHttpError = (status: number, message: string) =>
   new AxiosError(
     `Request failed with status code ${status}`,
@@ -95,9 +94,9 @@ const fillValidForm = async () => {
   const user = userEvent.setup()
 
   await user.type(screen.getByLabelText('Name'), ' Jamie ')
-  await user.type(screen.getByLabelText('Email'), 'JAMIE@EXAMPLE.COM')
-  await user.type(screen.getByLabelText('Password'), 'password123')
-  await user.type(screen.getByLabelText('Confirm password'), 'password123')
+  await user.type(screen.getByLabelText('Email'), ' JAMIE@EXAMPLE.COM ')
+  await user.type(screen.getByLabelText('Password'), ' password123 ')
+  await user.type(screen.getByLabelText('Confirm password'), ' password123 ')
 
   return user
 }
@@ -122,7 +121,6 @@ afterEach(() => {
   clients.length = 0
   onlineManager.setOnline(previousOnlineState)
 
-  // Restore browser methods replaced with spies.
   vi.restoreAllMocks()
 })
 
@@ -132,7 +130,6 @@ describe('RegisterPage', () => {
       throw new Error('The request has not started.')
     }
 
-    // Keep the request pending until the test explicitly resolves it.
     registerUserMock.mockImplementation(
       () =>
         new Promise<UserProfileDto>((resolve) => {
@@ -182,7 +179,7 @@ describe('RegisterPage', () => {
     expect(registerUserMock).toHaveBeenCalledWith({
       name: 'Jamie',
       email: 'jamie@example.com',
-      password: 'password123',
+      password: ' password123 ',
     })
 
     await act(async () => {
@@ -233,7 +230,7 @@ describe('RegisterPage', () => {
     expect(registerUserMock).toHaveBeenLastCalledWith({
       name: 'Jamie',
       email: 'jamie2@example.com',
-      password: 'password123',
+      password: ' password123 ',
     })
   })
 

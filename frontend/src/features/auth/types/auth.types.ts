@@ -1,12 +1,18 @@
 import type { RegisterFormValues } from '#/features/auth/pages/RegisterPage/schemas/register.schema'
+import type { LoginFormValues } from '#/features/auth/pages/LoginPage/schemas/login.schema'
 
-/** Registration payload; password confirmation is only used by the form. */
+export type LoginRequest = Pick<LoginFormValues, 'email' | 'password'>
+
+export type AccessTokenResponse = {
+  accessToken: string
+  expiresAt: string
+}
+
 export type RegisterUserRequest = Pick<
   RegisterFormValues,
   'name' | 'email' | 'password'
 >
 
-/** User profile returned by the registration endpoint. */
 export type UserProfileDto = {
   id: string
   email: string

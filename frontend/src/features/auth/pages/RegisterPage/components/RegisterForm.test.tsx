@@ -120,28 +120,4 @@ describe('RegisterForm', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(onValidSubmit).not.toHaveBeenCalled()
   })
-
-  it('passes normalized values without changing passwords', async () => {
-    const user = userEvent.setup()
-    const onValidSubmit = vi.fn()
-    const password = ' abcdefgh '
-
-    render(<RegisterForm onValidSubmit={onValidSubmit} />)
-
-    await user.type(screen.getByLabelText('Name'), '  Jamie Loh  ')
-    await user.type(screen.getByLabelText('Email'), 'JAMIE@EXAMPLE.COM')
-    await user.type(screen.getByLabelText('Password'), password)
-    await user.type(screen.getByLabelText('Confirm password'), password)
-
-    await user.click(screen.getByRole('button', { name: 'Create Account' }))
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(onValidSubmit).toHaveBeenCalledTimes(1)
-    expect(onValidSubmit).toHaveBeenCalledWith({
-      name: 'Jamie Loh',
-      email: 'jamie@example.com',
-      password,
-      confirmPassword: password,
-    })
-  })
 })
