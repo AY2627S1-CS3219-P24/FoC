@@ -89,27 +89,10 @@ class PasswordServiceTests {
     }
 
     @Test
-    void rejectsMultibytePasswordBeyondBcryptLimit() {
-        assertThatThrownBy(() ->
-                        service.changePassword(userId, new ChangePasswordRequest("CurrentPassword1", "界".repeat(25))))
-                .isInstanceOf(InvalidPasswordException.class)
-                .hasMessageContaining("72 UTF-8 bytes");
-        assertUnchanged();
-    }
-
-    @Test
     void acceptsPasswordAtBcryptByteLimit() {
         var password = "界".repeat(24);
         service.changePassword(userId, new ChangePasswordRequest("CurrentPassword1", password));
         assertThat(encoder.matches(password, user.getPasswordHash())).isTrue();
-    }
-
-    @Test
-    void rejectsOversizedCurrentPasswordAsAnInputError() {
-        assertThatThrownBy(
-                        () -> service.changePassword(userId, new ChangePasswordRequest("a".repeat(73), "NewPassword2")))
-                .isInstanceOf(InvalidPasswordException.class);
-        assertUnchanged();
     }
 
     @Test

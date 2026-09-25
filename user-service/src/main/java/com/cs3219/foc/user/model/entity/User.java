@@ -36,6 +36,9 @@ public class User {
     @Column(length = 255)
     private String faculty;
 
+    @Column(length = 40)
+    private String avatarKey;
+
     @Column(nullable = false)
     private String passwordHash;
 

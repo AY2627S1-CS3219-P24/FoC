@@ -111,9 +111,25 @@ class PasswordControllerTests {
         invalid(body, "newPassword");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"currentPassword", "newPassword"})
+    void rejectsPasswordsBeyondUtf8ByteLimit(String field) throws Exception {
+        for (var password : new String[] {"a".repeat(73), "界".repeat(25)}) {
+            var body = BODY.replace(field.equals("currentPassword") ? "CurrentPassword1" : "NewPassword2", password);
+            invalid(body, field);
+        }
+    }
+
     @Test
-    void rejectsOversizedNewPassword() throws Exception {
-        invalid("{\"currentPassword\":\"CurrentPassword1\",\"newPassword\":\"" + "a".repeat(73) + "\"}", "newPassword");
+    void acceptsPasswordsAtUtf8ByteLimit() throws Exception {
+        var password = "界".repeat(24);
+        mvc.perform(put("/users/me/password")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                BODY.replace("CurrentPassword1", "a".repeat(72)).replace("NewPassword2", password)))
+                .andExpect(status().isNoContent());
+        verify(service).changePassword(userId, new ChangePasswordRequest("a".repeat(72), password));
     }
 
     @Test

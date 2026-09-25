@@ -18,6 +18,7 @@ import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.security.JsonAccessDeniedHandler;
 import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
 import com.cs3219.foc.user.service.AuthCookieFactory;
+import com.cs3219.foc.user.service.AvatarService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
 import java.util.List;
@@ -70,7 +71,8 @@ class UserControllerTests {
                 "Alex Tan",
                 List.of("USER"),
                 "+6591235436",
-                "School of Computing");
+                "School of Computing",
+                null);
     }
 
     @Test
@@ -249,12 +251,18 @@ class UserControllerTests {
     @Import({
         UserController.class,
         PasswordController.class,
+        AvatarController.class,
         SecurityConfig.class,
         GlobalExceptionHandler.class,
         JsonAuthenticationEntryPoint.class,
         JsonAccessDeniedHandler.class
     })
     static class TestConfig {
+        @Bean
+        AvatarService avatarService() {
+            return mock(AvatarService.class);
+        }
+
         @Bean
         PasswordService passwordService() {
             return mock(PasswordService.class);

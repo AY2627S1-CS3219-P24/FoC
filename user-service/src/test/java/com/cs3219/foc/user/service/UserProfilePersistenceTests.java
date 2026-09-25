@@ -1,25 +1,37 @@
 package com.cs3219.foc.user.service;
 
+import static com.cs3219.foc.user.support.AvatarTestImages.image;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.user.config.AuthProperties;
+import com.cs3219.foc.user.config.AvatarProperties;
+import com.cs3219.foc.user.exception.AvatarException;
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
+import com.cs3219.foc.user.exception.UserNotFoundException;
+import com.cs3219.foc.user.infrastructure.storage.AvatarStorage;
+import com.cs3219.foc.user.infrastructure.storage.LocalAvatarStorage;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
+import com.cs3219.foc.user.model.entity.AvatarCleanupTask;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.AvatarCleanupRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
 import jakarta.persistence.EntityManagerFactory;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,12 +45,14 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.io.TempDir;
 import org.mapstruct.factory.Mappers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -62,6 +76,24 @@ import org.springframework.transaction.support.TransactionTemplate;
 class UserProfilePersistenceTests {
     private static final String SCHEMA =
             "profile_test_" + UUID.randomUUID().toString().replace("-", "");
+
+    @TempDir
+    static Path avatarDirectory;
+
+    @Autowired
+    private AvatarStorage avatarStorage;
+
+    @Autowired
+    private AvatarService avatars;
+
+    @Autowired
+    private AvatarCleanupService avatarCleanup;
+
+    @Autowired
+    private AvatarCleanupRepository avatarTasks;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     private UserRepository repository;
@@ -88,8 +120,15 @@ class UserProfilePersistenceTests {
     private PlatformTransactionManager transactionManager;
 
     @BeforeEach
-    void cleanUsers() {
+    void cleanUsers() throws Exception {
+        reset(avatarStorage);
         repository.deleteAll();
+        avatarTasks.deleteAll();
+        try (var files = Files.list(avatarDirectory)) {
+            for (var file : files.toList()) {
+                Files.delete(file);
+            }
+        }
     }
 
     @AfterAll
@@ -110,6 +149,161 @@ class UserProfilePersistenceTests {
                 .roles(List.of(UserRole.USER))
                 .passwordHash("unchanged-hash")
                 .build());
+    }
+
+    @Test
+    void uploadsReplacesAndRemovesAvatarWithoutChangingProfileOrPassword() throws Exception {
+        var user = createPasswordUser("avatar@example.com");
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
+        var first = avatars.upload(user.getId(), image("jpeg", 32, 32));
+        assertThat(first.avatarUrl()).startsWith("/users/me/avatar?v=");
+        var oldKey = repository.findById(user.getId()).orElseThrow().getAvatarKey();
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+        var second = avatars.upload(user.getId(), image("png", 64, 64));
+        assertThat(second.avatarUrl()).isNotEqualTo(first.avatarUrl());
+        assertThat(Files.exists(avatarDirectory.resolve(oldKey))).isFalse();
+        service.updateUserProfile(
+                user.getId(), new UpdateUserProfileRequest("New Name", "avatar@example.com", null, null));
+        passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(second.avatarUrl());
+        avatars.remove(user.getId());
+        avatars.remove(user.getId());
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
+        assertThat(service.getUserProfile(user.getId()).name()).isEqualTo("New Name");
+        assertThat(passwordEncoder.matches(
+                        "NewPassword2",
+                        repository.findById(user.getId()).orElseThrow().getPasswordHash()))
+                .isTrue();
+        assertThatThrownBy(() -> avatars.read(user.getId()))
+                .isInstanceOfSatisfying(
+                        AvatarException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        assertThat(avatarFileCount()).isZero();
+    }
+
+    @Test
+    void anotherAccountCannotReadOrRemoveThisUsersAvatar() throws Exception {
+        var first = createUser("first-avatar@example.com");
+        var second = createUser("second-avatar@example.com");
+        avatars.upload(first.getId(), image("png", 10, 10));
+        assertThatThrownBy(() -> avatars.read(second.getId())).isInstanceOf(AvatarException.class);
+        avatars.remove(second.getId());
+        assertThat(avatars.read(first.getId())).isNotEmpty();
+    }
+
+    @Test
+    void failedStorageWritePreservesPreviousAvatarAndCleansPartialFile() throws Exception {
+        var user = createUser("avatar@example.com");
+        var original = avatars.upload(user.getId(), image("png", 10, 10));
+        doAnswer(invocation -> {
+                    invocation.callRealMethod();
+                    throw new AvatarException(HttpStatus.SERVICE_UNAVAILABLE, "Simulated write failure");
+                })
+                .when(avatarStorage)
+                .write(anyString(), any());
+        assertThatThrownBy(() -> avatars.upload(user.getId(), image("png", 20, 20)))
+                .isInstanceOf(AvatarException.class);
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+        assertThat(avatarFileCount()).isEqualTo(1);
+        assertThat(avatarTasks.count()).isZero();
+    }
+
+    @Test
+    void databaseFailurePreservesPreviousAvatarAndDeletesNewFile() throws Exception {
+        var user = createUser("avatar@example.com");
+        var original = avatars.upload(user.getId(), image("png", 10, 10));
+        var originalKey = repository.findById(user.getId()).orElseThrow().getAvatarKey();
+        try (var connection = dataSource.getConnection();
+                var statement = connection.createStatement()) {
+            // Only the existing generated key is allowed, deliberately failing the next update.
+            statement.execute(
+                    "ALTER TABLE users ADD CONSTRAINT test_avatar_failure CHECK (avatar_key IS NULL OR avatar_key = '"
+                            + originalKey + "')");
+            try {
+                assertThatThrownBy(() -> avatars.upload(user.getId(), image("png", 20, 20)))
+                        .isInstanceOfSatisfying(AvatarException.class, ex -> assertThat(ex.getStatus())
+                                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+            } finally {
+                statement.execute("ALTER TABLE users DROP CONSTRAINT test_avatar_failure");
+            }
+        }
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+        assertThat(avatarFileCount()).isEqualTo(1);
+        assertThat(avatarTasks.count()).isZero();
+    }
+
+    @Test
+    void failedDeletionIsRetriedWithoutFailingSuccessfulReplacement() throws Exception {
+        var user = createUser("avatar@example.com");
+        avatars.upload(user.getId(), image("png", 10, 10));
+        var previous = repository.findById(user.getId()).orElseThrow().getAvatarKey();
+        doThrow(new AvatarException(HttpStatus.SERVICE_UNAVAILABLE, "Simulated delete failure"))
+                .when(avatarStorage)
+                .delete(previous);
+        var replacement = avatars.upload(user.getId(), image("png", 20, 20));
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(replacement.avatarUrl());
+        assertThat(avatarTasks.count()).isEqualTo(1);
+        assertThat(avatarFileCount()).isEqualTo(2);
+        reset(avatarStorage);
+        avatarCleanup.cleanPending();
+        assertThat(avatarTasks.count()).isZero();
+        assertThat(avatarFileCount()).isEqualTo(1);
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+    }
+
+    @Test
+    void cleanupRecoversAbandonedUploadsAndNeverDeletesReferencedImage() throws Exception {
+        var abandoned = UUID.randomUUID() + ".png";
+        avatarCleanup.reserve(abandoned);
+        avatarStorage.write(abandoned, image("png", 10, 10).getBytes());
+        avatarCleanup.cleanPending();
+        assertThat(avatarFileCount()).isEqualTo(1); // Ten-minute reservation grace period.
+        avatarTasks.saveAndFlush(
+                new AvatarCleanupTask(abandoned, OffsetDateTime.now().minusMinutes(1)));
+        avatarCleanup.cleanPending();
+        assertThat(avatarFileCount()).isZero();
+        var user = createUser("avatar@example.com");
+        avatars.upload(user.getId(), image("png", 10, 10));
+        var active = repository.findById(user.getId()).orElseThrow().getAvatarKey();
+        avatarTasks.saveAndFlush(
+                new AvatarCleanupTask(active, OffsetDateTime.now().minusMinutes(1)));
+        avatarCleanup.cleanPending();
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+        assertThat(avatarTasks.count()).isZero();
+    }
+
+    @Test
+    void concurrentReplacementsKeepOnlyTheWinningImage() throws Exception {
+        var user = createUser("avatar@example.com");
+        avatars.upload(user.getId(), image("png", 10, 10));
+        var barrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Callable<String> upload = () -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return avatars.upload(user.getId(), image("png", 20, 20)).avatarUrl();
+            };
+            var first = executor.submit(upload);
+            var second = executor.submit(upload);
+            var urls = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+            assertThat(urls).contains(service.getUserProfile(user.getId()).avatarUrl());
+        }
+        assertThat(avatars.read(user.getId())).isNotEmpty();
+        assertThat(avatarFileCount()).isEqualTo(1);
+        assertThat(avatarTasks.count()).isZero();
+    }
+
+    @Test
+    void uploadForMissingAccountLeavesNoImage() {
+        assertThatThrownBy(() -> avatars.upload(UUID.randomUUID(), image("png", 10, 10)))
+                .isInstanceOf(UserNotFoundException.class);
+        assertThat(avatarTasks.count()).isZero();
+    }
+
+    private long avatarFileCount() throws Exception {
+        try (var files = Files.list(avatarDirectory)) {
+            return files.count();
+        }
     }
 
     private User createPasswordUser(String email) {
@@ -325,6 +519,7 @@ class UserProfilePersistenceTests {
                     assertThat(rows.getString("password_hash")).isEqualTo("existing-hash");
                     assertThat(rows.getString("phone_number")).isNull();
                     assertThat(rows.getString("faculty")).isNull();
+                    assertThat(rows.getString("avatar_key")).isNull();
                     assertThat(rows.next()).isFalse();
                 }
             } finally {
@@ -386,6 +581,38 @@ class UserProfilePersistenceTests {
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     static class TestConfig {
+        @Bean
+        AvatarStorage avatarStorage() {
+            return spy(new LocalAvatarStorage(new AvatarProperties(avatarDirectory)));
+        }
+
+        @Bean
+        AvatarCleanupService avatarCleanupService(
+                AvatarCleanupRepository tasks,
+                UserRepository users,
+                AvatarStorage storage,
+                PlatformTransactionManager manager) {
+            return new AvatarCleanupService(tasks, users, storage, Clock.systemUTC(), manager);
+        }
+
+        @Bean
+        AvatarService avatarService(
+                UserRepository users,
+                AvatarStorage storage,
+                AvatarCleanupRepository tasks,
+                AvatarCleanupService cleanup,
+                PlatformTransactionManager manager) {
+            return new AvatarService(
+                    users,
+                    Mappers.getMapper(UserMapper.class),
+                    storage,
+                    new AvatarImageProcessor(),
+                    tasks,
+                    cleanup,
+                    Clock.systemUTC(),
+                    manager);
+        }
+
         @Bean
         PasswordEncoder passwordEncoder() {
             return new BCryptPasswordEncoder(4);
