@@ -30,6 +30,15 @@ public class User {
     @Column(nullable = false)
     private String name;
 
+    @Column(length = 16)
+    private String phoneNumber;
+
+    @Column(length = 255)
+    private String faculty;
+
+    @Column(length = 40)
+    private String avatarKey;
+
     @Column(nullable = false)
     private String passwordHash;
 

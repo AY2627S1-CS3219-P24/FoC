@@ -7,6 +7,7 @@ import com.cs3219.foc.user.model.dto.RefreshTokenDto;
 import com.cs3219.foc.user.model.entity.RefreshToken;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
+import com.cs3219.foc.user.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TokenService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserRepository userRepository;
     private final Clock clock;
     private final AuthProperties authProperties;
     private final JwtEncoder jwtEncoder;
@@ -55,6 +57,7 @@ public class TokenService {
 
     @Transactional
     public RefreshTokenDto createRefreshToken(UUID userId) {
+        userRepository.findForUpdateById(userId).orElseThrow(() -> new InvalidRefreshTokenException("User not found"));
         var refreshToken = generateRefreshToken();
         var refreshTokenHash = hashRefreshToken(refreshToken);
         var now = OffsetDateTime.now(clock);
@@ -79,6 +82,14 @@ public class TokenService {
         }
 
         var tokenHash = hashRefreshToken(refreshToken);
+        // Lock the account before the token, consistently with password changes.
+        // Read only the ID first so a revoked token is not cached as an entity.
+        var ownerId = refreshTokenRepository
+                .findUserIdByTokenHash(tokenHash)
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
+        userRepository
+                .findForUpdateById(ownerId)
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));
         var storedToken = refreshTokenRepository
                 .findByTokenHash(tokenHash)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token"));

@@ -1,6 +1,10 @@
 spring:
   application:
     name: user-service
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 3MB
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,3 +22,5 @@ auth:
   key-id: user-service
 server:
   port: 8080
+avatar:
+  directory: ${FOC_AVATAR_DIRECTORY:${user.home}/.foc/avatars}

@@ -20,7 +20,10 @@ public class AuthService {
     private final TokenService tokenService;
     private final UserRepository userRepository;
 
+    @Transactional
     public AuthTokens login(LoginRequest request) {
+        // Hold the account lock from credential verification through token issuance.
+        userRepository.findForUpdateByEmail(request.email());
         var authentication = authenticationManager.authenticate(
                 UsernamePasswordAuthenticationToken.unauthenticated(request.email(), request.password()));
 
