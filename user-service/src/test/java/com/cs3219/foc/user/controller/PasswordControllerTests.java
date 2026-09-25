@@ -114,7 +114,8 @@ class PasswordControllerTests {
     @ParameterizedTest
     @ValueSource(strings = {"currentPassword", "newPassword"})
     void rejectsPasswordsBeyondUtf8ByteLimit(String field) throws Exception {
-        for (var password : new String[] {"a".repeat(73), "界".repeat(25)}) {
+        // Unicode escape for an accented e: 37 characters use 74 bytes, exceeding the 72-byte limit.
+        for (var password : new String[] {"a".repeat(73), "\u00e9".repeat(37)}) {
             var body = BODY.replace(field.equals("currentPassword") ? "CurrentPassword1" : "NewPassword2", password);
             invalid(body, field);
         }
@@ -122,7 +123,8 @@ class PasswordControllerTests {
 
     @Test
     void acceptsPasswordsAtUtf8ByteLimit() throws Exception {
-        var password = "界".repeat(24);
+        // Each accented e uses two UTF-8 bytes: 36 characters reach the 72-byte limit.
+        var password = "\u00e9".repeat(36);
         mvc.perform(put("/users/me/password")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)

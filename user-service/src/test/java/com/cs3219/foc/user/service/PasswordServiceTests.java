@@ -90,7 +90,8 @@ class PasswordServiceTests {
 
     @Test
     void acceptsPasswordAtBcryptByteLimit() {
-        var password = "界".repeat(24);
+        // Each accented e uses two UTF-8 bytes: 36 characters reach the 72-byte limit.
+        var password = "\u00e9".repeat(36);
         service.changePassword(userId, new ChangePasswordRequest("CurrentPassword1", password));
         assertThat(encoder.matches(password, user.getPasswordHash())).isTrue();
     }
