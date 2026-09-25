@@ -1,11 +1,12 @@
-import { routeTree } from '#/routes'
 import {
   createRouter,
   ErrorComponent,
   RouterProvider,
 } from '@tanstack/react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
+
 import { queryClient } from '#/lib/queryClient'
+import { routeTree } from '#/routes'
 
 const router = createRouter({
   routeTree,

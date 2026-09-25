@@ -83,23 +83,26 @@ describe('registerSchema', () => {
     }
   })
 
-  it('reports the required error first for an empty password', () => {
-    const result = registerSchema.safeParse({
-      ...validValues,
-      password: '',
-      confirmPassword: '',
-    })
+  it.each(['', '        ', '\t\t\t\t\t\t\t\t', '\n\n\n\n\n\n\n\n'])(
+    'reports the required error first for a blank password: %j',
+    (password) => {
+      const result = registerSchema.safeParse({
+        ...validValues,
+        password,
+        confirmPassword: password,
+      })
 
-    expect(result.success).toBe(false)
+      expect(result.success).toBe(false)
 
-    if (!result.success) {
-      const passwordIssue = result.error.issues.find(
-        (issue) => issue.path[0] === 'password',
-      )
+      if (!result.success) {
+        const passwordIssue = result.error.issues.find(
+          (issue) => issue.path[0] === 'password',
+        )
 
-      expect(passwordIssue?.message).toBe('Please enter your password.')
-    }
-  })
+        expect(passwordIssue?.message).toBe('Please enter your password.')
+      }
+    },
+  )
 
   it('assigns a password mismatch to confirmPassword', () => {
     const result = registerSchema.safeParse({
@@ -121,40 +124,44 @@ describe('registerSchema', () => {
     }
   })
 
-  it('rejects an empty confirmation password', () => {
-    const result = registerSchema.safeParse({
-      ...validValues,
-      confirmPassword: '',
-    })
+  it.each(['', '        ', '\t\t\t\t\t\t\t\t', '\n\n\n\n\n\n\n\n'])(
+    'rejects a blank confirmation password: %j',
+    (confirmPassword) => {
+      const result = registerSchema.safeParse({
+        ...validValues,
+        confirmPassword,
+      })
 
-    expect(result.success).toBe(false)
+      expect(result.success).toBe(false)
 
-    if (!result.success) {
-      expect(result.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: ['confirmPassword'],
-            message: 'Please confirm your password.',
-          }),
-        ]),
-      )
-    }
-  })
+      if (!result.success) {
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: ['confirmPassword'],
+              message: 'Please confirm your password.',
+            }),
+          ]),
+        )
+      }
+    },
+  )
 
-  it('preserves spaces in passwords', () => {
-    const password = ' abcdefgh '
+  it.each([' abcdefgh ', 'abcd efgh'])(
+    'preserves spaces in passwords: %j',
+    (password) => {
+      const result = registerSchema.safeParse({
+        ...validValues,
+        password,
+        confirmPassword: password,
+      })
 
-    const result = registerSchema.safeParse({
-      ...validValues,
-      password,
-      confirmPassword: password,
-    })
+      expect(result.success).toBe(true)
 
-    expect(result.success).toBe(true)
-
-    if (result.success) {
-      expect(result.data.password).toBe(password)
-      expect(result.data.confirmPassword).toBe(password)
-    }
-  })
+      if (result.success) {
+        expect(result.data.password).toBe(password)
+        expect(result.data.confirmPassword).toBe(password)
+      }
+    },
+  )
 })

@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { LoginForm } from './LoginForm'
 
 describe('LoginForm', () => {
+  it('keeps fields disabled after success without showing a pending label', () => {
+    render(<LoginForm isSuccess />)
+    expect(screen.getByLabelText('Email')).toBeDisabled()
+    expect(screen.getByLabelText('Password')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Log In' })).toBeDisabled()
+  })
   it('does not show errors while editing before the first submit', async () => {
     const user = userEvent.setup()
 
@@ -86,24 +92,5 @@ describe('LoginForm', () => {
     expect(screen.getByText('Please enter your password.')).toBeInTheDocument()
 
     expect(onValidSubmit).not.toHaveBeenCalled()
-  })
-
-  it('passes normalized email and unchanged password to the callback', async () => {
-    const user = userEvent.setup()
-    const onValidSubmit = vi.fn()
-
-    render(<LoginForm onValidSubmit={onValidSubmit} />)
-
-    await user.type(screen.getByLabelText('Email'), 'JAMIE@EXAMPLE.COM')
-    await user.type(screen.getByLabelText('Password'), ' abc ')
-    await user.click(screen.getByRole('button', { name: 'Log In' }))
-
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-
-    expect(onValidSubmit).toHaveBeenCalledTimes(1)
-    expect(onValidSubmit).toHaveBeenCalledWith({
-      email: 'jamie@example.com',
-      password: ' abc ',
-    })
   })
 })

@@ -2,15 +2,23 @@ import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@base-ui/react/input'
 import { Button } from '@base-ui/react/button'
+
 import { registerSchema } from '../schemas/register.schema'
 import type { RegisterFormValues } from '../schemas/register.schema'
+
 import styles from '#/features/auth/styles/authForm.module.scss'
 
 type RegisterFormProps = {
   onValidSubmit?: (values: RegisterFormValues) => void
+  isSubmitting?: boolean
+  submitError?: string
 }
 
-export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
+export const RegisterForm = ({
+  onValidSubmit,
+  isSubmitting = false,
+  submitError,
+}: RegisterFormProps) => {
   const {
     control,
     handleSubmit,
@@ -33,7 +41,15 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
     <form
       className={styles.form}
       noValidate
-      onSubmit={handleSubmit((values) => onValidSubmit?.(values))}
+      aria-busy={isSubmitting}
+      onSubmit={(event) => {
+        if (isSubmitting) {
+          event.preventDefault()
+          return
+        }
+
+        void handleSubmit((values) => onValidSubmit?.(values))(event)
+      }}
     >
       <div className={styles.field}>
         <label htmlFor="register-name">Name</label>
@@ -45,6 +61,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
               {...field}
               className={styles.input}
               id="register-name"
+              disabled={isSubmitting}
               type="text"
               autoComplete="name"
               required
@@ -72,6 +89,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
               {...field}
               className={styles.input}
               id="register-email"
+              disabled={isSubmitting}
               type="email"
               autoComplete="username"
               required
@@ -101,11 +119,13 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
               {...field}
               className={styles.input}
               id="register-password"
+              disabled={isSubmitting}
               type="password"
               autoComplete="new-password"
               required
               onValueChange={(value) => {
                 onChange(value)
+
                 // The mismatch error belongs to confirmation, not this field.
                 if (isSubmitted) {
                   void trigger('confirmPassword')
@@ -136,6 +156,7 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
               {...field}
               className={styles.input}
               id="register-confirm-password"
+              disabled={isSubmitting}
               type="password"
               autoComplete="new-password"
               required
@@ -161,8 +182,14 @@ export const RegisterForm = ({ onValidSubmit }: RegisterFormProps) => {
         )}
       </div>
 
-      <Button className={styles.submit} type="submit">
-        Create Account
+      {submitError && (
+        <p className={styles.error} role="alert">
+          {submitError}
+        </p>
+      )}
+
+      <Button className={styles.submit} type="submit" disabled={isSubmitting}>
+        {isSubmitting ? 'Creating account…' : 'Create Account'}
       </Button>
     </form>
   )
