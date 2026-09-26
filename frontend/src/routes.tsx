@@ -5,7 +5,6 @@ import {
   Outlet,
 } from '@tanstack/react-router'
 
-import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
@@ -15,6 +14,11 @@ import {
   SessionRecoveryPending,
   SessionRecoveryError,
 } from '#/features/auth/components/SessionRecoveryFeedback/SessionRecoveryFeedback'
+import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
+import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
+import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
+import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
+import {AuthLayout} from "#/features/auth/layouts/AuthLayout/AuthLayout";
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -26,7 +30,6 @@ const indexRoute = createRoute({
   },
 })
 
-// Share the auth layout without adding a URL prefix.
 const authLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'auth',
@@ -71,6 +74,39 @@ const appRoute = createRoute({
   component: AppHomePage,
 })
 
+// Below are admin routes
+const adminLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
+  component: AdminLayout,
+})
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: '/admin/suppliers', replace: true })
+  },
+})
+
+const supplierListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers',
+  component: SupplierListPage,
+})
+
+const supplierCreateRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers/new',
+  component: SupplierCreatePage,
+})
+
+const supplierEditRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers/$supplierId/edit',
+  component: SupplierEditPage,
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -84,4 +120,10 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   protectedRoute.addChildren([appRoute]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
+  adminLayoutRoute.addChildren([
+    adminIndexRoute,
+    supplierListRoute,
+    supplierCreateRoute,
+    supplierEditRoute,
+  ]),
 ])
