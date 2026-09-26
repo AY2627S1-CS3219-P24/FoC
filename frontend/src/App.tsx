@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '#/lib/queryClient'
+import { ToastProvider } from '#/components/ToastProvider/ToastProvider'
 
 const router = createRouter({
   routeTree,
@@ -23,7 +24,9 @@ declare module '@tanstack/react-router' {
 export const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </QueryClientProvider>
   )
 }
