@@ -11,8 +11,8 @@
 
 .toast {
   --toast-accent: var(--color-primary);
-  --toast-border: #93c5fd;
-  --toast-background: #eff6ff;
+  --toast-border: color-mix(in srgb, var(--color-primary) 35%, white);
+  --toast-background: var(--color-primary-soft);
 
   border: 1.5px solid var(--toast-border);
   border-radius: 10px;
@@ -29,9 +29,9 @@
   }
 
   &[data-variant='warning'] {
-    --toast-accent: #eab308;
-    --toast-border: #fcd34d;
-    --toast-background: #fefce8;
+    --toast-accent: var(--color-accent);
+    --toast-border: color-mix(in srgb, var(--color-accent) 45%, white);
+    --toast-background: var(--color-accent-soft);
   }
 
   &[data-variant='error'] {
