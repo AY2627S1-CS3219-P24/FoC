@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 
 const rootRoute = createRootRoute()
 
@@ -33,6 +34,15 @@ const registerRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
+  ...(import.meta.env.DEV
+    ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: '/preview/user-layout',
+          component: UserLayoutPreview,
+        }),
+      ]
+    : []),
   indexRoute,
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])
