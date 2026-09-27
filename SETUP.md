@@ -65,3 +65,5 @@ IF you'd like to delete the database volumes, run this instead:
 ```bash
 docker compose down -v
 ```
+
+To run the backend in Docker, see [Container setup](docs/containers.md).
