@@ -5,7 +5,7 @@ import styles from './SessionRecoveryFeedback.module.scss'
 
 export const SessionRecoveryPending = () => (
   <main className={styles.container}>
-    <p role="status">Restoring your session…</p>
+    <p role="status">Loading…</p>
   </main>
 )
 

@@ -17,7 +17,7 @@ import {
   waitFor,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AuthRequestError } from '#/features/auth/lib/authRequest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loginUser } from '#/features/auth/api/loginUser.api'
@@ -36,13 +36,7 @@ const tokens: AccessTokenResponse = {
 const clients: Array<QueryClient> = []
 let previousOnline = true
 const httpError = (status: number) =>
-  new AxiosError('Internal details', undefined, undefined, undefined, {
-    status,
-    statusText: 'Error',
-    data: { message: 'Internal details' },
-    headers: {},
-    config: { headers: new AxiosHeaders() },
-  })
+  new AuthRequestError(status, 'Internal details')
 
 beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
@@ -188,10 +182,7 @@ describe('LoginPage', () => {
   )
 
   it.each([
-    [
-      new AxiosError('Network Error', 'ERR_NETWORK'),
-      'Unable to reach the server. Please try again.',
-    ],
+    [new AuthRequestError(), 'Unable to reach the server. Please try again.'],
     [new Error('Internal details'), 'Unable to log in. Please try again.'],
   ])('handles a failure without a response: %s', async (error, message) => {
     loginMock.mockRejectedValue(error)
@@ -205,7 +196,7 @@ describe('LoginPage', () => {
   })
 
   it('attempts the request while marked offline', async () => {
-    loginMock.mockRejectedValue(new AxiosError('Network Error', 'ERR_NETWORK'))
+    loginMock.mockRejectedValue(new AuthRequestError())
     await setup()
     const user = await fill()
     act(() => onlineManager.setOnline(false))

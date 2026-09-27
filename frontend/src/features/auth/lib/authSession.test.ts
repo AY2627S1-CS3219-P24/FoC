@@ -1,13 +1,11 @@
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AuthRequestError } from './authRequest'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 
 import { refreshSession } from '../api/refreshSession.api'
 import { logoutUser } from '../api/logoutUser.api'
 import {
   logout,
-  getSessionSnapshot,
-  getSessionGeneration,
-  subscribeSession,
+  getSessionVersion,
   clearSession,
   ensureSession,
   getSession,
@@ -28,19 +26,7 @@ const tokens = (
   expiresAt: new Date(Date.now() + remaining).toISOString(),
 })
 
-const unauthorized = new AxiosError(
-  'Unauthorized',
-  undefined,
-  undefined,
-  undefined,
-  {
-    status: 401,
-    statusText: '',
-    data: {},
-    headers: {},
-    config: { headers: new AxiosHeaders() },
-  },
-)
+const unauthorized = new AuthRequestError(401)
 
 beforeEach(() => {
   clearSession(true)
@@ -55,25 +41,14 @@ afterEach(() => {
 })
 
 describe('authSession', () => {
-  it('keeps snapshots stable and preserves identity on refresh', async () => {
+  it('preserves login identity when refreshing credentials', async () => {
     establishSession(tokens())
-    const snapshot = getSessionSnapshot()
-    const generation = getSessionGeneration()
-    const listener = vi.fn()
-    const unsubscribe = subscribeSession(listener)
+    const sessionVersion = getSessionVersion()
     refresh.mockResolvedValue(tokens('new'))
-    await ensureSession(true)
+    await ensureSession({ forceRefresh: true })
 
-    expect(getSessionGeneration()).toBe(generation)
-    expect(getSessionSnapshot()).toBe(snapshot)
-    expect(listener).not.toHaveBeenCalled()
-
-    clearSession()
-
-    expect(listener).toHaveBeenCalledTimes(1)
-    expect(getSessionSnapshot()).toEqual({ status: 'requires-login' })
-
-    unsubscribe()
+    expect(getSessionVersion()).toBe(sessionVersion)
+    expect(getSession()?.accessToken).toBe('new')
   })
 
   it('waits for refresh before logout and blocks restoration after success', async () => {
@@ -88,7 +63,6 @@ describe('authSession', () => {
     const first = logout()
 
     expect(logout()).toBe(first)
-    expect(getSessionSnapshot().status).toBe('logging-out')
     expect(getSession()).toBeNull()
     expect(await ensureSession()).toBeNull()
     expect(logoutUser).not.toHaveBeenCalled()
@@ -96,9 +70,8 @@ describe('authSession', () => {
     resolve(tokens('stale'))
     await refreshRequest
 
-    expect(await first).toBe(true)
+    expect(await first).toBe('completed')
     expect(logoutUser).toHaveBeenCalledTimes(1)
-    expect(getSessionSnapshot().status).toBe('logged-out')
     expect(await ensureSession()).toBeNull()
     expect(refresh).toHaveBeenCalledTimes(1)
 
@@ -108,50 +81,47 @@ describe('authSession', () => {
     expect(await ensureSession()).toEqual(newLogin)
   })
 
-  it('keeps recovery blocked after logout failure and retries the backend', async () => {
-    vi.mocked(logoutUser)
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce()
+  it('finishes local logout even when the backend fails', async () => {
+    vi.mocked(logoutUser).mockRejectedValue(new Error('offline'))
 
-    expect(await logout()).toBe(false)
-    expect(getSessionSnapshot().status).toBe('logout-error')
+    expect(await logout()).toBe('completed')
     expect(await ensureSession()).toBeNull()
-    expect(await logout()).toBe(true)
-    expect(logoutUser).toHaveBeenCalledTimes(2)
+    expect(refresh).not.toHaveBeenCalled()
   })
 
-  it('allows retry while refresh is pending and sends logout when refresh times out', async () => {
+  it('continues logout when an outstanding refresh times out', async () => {
     vi.useFakeTimers()
     refresh.mockImplementation(
       () =>
         new Promise((_, reject) => {
-          setTimeout(
-            () => reject(new AxiosError('timeout', 'ECONNABORTED')),
-            15_000,
-          )
+          setTimeout(() => reject(new AuthRequestError()), 15_000)
         }),
     )
-    vi.mocked(logoutUser).mockResolvedValue()
     const recovery = ensureSession()
-    const first = logout()
+    const exiting = logout()
     await vi.advanceTimersByTimeAsync(10_000)
-
-    expect(await first).toBe(false)
-
-    const retry = logout()
-
-    expect(getSessionSnapshot().status).toBe('logging-out')
     expect(logoutUser).not.toHaveBeenCalled()
-    expect(await ensureSession()).toBeNull()
 
     await vi.advanceTimersByTimeAsync(5_000)
     await recovery
-
-    expect(await retry).toBe(true)
+    expect(await exiting).toBe('completed')
     expect(logoutUser).toHaveBeenCalledTimes(1)
-    expect(refresh).toHaveBeenCalledTimes(1)
-    expect(getSession()).toBeNull()
-    expect(getSessionSnapshot().status).toBe('logged-out')
+  })
+
+  it('does not complete an old logout over a new login', async () => {
+    let finish!: () => void
+    vi.mocked(logoutUser).mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+    )
+    const exiting = logout()
+    await vi.waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+    establishSession(tokens('new-login'))
+    finish()
+
+    expect(await exiting).toBe('session-changed')
+    expect(getSession()?.accessToken).toBe('new-login')
   })
 
   it('reuses a valid in-memory session', async () => {

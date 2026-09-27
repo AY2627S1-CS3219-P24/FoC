@@ -17,7 +17,7 @@ import {
   waitFor,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AuthRequestError } from '#/features/auth/lib/authRequest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerUser } from '#/features/auth/api/registerUser.api'
 import { routeTree } from '#/routes'
@@ -43,21 +43,7 @@ const clients: Array<QueryClient> = []
 let previousOnlineState = true
 
 const createHttpError = (status: number, message: string) =>
-  new AxiosError(
-    `Request failed with status code ${status}`,
-    undefined,
-    undefined,
-    undefined,
-    {
-      status,
-      statusText: 'Request failed',
-      data: { message },
-      headers: {},
-      config: {
-        headers: new AxiosHeaders(),
-      },
-    },
-  )
+  new AuthRequestError(status, message)
 
 const renderRegisterPage = async () => {
   // Each test gets its own cache and navigation history.
@@ -237,7 +223,7 @@ describe('RegisterPage', () => {
   it.each([
     {
       scenario: 'a network failure',
-      error: new AxiosError('Network Error', 'ERR_NETWORK'),
+      error: new AuthRequestError(),
       message: 'Unable to reach the server. Please try again.',
     },
     {
@@ -276,9 +262,7 @@ describe('RegisterPage', () => {
   })
 
   it('attempts registration instead of pausing while marked offline', async () => {
-    registerUserMock.mockRejectedValue(
-      new AxiosError('Network Error', 'ERR_NETWORK'),
-    )
+    registerUserMock.mockRejectedValue(new AuthRequestError())
 
     const router = await renderRegisterPage()
     const user = await fillValidForm()

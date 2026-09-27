@@ -3,8 +3,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@base-ui/react/input'
 import { Button } from '@base-ui/react/button'
 
-import { loginSchema } from '../schemas/login.schema'
-import type { LoginFormValues } from '../schemas/login.schema'
+import { loginSchema } from '../../schemas/login.schema'
+import type { LoginFormValues } from '../../schemas/login.schema'
 
 import styles from '#/features/auth/styles/authForm.module.scss'
 

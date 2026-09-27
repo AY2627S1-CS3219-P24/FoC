@@ -1,47 +1,37 @@
-import { isAxiosError } from 'axios'
+import { AuthRequestError } from './authRequest'
 
 import { refreshSession } from '../api/refreshSession.api'
 import { logoutUser } from '../api/logoutUser.api'
 import type { AccessTokenResponse } from '../types/auth.types'
 
-type SessionStatus =
-  'normal' | 'requires-login' | 'logging-out' | 'logout-error' | 'logged-out'
+type LogoutResult = 'completed' | 'session-changed'
 
 const expiryMarginMs = 30_000
-const logoutWaitMs = 10_000
 
-let session: AccessTokenResponse | null = null
-let generation = 0
-let pending: Promise<AccessTokenResponse | null> | null = null
-let logoutPending: Promise<boolean> | null = null
-const refreshes = new Set<Promise<AccessTokenResponse | null>>()
-const listeners = new Set<() => void>()
-let snapshot: Readonly<{ status: SessionStatus }> = Object.freeze({
-  status: 'normal',
-})
+// Access token and expiry time kept in memory.
+let currentSession: AccessTokenResponse | null = null
 
-const updateStatus = (status: SessionStatus) => {
-  if (snapshot.status === status) return
-  snapshot = Object.freeze({ status })
-  listeners.forEach((listener) => listener())
-}
+// Identifies the current session; changes on login or when the session is cleared
+let sessionVersion = 0
 
-export const subscribeSession = (listener: () => void) => {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
+// Current refresh request shared by concurrent callers
+let refreshPromise: Promise<AccessTokenResponse | null> | null = null
 
-export const getSessionSnapshot = () => snapshot
+// Current logout request shared by repeated calls
+let logoutPromise: Promise<LogoutResult> | null = null
 
-export const getSessionGeneration = () => generation
+// Track refresh requests until they finish so logout can wait after refreshPromise is cleared.
+const activeRefreshRequests = new Set<Promise<AccessTokenResponse | null>>()
+
+// Whether this page may restore the session using the refresh cookie
+let recoveryAllowed = true
+
+export const getSessionVersion = () => sessionVersion
 
 export const getSession = (): AccessTokenResponse | null =>
-  session && { ...session }
+  currentSession && { ...currentSession }
 
-export const isLoggingOut = () =>
-  snapshot.status === 'logging-out' || snapshot.status === 'logout-error'
+export const isLoggingOut = () => logoutPromise !== null
 
 export class SessionChangedError extends Error {
   constructor() {
@@ -50,73 +40,83 @@ export class SessionChangedError extends Error {
   }
 }
 
-export const assertCurrentSession = (expected: number) => {
-  if (expected !== generation || snapshot.status !== 'normal')
+// Stop work if the session changed or this page cannot restore it
+export const assertCurrentSession = (expectedVersion: number) => {
+  if (expectedVersion !== sessionVersion || !recoveryAllowed)
     throw new SessionChangedError()
 }
 
+// Save the access token and start a new in-memory session after login succeeds
 export const establishSession = (value: AccessTokenResponse) => {
-  session = { ...value }
-  generation += 1
-  pending = null
-  updateStatus('normal')
+  currentSession = { ...value }
+  sessionVersion += 1
+  refreshPromise = null
+  recoveryAllowed = true
 }
 
-// Recovery is blocked by default; tests opt in to simulate a fresh page load.
+// Clear the in-memory session and block recovery unless explicitly allowed
 export const clearSession = (allowRecovery = false) => {
-  session = null
-  generation += 1
-  pending = null
-  updateStatus(allowRecovery ? 'normal' : 'requires-login')
+  currentSession = null
+  sessionVersion += 1
+  refreshPromise = null
+  recoveryAllowed = allowRecovery
 }
 
-const validSession = () =>
-  session && Date.parse(session.expiresAt) > Date.now() + expiryMarginMs
+// Return the session only if its access token stays valid for more than 30 seconds
+const getUsableSession = () =>
+  currentSession &&
+  Date.parse(currentSession.expiresAt) > Date.now() + expiryMarginMs
     ? getSession()
     : null
 
-export const ensureSession = (
-  force = false,
-): Promise<AccessTokenResponse | null> => {
-  if (snapshot.status !== 'normal') return Promise.resolve(null)
-  if (pending) return pending
+// Send a refresh request and apply its token only if the session has not changed.
+const refreshCurrentSession = async (startedVersion: number) => {
+  try {
+    const result = await refreshSession()
+    if (sessionVersion !== startedVersion) return getUsableSession()
 
-  const current = validSession()
-  if (!force && current) return Promise.resolve(current)
+    // check if accessToken is not empty with expiry time more than 30s
+    if (
+      !result.accessToken ||
+      !(Date.parse(result.expiresAt) > Date.now() + expiryMarginMs)
+    )
+      throw new Error('Invalid session response')
 
-  const startedGeneration = generation
-
-  const request = (async () => {
-    try {
-      const result = await refreshSession()
-      if (generation !== startedGeneration) return validSession()
-
-      if (
-        !result.accessToken ||
-        !(Date.parse(result.expiresAt) > Date.now() + expiryMarginMs)
-      )
-        throw new Error('Invalid session response')
-
-      // Refresh updates credentials without changing the login identity.
-      session = { ...result }
-      return getSession()
-    } catch (error) {
-      if (generation !== startedGeneration) return validSession()
-      if (isAxiosError(error) && error.response?.status === 401) {
-        clearSession()
-        return null
-      }
-
-      throw error
+    currentSession = { ...result }
+    return getSession()
+  } catch (error) {
+    if (sessionVersion !== startedVersion) return getUsableSession()
+    if (error instanceof AuthRequestError && error.status === 401) {
+      clearSession()
+      return null
     }
-  })()
 
-  pending = request
-  refreshes.add(request)
+    throw error
+  }
+}
+
+// Return a usable session, reusing or starting a refresh when needed
+export const ensureSession = ({
+  forceRefresh = false,
+}: { forceRefresh?: boolean } = {}): Promise<AccessTokenResponse | null> => {
+  if (!recoveryAllowed) {
+    return Promise.resolve(null) // Session recovery is blocked, so don't try to refresh
+  }
+
+  if (refreshPromise) {
+    return refreshPromise // A refresh is already in progress, so return the existing promise
+  }
+
+  const usableSession = getUsableSession()
+  if (!forceRefresh && usableSession) return Promise.resolve(usableSession)
+
+  const request = refreshCurrentSession(sessionVersion)
+  refreshPromise = request
+  activeRefreshRequests.add(request)
 
   const release = () => {
-    refreshes.delete(request)
-    if (pending === request) pending = null
+    activeRefreshRequests.delete(request)
+    if (refreshPromise === request) refreshPromise = null
   }
 
   void request.then(release, release)
@@ -124,59 +124,35 @@ export const ensureSession = (
   return request
 }
 
-const waitForRefreshes = async (
-  requests: Array<Promise<AccessTokenResponse | null>>,
-) => {
-  let timer: ReturnType<typeof setTimeout> | undefined
+// wait for active refreshes to finish, then request server logout and clear the refresh cookie
+const completeLogout = async (
+  refreshRequests: Array<Promise<AccessTokenResponse | null>>,
+  startedVersion: number,
+): Promise<LogoutResult> => {
+  await Promise.allSettled(refreshRequests)
+  if (sessionVersion !== startedVersion) return 'session-changed'
 
   try {
-    await Promise.race([
-      Promise.allSettled(requests),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('Session recovery is still pending')),
-          logoutWaitMs,
-        )
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
+    await logoutUser()
+  } catch {
+    // A server failure must not prevent the caller from finishing local logout.
   }
+
+  return sessionVersion === startedVersion ? 'completed' : 'session-changed'
 }
 
-export const logout = (): Promise<boolean> => {
-  if (logoutPending) return logoutPending
-  if (snapshot.status === 'logged-out') return Promise.resolve(true)
+// Clear the local session and start one shared logout operation.
+export const logout = (): Promise<LogoutResult> => {
+  if (logoutPromise) return logoutPromise
 
-  // Capture outstanding refreshes before invalidating their in-memory results.
-  const outstanding = [...refreshes]
-  session = null
-  generation += 1
-  pending = null
+  const refreshRequests = [...activeRefreshRequests]
+  clearSession()
 
-  const startedGeneration = generation
-  updateStatus('logging-out')
-
-  const request = (async () => {
-    try {
-      await waitForRefreshes(outstanding)
-      if (generation !== startedGeneration) return false
-
-      await logoutUser()
-      if (generation !== startedGeneration) return false
-
-      updateStatus('logged-out')
-      return true
-    } catch {
-      if (generation === startedGeneration) updateStatus('logout-error')
-      return false
-    }
-  })()
-
-  logoutPending = request
+  const request = completeLogout(refreshRequests, sessionVersion)
+  logoutPromise = request
 
   void request.then(() => {
-    if (logoutPending === request) logoutPending = null
+    if (logoutPromise === request) logoutPromise = null
   })
 
   return request

@@ -1,15 +1,19 @@
-import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  createRoute,
+  redirect,
+  Outlet,
+} from '@tanstack/react-router'
 
-import { AuthLayout } from '#/features/auth/layouts/AuthLayout'
+import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
-import { ensureSession, isLoggingOut } from '#/features/auth/lib/authSession'
-import { ProtectedSessionBoundary } from '#/features/auth/layouts/ProtectedSessionBoundary'
+import { ensureSession } from '#/features/auth/lib/authSession'
 import {
   SessionRecoveryPending,
   SessionRecoveryError,
-} from '#/features/auth/components/SessionRecoveryFeedback'
+} from '#/features/auth/components/SessionRecoveryFeedback/SessionRecoveryFeedback'
 
 const rootRoute = createRootRoute()
 
@@ -48,14 +52,12 @@ const registerRoute = createRoute({
 const protectedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'protected',
-  component: ProtectedSessionBoundary,
+  component: Outlet,
   beforeLoad: async () => {
-    if (isLoggingOut()) return
     const session = await ensureSession()
-    if (isLoggingOut()) return
     if (!session) throw redirect({ to: '/login', replace: true })
   },
-  pendingMs: 0,
+  pendingMs: 500,
   pendingMinMs: 0,
   pendingComponent: SessionRecoveryPending,
   errorComponent: SessionRecoveryError,

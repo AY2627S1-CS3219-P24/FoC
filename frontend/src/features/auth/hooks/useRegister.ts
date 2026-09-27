@@ -1,35 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
 
+import { getRegisterErrorMessage } from '../utils/getRegisterErrorMessage'
 import { registerUser } from '#/features/auth/api/registerUser.api'
 import type { RegisterUserRequest } from '#/features/auth/types/auth.types'
-
-const getRegisterErrorMessage = (error: unknown): string | undefined => {
-  if (error == null) {
-    return undefined
-  }
-
-  if (isAxiosError<{ message?: unknown } | null | undefined>(error)) {
-    if (!error.response) {
-      return 'Unable to reach the server. Please try again.'
-    }
-
-    const { status, data } = error.response
-
-    if (
-      status === 400 &&
-      data?.message === 'User already exists with this email'
-    ) {
-      return 'An account with this email already exists.'
-    }
-
-    if (status === 400) {
-      return 'Please check your registration details and try again.'
-    }
-  }
-
-  return 'Unable to create your account. Please try again.'
-}
 
 export const useRegister = () => {
   const mutation = useMutation({

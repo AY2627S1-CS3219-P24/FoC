@@ -1,5 +1,4 @@
-import { axiosClient } from '#/lib/axiosClient'
+import { authRequest } from '../lib/authRequest'
 
-export const logoutUser = async (): Promise<void> => {
-  await axiosClient.post('/auth/logout', undefined, { timeout: 10_000 })
-}
+export const logoutUser = (): Promise<void> =>
+  authRequest('/auth/logout', undefined, 10_000)

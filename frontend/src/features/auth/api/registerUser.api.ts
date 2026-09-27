@@ -1,4 +1,4 @@
-import { axiosClient } from '#/lib/axiosClient'
+import { authRequest } from '../lib/authRequest'
 import type {
   RegisterUserRequest,
   UserProfileDto,
@@ -9,11 +9,9 @@ export const registerUser = async (
 ): Promise<UserProfileDto> => {
   const { name, email, password } = request
 
-  const response = await axiosClient.post<UserProfileDto>('/auth/register', {
+  return authRequest<UserProfileDto>('/auth/register', {
     name,
     email,
     password,
   })
-
-  return response.data
 }

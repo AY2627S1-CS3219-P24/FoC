@@ -5,7 +5,7 @@ import { establishSession } from '#/features/auth/lib/authSession'
 import { useLogin } from '#/features/auth/hooks/useLogin'
 
 import type { LoginFormValues } from './schemas/login.schema'
-import { LoginForm } from './components/LoginForm'
+import { LoginForm } from './components/LoginForm/LoginForm'
 
 import pageStyles from './LoginPage.module.scss'
 import styles from '#/features/auth/styles/authPage.module.scss'

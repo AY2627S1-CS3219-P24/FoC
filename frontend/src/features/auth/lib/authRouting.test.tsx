@@ -4,16 +4,26 @@ import {
   createMemoryHistory,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import {
+  render,
+  screen,
+  cleanup,
+  act,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AuthRequestError } from './authRequest'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 
 import { routeTree } from '#/routes'
 
 import { refreshSession } from '../api/refreshSession.api'
-import { clearSession } from './authSession'
+import { logoutUser } from '../api/logoutUser.api'
+import { clearSession, establishSession, ensureSession } from './authSession'
 import type { AccessTokenResponse } from '../types/auth.types'
+
+vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
@@ -28,6 +38,7 @@ const tokens = (): AccessTokenResponse => ({
 beforeEach(() => {
   clearSession(true)
   refresh.mockReset()
+  vi.mocked(logoutUser).mockReset()
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 
@@ -37,6 +48,7 @@ afterEach(() => {
   clients.length = 0
   clearSession(true)
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 const setup = (path: string) => {
@@ -55,19 +67,29 @@ const setup = (path: string) => {
 }
 
 it.each(['/app', '/'])(
-  'waits for recovery before showing protected content from %s',
+  'shows loading after 500ms and waits for recovery from %s',
   async (path) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     let resolve!: (value: AccessTokenResponse) => void
     refresh.mockReturnValue(
       new Promise((done) => {
         resolve = done
       }),
     )
-    const router = setup(path)
+    let router!: ReturnType<typeof setup>
+    await act(async () => {
+      router = setup(path)
+    })
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Restoring your session',
-    )
+    expect(refresh).toHaveBeenCalledTimes(1)
+    await act(async () => vi.advanceTimersByTimeAsync(499))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+    ).not.toBeInTheDocument()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…')
     expect(
       screen.queryByRole('heading', { name: 'Welcome to FoC' }),
     ).not.toBeInTheDocument()
@@ -75,23 +97,38 @@ it.each(['/app', '/'])(
     await act(async () => resolve(tokens()))
 
     expect(
-      await screen.findByRole('heading', { name: 'Welcome to FoC' }),
+      screen.getByRole('heading', { name: 'Welcome to FoC' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app')
     expect(refresh).toHaveBeenCalledTimes(1)
   },
 )
 
-it('redirects to login when refresh returns 401', async () => {
-  refresh.mockRejectedValue(
-    new AxiosError('Unauthorized', undefined, undefined, undefined, {
-      status: 401,
-      statusText: '',
-      data: {},
-      headers: {},
-      config: { headers: new AxiosHeaders() },
+it('opens the app without showing loading when recovery finishes before 500ms', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  let resolve!: (value: AccessTokenResponse) => void
+  refresh.mockReturnValue(
+    new Promise((done) => {
+      resolve = done
     }),
   )
+  await act(async () => {
+    setup('/app')
+  })
+  await act(async () => vi.advanceTimersByTimeAsync(100))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+  await act(async () => resolve(tokens()))
+
+  expect(
+    screen.getByRole('heading', { name: 'Welcome to FoC' }),
+  ).toBeInTheDocument()
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+})
+
+it('redirects to login when refresh returns 401', async () => {
+  refresh.mockRejectedValue(new AuthRequestError(401))
   const router = setup('/app')
 
   expect(
@@ -124,3 +161,37 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   ).toBeInTheDocument()
   expect(refresh).toHaveBeenCalledTimes(2)
 })
+
+it.each(['success', 'failure'])(
+  'keeps the app unchanged until logout %s, then opens login',
+  async (outcome) => {
+    establishSession(tokens())
+    let finish!: () => void
+    vi.mocked(logoutUser).mockReturnValue(
+      new Promise<void>((resolve, reject) => {
+        finish = () =>
+          outcome === 'success' ? resolve() : reject(new Error('offline'))
+      }),
+    )
+    const router = setup('/app')
+    const button = await screen.findByRole('button', { name: 'Log out' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+
+    expect(button).toBeEnabled()
+    expect(button).toHaveTextContent('Log out')
+    expect(
+      screen.getByRole('heading', { name: 'Welcome to FoC' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/app')
+
+    await act(async () => finish())
+    expect(
+      await screen.findByRole('heading', { name: 'Welcome Back' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
+    expect(await ensureSession()).toBeNull()
+    expect(refresh).not.toHaveBeenCalled()
+  },
+)

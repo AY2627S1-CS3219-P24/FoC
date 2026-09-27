@@ -4,7 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useRegister } from '#/features/auth/hooks/useRegister'
 
 import type { RegisterFormValues } from './schemas/register.schema'
-import { RegisterForm } from './components/RegisterForm'
+import { RegisterForm } from './components/RegisterForm/RegisterForm'
 
 import styles from '#/features/auth/styles/authPage.module.scss'
 
