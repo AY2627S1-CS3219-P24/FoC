@@ -1,8 +1,11 @@
 package com.cs3219.foc.user.exception;
 
 import com.cs3219.foc.user.model.dto.ErrorResponse;
+import com.cs3219.foc.user.model.dto.ValidationErrorResponse;
+import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -10,6 +13,16 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ValidationErrorResponse> handleValidationException(MethodArgumentNotValidException exception) {
+        var errors = new TreeMap<String, String>();
+        exception
+                .getBindingResult()
+                .getFieldErrors()
+                .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return ResponseEntity.badRequest().body(new ValidationErrorResponse("Validation failed", errors));
+    }
 
     @ExceptionHandler(AvatarException.class)
     ResponseEntity<ErrorResponse> handleAvatar(AvatarException ex) {

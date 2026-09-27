@@ -18,6 +18,7 @@ import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.security.JsonAccessDeniedHandler;
 import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
 import com.cs3219.foc.user.service.AuthCookieFactory;
+import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.AvatarService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
@@ -245,11 +246,25 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.message").value("Email is already associated with another account"));
     }
 
+    @Test
+    void registrationUsesGlobalValidationErrors() throws Exception {
+        mvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"email\":\"invalid\",\"password\":\"short\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.name").exists())
+                .andExpect(jsonPath("$.fieldErrors.email").exists())
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
+        verifyNoInteractions(service);
+    }
+
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
     @Import({
         UserController.class,
+        AuthController.class,
         PasswordController.class,
         AvatarController.class,
         SecurityConfig.class,
@@ -258,6 +273,11 @@ class UserControllerTests {
         JsonAccessDeniedHandler.class
     })
     static class TestConfig {
+        @Bean
+        AuthService authService() {
+            return mock(AuthService.class);
+        }
+
         @Bean
         AvatarService avatarService() {
             return mock(AvatarService.class);

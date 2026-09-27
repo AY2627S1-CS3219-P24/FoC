@@ -27,7 +27,8 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserProfileDto getUserProfile(UUID userId) {
-        return userMapper.toUserProfileDto(findUser(userId));
+        var user = getUser(userId);
+        return userMapper.toUserProfileDto(user);
     }
 
     @Transactional
@@ -44,7 +45,8 @@ public class UserService {
         user.setPhoneNumber(request.phoneNumber());
         user.setFaculty(request.faculty());
         try {
-            return userMapper.toUserProfileDto(userRepository.saveAndFlush(user));
+            var savedUser = userRepository.saveAndFlush(user);
+            return userMapper.toUserProfileDto(savedUser);
         } catch (DataIntegrityViolationException exception) {
             // V1 creates this PostgreSQL constraint. Only translate the email race;
             // unrelated integrity failures must not be reported as duplicate emails.
@@ -59,7 +61,7 @@ public class UserService {
         }
     }
 
-    private User findUser(UUID userId) {
+    private User getUser(UUID userId) {
         return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
     }
 
