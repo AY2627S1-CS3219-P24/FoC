@@ -46,7 +46,7 @@ describe('loginSchema', () => {
     }
   })
 
-  it.each(['', '   '])('rejects a blank password: %j', (password) => {
+  it.each(['', '   ', '\t\n'])('rejects a blank password: %j', (password) => {
     const result = loginSchema.safeParse({
       ...validValues,
       password,

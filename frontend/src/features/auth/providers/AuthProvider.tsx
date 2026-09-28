@@ -14,7 +14,6 @@ import { getAccessToken, setAccessToken } from '../lib/accessTokenStore'
 import { AuthRequestError } from '../lib/authRequest'
 import { setupAuthInterceptors } from '../lib/authInterceptors'
 import {
-  getPendingRefresh,
   invalidateRefresh,
   refreshAccessToken,
 } from '../lib/refreshAccessToken'
@@ -42,7 +41,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [invalidation, setInvalidation] = useState(0)
 
   const operations = useMemo(() => {
-    const canRefresh = () => !authenticationEnded.current && !exiting.current
+    const canRefresh = () => !authenticationEnded.current
 
     const authenticationFailed = () => {
       if (authenticationEnded.current) return
@@ -53,15 +52,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const ensureAuthenticated = async () => {
-      // A failed logout is handled by the page, not the route recovery screen.
-      await exiting.current?.catch(() => undefined)
-      if (authenticationEnded.current) return false
+      if (!canRefresh()) return false
       if (getAccessToken()) return true
 
       try {
-        await refreshAccessToken()
-        await exiting.current?.catch(() => undefined)
-        return canRefresh() && Boolean(getAccessToken())
+        const token = await refreshAccessToken()
+        return canRefresh() && Boolean(token)
       } catch (error) {
         if (error instanceof AuthRequestError && error.status === 401) {
           authenticationFailed()
@@ -80,20 +76,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = (): Promise<void> => {
       if (exiting.current) return exiting.current
 
-      const pendingRefresh = getPendingRefresh()
+      const pendingRefresh = invalidateRefresh()
+      authenticationEnded.current = true
+      setAccessToken(null)
 
       // Serialize cookie rotation and logout. The API adapters bound each request.
       exiting.current = (async () => {
+        await pendingRefresh?.catch(() => undefined)
         try {
-          await pendingRefresh?.catch((error: unknown) => {
-            // A refresh rejection remains an independent authentication failure.
-            if (error instanceof AuthRequestError && error.status === 401) {
-              authenticationFailed()
-            }
-          })
           await logoutUser()
-          authenticationEnded.current = true
-          setAccessToken(null)
+        } catch {
+          // Local logout completes even when server logout cannot be confirmed.
         } finally {
           exiting.current = null
         }

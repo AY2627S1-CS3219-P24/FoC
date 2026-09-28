@@ -20,9 +20,9 @@ let removeInterceptors: () => void
 
 const refresh = vi.mocked(refreshSession)
 
-const tokens = (accessToken = 'original') => ({
+const tokens = (accessToken = 'original', remaining = 300_000) => ({
   accessToken,
-  expiresAt: '2030-01-01T00:00:00.000Z',
+  expiresAt: new Date(Date.now() + remaining).toISOString(),
 })
 
 const response = (
@@ -197,10 +197,10 @@ it('reuses a newer token for a late 401', async () => {
   expect(refresh).toHaveBeenCalledTimes(1)
 })
 
-it('does not refresh a forbidden business request', async () => {
+it.each([403, 502])('does not refresh HTTP %s', async (status) => {
   await expect(
     axiosClient.get('/users/test', {
-      adapter: async (config) => fail(config, 403),
+      adapter: async (config) => fail(config, status),
     }),
   ).rejects.toBeInstanceOf(AxiosError)
   expect(refresh).not.toHaveBeenCalled()
