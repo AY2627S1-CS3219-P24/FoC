@@ -7,11 +7,11 @@ const config = defineConfig({
   plugins: [devtools(), viteReact()],
   server: {
     proxy: {
-      '/auth': 'http://localhost:8080',
-      '/users': 'http://localhost:8080',
-      '/suppliers': 'http://localhost:8081',
-      '/orders': 'http://localhost:8082',
-      '/credits': 'http://localhost:8083',
+      '/api/auth': 'http://localhost:8080',
+      '/api/users': 'http://localhost:8080',
+      '/api/suppliers': 'http://localhost:8081',
+      '/api/orders': 'http://localhost:8082',
+      '/api/credits': 'http://localhost:8083',
     },
   },
 })
