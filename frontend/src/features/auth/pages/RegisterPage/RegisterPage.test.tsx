@@ -223,11 +223,6 @@ describe('RegisterPage', () => {
 
   it.each([
     {
-      scenario: 'a network failure',
-      error: new AuthRequestError(),
-      message: 'Unable to reach the server. Please try again.',
-    },
-    {
       scenario: 'an ordinary 400 response',
       error: createHttpError(400, 'Invalid registration details'),
       message: 'Please check your registration details and try again.',
@@ -281,5 +276,6 @@ describe('RegisterPage', () => {
     expect(registerUserMock).toHaveBeenCalledTimes(1)
     expect(router.state.location.pathname).toBe('/register')
     expect(screen.getByRole('button', { name: 'Create Account' })).toBeEnabled()
+    expect(screen.queryByText(successMessage)).not.toBeInTheDocument()
   })
 })

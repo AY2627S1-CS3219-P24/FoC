@@ -1,6 +1,7 @@
 import { AuthRouterProvider } from '#/App'
 import { AuthProvider } from '#/features/auth/providers/AuthProvider'
 import { AxiosError } from 'axios'
+import type { InternalAxiosRequestConfig } from 'axios'
 import { axiosClient } from '#/lib/axiosClient'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, createMemoryHistory } from '@tanstack/react-router'
@@ -195,94 +196,174 @@ it('routes a confirmed business authentication failure through Provider and the 
   expect(refresh).toHaveBeenCalledTimes(1)
 })
 
-it.each(['success', 'timeout'])(
-  'waits for the current refresh %s before logout without restoring the token',
-  async (outcome) => {
-    setAccessToken('original')
-    let finishRefresh!: () => void
-    refresh.mockReturnValue(
-      new Promise((resolve, reject) => {
-        finishRefresh = () =>
-          outcome === 'success'
-            ? resolve(tokens())
-            : reject(new AuthRequestError())
-      }),
-    )
-    vi.mocked(logoutUser).mockResolvedValue()
-    const router = setup('/app')
-    const button = await screen.findByRole('button', { name: 'Log out' })
-    const adapter = vi.fn(async (config) => {
-      throw new AxiosError('Unauthorized', undefined, config, undefined, {
-        config,
-        status: 401,
-        statusText: '',
-        headers: {},
-        data: {},
-      })
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
+const unauthorized = (config: InternalAxiosRequestConfig): never => {
+  throw new AxiosError('Unauthorized', undefined, config, undefined, {
+    config,
+    status: 401,
+    statusText: '',
+    headers: {},
+    data: {},
+  })
+}
+
+const startLogoutDuringRefresh = async () => {
+  setAccessToken('original')
+  const pendingRefresh = deferred<AccessTokenResponse>()
+  const pendingLogout = deferred<void>()
+  refresh.mockReturnValue(pendingRefresh.promise)
+  vi.mocked(logoutUser).mockReturnValue(pendingLogout.promise)
+  const router = setup('/app')
+  const button = await screen.findByRole('button', { name: 'Log out' })
+  const request = axiosClient.get('/users/test', {
+    adapter: async (config) => unauthorized(config),
+  })
+  const rejectedRequest = expect(request).rejects.toBeInstanceOf(Error)
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+  fireEvent.click(button)
+  expect(logoutUser).not.toHaveBeenCalled()
+  expect(getAccessToken()).toBe('original')
+  return { pendingRefresh, pendingLogout, rejectedRequest, router }
+}
+
+it('saves an in-flight refresh result before logout and pauses new recovery', async () => {
+  const { pendingRefresh, pendingLogout, rejectedRequest } =
+    await startLogoutDuringRefresh()
+  await expect(
+    axiosClient.get('/users/another', {
+      adapter: async (config) => unauthorized(config),
+    }),
+  ).rejects.toBeInstanceOf(AxiosError)
+  expect(refresh).toHaveBeenCalledTimes(1)
+
+  await act(async () => {
+    pendingRefresh.resolve(tokens())
+    await rejectedRequest
+  })
+  await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+  expect(getAccessToken()).toBe('token')
+
+  await act(async () => pendingLogout.resolve())
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(getAccessToken()).toBeNull()
+})
+
+it('continues logout after the in-flight refresh request fails', async () => {
+  const { pendingRefresh, pendingLogout, rejectedRequest } =
+    await startLogoutDuringRefresh()
+  await act(async () => {
+    pendingRefresh.reject(new AuthRequestError())
+    await rejectedRequest
+  })
+  await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+  expect(getAccessToken()).toBe('original')
+
+  await act(async () => pendingLogout.resolve())
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(getAccessToken()).toBeNull()
+})
+
+it('honors an independent refresh 401 even when logout also fails', async () => {
+  const { pendingRefresh, pendingLogout, rejectedRequest, router } =
+    await startLogoutDuringRefresh()
+  await act(async () => {
+    pendingRefresh.reject(new AuthRequestError(401))
+    await rejectedRequest
+  })
+  await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+  expect(getAccessToken()).toBeNull()
+
+  await act(async () => pendingLogout.reject(new Error('offline')))
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(router.state.location.pathname).toBe('/login')
+})
+
+const startLogoutWithRouteCheck = async () => {
+  setAccessToken('token')
+  const pendingLogout = deferred<void>()
+  vi.mocked(logoutUser).mockReturnValue(pendingLogout.promise)
+  const router = setup('/app')
+  const button = await screen.findByRole('button', { name: 'Log out' })
+  fireEvent.click(button)
+  fireEvent.click(button)
+  await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
+  expect(button).toBeEnabled()
+  expect(button).toHaveTextContent('Log out')
+  expect(
+    screen.getByRole('heading', { name: 'Welcome to FoC' }),
+  ).toBeInTheDocument()
+  expect(getAccessToken()).toBe('token')
+
+  let routeCheck!: Promise<void>
+  let routeCheckFinished = false
+  await act(async () => {
+    routeCheck = router.invalidate().then(() => {
+      routeCheckFinished = true
     })
-    const request = axiosClient.get('/users/test', { adapter })
-    const rejectedRequest = expect(request).rejects.toBeInstanceOf(AxiosError)
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+  })
+  expect(routeCheckFinished).toBe(false)
+  expect(router.state.location.pathname).toBe('/app')
+  expect(refresh).not.toHaveBeenCalled()
+  return { router, pendingLogout, routeCheck }
+}
 
-    fireEvent.click(button)
-    fireEvent.click(button)
-    expect(getAccessToken()).toBeNull()
-    expect(logoutUser).not.toHaveBeenCalled()
-    expect(button).toBeEnabled()
-    expect(router.state.location.pathname).toBe('/app')
+it('waits for successful logout before completing a route check', async () => {
+  const { router, pendingLogout, routeCheck } =
+    await startLogoutWithRouteCheck()
+  await act(async () => {
+    pendingLogout.resolve()
+    await routeCheck
+  })
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(getAccessToken()).toBeNull()
+  await act(async () => {
+    await router.navigate({ to: '/app' })
+  })
+  expect(router.state.location.pathname).toBe('/login')
+  expect(refresh).not.toHaveBeenCalled()
+})
 
-    // A further 401 during logout must not start another refresh.
-    await expect(
-      axiosClient.get('/users/another', { adapter }),
-    ).rejects.toBeInstanceOf(AxiosError)
-    expect(refresh).toHaveBeenCalledTimes(1)
-    await act(async () => {
-      finishRefresh()
-      await rejectedRequest
+it('stays on the app after logout failure, restores recovery and retries with the same button', async () => {
+  const { router, pendingLogout, routeCheck } =
+    await startLogoutWithRouteCheck()
+  await act(async () => {
+    pendingLogout.reject(new Error('offline'))
+    await routeCheck
+  })
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Unable to log out. Please try again.',
+  )
+  expect(router.state.location.pathname).toBe('/app')
+  expect(getAccessToken()).toBe('token')
+
+  // Recovery is allowed again after the failed logout.
+  refresh.mockResolvedValue({ ...tokens(), accessToken: 'renewed' })
+  let attempts = 0
+  await act(async () => {
+    await axiosClient.get('/users/test', {
+      adapter: async (config) => {
+        if (attempts++ === 0) unauthorized(config)
+        return { config, status: 200, statusText: '', headers: {}, data: {} }
+      },
     })
-    expect(
-      await screen.findByRole('heading', { name: 'Welcome Back' }),
-    ).toBeInTheDocument()
-    expect(logoutUser).toHaveBeenCalledTimes(1)
-    expect(getAccessToken()).toBeNull()
-    expect(adapter).toHaveBeenCalledTimes(2)
-  },
-)
+  })
+  expect(getAccessToken()).toBe('renewed')
+  expect(refresh).toHaveBeenCalledTimes(1)
 
-it.each(['success', 'failure'])(
-  'keeps the app unchanged until logout %s, then opens login',
-  async (outcome) => {
-    setAccessToken(tokens().accessToken)
-    let finish!: () => void
-    vi.mocked(logoutUser).mockReturnValue(
-      new Promise<void>((resolve, reject) => {
-        finish = () =>
-          outcome === 'success' ? resolve() : reject(new Error('offline'))
-      }),
-    )
-    const router = setup('/app')
-    const button = await screen.findByRole('button', { name: 'Log out' })
-    fireEvent.click(button)
-    fireEvent.click(button)
-    await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
-
-    expect(button).toBeEnabled()
-    expect(button).toHaveTextContent('Log out')
-    expect(
-      screen.getByRole('heading', { name: 'Welcome to FoC' }),
-    ).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/app')
-
-    await act(async () => finish())
-    expect(
-      await screen.findByRole('heading', { name: 'Welcome Back' }),
-    ).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/login')
-    await act(async () => {
-      await router.navigate({ to: '/app' })
-    })
-    expect(router.state.location.pathname).toBe('/login')
-    expect(getAccessToken()).toBeNull()
-    expect(refresh).not.toHaveBeenCalled()
-  },
-)
+  vi.mocked(logoutUser).mockResolvedValue()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Log out' }))
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(router.state.location.pathname).toBe('/login')
+  expect(logoutUser).toHaveBeenCalledTimes(2)
+  expect(getAccessToken()).toBeNull()
+  expect(refresh).toHaveBeenCalledTimes(1)
+})

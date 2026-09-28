@@ -4,10 +4,11 @@ import { getAccessToken, setAccessToken } from './accessTokenStore'
 let refreshPromise: Promise<string | null> | null = null
 let discardResult: (() => void) | null = null
 
-// Invalidate the current refresh result and return its promise so logout can wait for it.
+export const getPendingRefresh = () => refreshPromise
+
+// Prevent an obsolete refresh from overwriting a new login or ended authentication.
 export const invalidateRefresh = () => {
   discardResult?.()
-  return refreshPromise
 }
 
 export const refreshAccessToken = (): Promise<string | null> => {

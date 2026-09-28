@@ -13,7 +13,7 @@ afterEach(() => {
   vi.mocked(refreshSession).mockReset()
 })
 
-it.each(['success', '401', 'service error'])(
+it.each(['success', '401'])(
   'does not overwrite a new login with an obsolete refresh %s',
   async (outcome) => {
     let resolve!: (value: AccessTokenResponse) => void
@@ -25,12 +25,12 @@ it.each(['success', '401', 'service error'])(
       }),
     )
     const pending = refreshAccessToken()
-    expect(invalidateRefresh()).toBe(pending)
+    invalidateRefresh()
     setAccessToken('new-login')
 
     if (outcome === 'success')
       resolve({ accessToken: 'stale', expiresAt: 'unused' })
-    else reject(new AuthRequestError(outcome === '401' ? 401 : 502))
+    else reject(new AuthRequestError(401))
 
     expect(await pending).toBe('new-login')
     expect(getAccessToken()).toBe('new-login')

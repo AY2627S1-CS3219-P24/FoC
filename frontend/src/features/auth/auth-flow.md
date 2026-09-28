@@ -36,7 +36,7 @@ flowchart TB
 
 Provider does not keep another token or `isLoggedIn` value. Its explicit-ended
 flag distinguishes a fresh page that may restore authentication from a page
-where logout or confirmed authentication failure has occurred. Pending recovery
+where successful logout or confirmed authentication failure has occurred. Pending recovery
 and its error display belong to the route, not a global auth status enum.
 
 ## 2. Registration and Login
@@ -150,28 +150,34 @@ The four auth APIs use fetch, so their errors do not recursively enter Axios.
 
 ```mermaid
 flowchart TD
-    Click[Click Log out] --> Capture[Capture current refresh Promise]
-    Capture --> Clear[Invalidate refresh result and clear token]
-    Clear --> Wait[Wait for captured refresh to settle]
+    Click[Click Log out] --> Pause[Pause new refreshes]
+    Pause --> Wait[Wait for current refresh to settle normally]
     Wait --> Request[fetch POST /auth/logout]
-    Request --> Finish[Success, failure, or timeout]
-    Finish --> Login[Page navigates to /login]
+    Request -->|Success| Clear[Clear token and end authentication]
+    Clear --> Login[Page navigates to /login]
+    Request -->|Failure or timeout| Error[Stay on page and show error]
+    Error --> Retry[User can click Log out again]
 ```
 
 Provider prevents new automatic refreshes once logout starts. The old refresh
-can finish processing its Cookie response but cannot restore the memory token.
+finishes normally, saving its new token if successful.
 Only after that request settles does logout send the browser's current Cookie.
 There is one shared refresh Promise, not a collection of outstanding requests.
 
-The page and button stay unchanged until logout finishes. Repeated clicks share
-the pending Provider operation. Clearing the token does not trigger early Router
-invalidation during this explicit logout flow. There is no logout error screen
-or retry button; the page navigates after either success or failure.
+The page and button stay unchanged while logout runs. Repeated clicks share
+the pending Provider operation. Only backend success clears the token and leads
+to login. Failure displays a short error on the application page; the original
+Log out button retries. New refreshes are allowed again after failure.
+
+Route checks wait for logout to settle before deciding access. Logout failure
+does not become a recovery error or cause a redirect by itself. An independent
+authentication failure, including a pending refresh returning 401, still ends
+authentication and follows the normal route guard.
 
 Refresh has a 15-second timeout and logout has a 10-second timeout. Waiting for
 the client request orders normal responses, but timeout does not prove backend
-processing stopped. A later full reload may restore authentication if failed
-logout left a valid Cookie.
+processing stopped. When a response is lost, the backend may already have ended
+the session; retaining the local token on failure does not prove it is valid.
 
 ## 6. Concurrent Operations
 
@@ -180,7 +186,8 @@ logout left a valid Cookie.
 | Route recovery and business 401 need refresh     | Share one request.                                                        |
 | Login succeeds while an older refresh is pending | Mark that refresh's result obsolete, then save the login token.           |
 | An obsolete refresh succeeds or fails            | Return the current memory token without applying the old result or error. |
-| Logout starts during refresh                     | Invalidate its memory result and wait before sending logout.              |
+| Logout starts during refresh                     | Wait for its normal result before sending logout.                         |
+| Route check runs during logout                   | Wait for logout to settle, then check authentication normally.            |
 | A business 401 arrives during logout             | Return the error without starting recovery.                               |
 | Another logout click occurs                      | Join the pending operation inside Provider.                               |
 

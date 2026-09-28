@@ -24,7 +24,7 @@ auth/
 | Part                                                                                            | What it does                                                                                                                                                       |
 | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [accessTokenStore](lib/accessTokenStore.ts)                                                     | Holds the single in-memory access token. It does not store expiry, navigate, or manage React state.                                                                |
-| [refreshAccessToken](lib/refreshAccessToken.ts)                                                 | Shares one refresh request, saves its token, and ignores obsolete results after login or logout.                                                                   |
+| [refreshAccessToken](lib/refreshAccessToken.ts)                                                 | Shares one refresh request, saves its token, and ignores obsolete results after a new login or confirmed authentication failure.                                   |
 | [AuthProvider](providers/AuthProvider.tsx)                                                      | Exposes `completeLogin`, `ensureAuthenticated`, and `logout`. Remembers explicit authentication termination and reports confirmed authentication failure to React. |
 | [authInterceptors](lib/authInterceptors.ts)                                                     | Attaches the current Bearer token and retries a business request at most once after 401.                                                                           |
 | [authRequest](lib/authRequest.ts)                                                               | Sends auth requests with fetch, parses responses, and handles HTTP errors and optional timeouts.                                                                   |
@@ -49,7 +49,7 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 | [registerUser](api/registerUser.api.ts)     | `POST /auth/register` with name, email, password  | Confirm account creation and open login; registration does not sign in. |
 | [loginUser](api/loginUser.api.ts)           | `POST /auth/login` with email, password           | Pass the access token to Provider's `completeLogin` and open `/app`.    |
 | [refreshSession](api/refreshSession.api.ts) | `POST /auth/refresh`; browser supplies the cookie | Obtain a replacement access token through the shared refresh operation. |
-| [logoutUser](api/logoutUser.api.ts)         | `POST /auth/logout`; browser supplies the cookie  | Finish the logout attempt and return to login.                          |
+| [logoutUser](api/logoutUser.api.ts)         | `POST /auth/logout`; browser supplies the cookie  | Confirm logout before clearing the token and returning to login.        |
 
 Auth APIs use fetch and bypass Axios interceptors. The backend's `expiresAt`
 remains part of the response contract, but the frontend does not proactively
@@ -85,7 +85,7 @@ A refresh 401 ends authentication in this page instance; network and service
 errors remain retryable. The route waits before rendering protected content.
 Loading appears after 500ms; Try again calls `router.invalidate()`.
 
-After logout or confirmed authentication failure, the Provider prevents automatic
+After successful logout or confirmed authentication failure, the Provider prevents automatic
 recovery in the same page instance until login succeeds. This is separate from
 whether the token exists: an empty store on a fresh page still permits recovery.
 
@@ -106,20 +106,28 @@ responses are returned normally, without a global session-version check.
 
 ```text
 Log out → Provider.logout()
-        → capture current refresh, invalidate its result, clear token
-        → wait for that refresh to settle
+        → pause new refreshes and wait for the current refresh to settle normally
         → call logout API
-        → page navigates to /login after success, failure, or timeout
+        ├── success → clear token, end authentication → open /login
+        └── failure or timeout → stay on the page, show error, allow another Log out
 ```
 
 The page and button stay unchanged while logout runs. Repeated clicks share the
 Provider's pending logout operation. No new automatic refresh starts during
-logout, and obsolete refresh results cannot restore the memory token.
-Waiting for the current refresh orders normal cookie rotation before logout.
+logout. The current refresh still saves its token if successful; waiting for it
+orders normal cookie rotation before logout. A failed logout does not clear the
+token or end authentication, and the temporary refresh restriction is released.
+The page shows a short error; the same Log out button retries the request.
+
+Route checks during logout wait for the operation to settle before deciding
+access. A logout failure is not a route recovery error. Independent authentication
+failure, such as a pending refresh returning 401, still follows normal access
+control and may redirect to login even if logout fails.
 
 Refresh has a 15-second timeout and logout has a 10-second timeout. These bound
-client waiting, not server processing. If server logout cannot be confirmed,
-a later full reload may restore login from a still-valid cookie.
+client waiting, not server processing. A missing logout response does not prove
+the backend session is still valid; another logout attempt or a subsequent
+authentication check can establish the result.
 
 ## Adding a protected page or API
 
@@ -127,7 +135,7 @@ a later full reload may restore login from a still-valid cookie.
 - Use the shared Axios client for business APIs; pages need not add Bearer
   headers or implement their own refresh.
 - Use `useAuth().logout()` from a signed-in control, then navigate after it
-  resolves. Keep the control mounted until the operation finishes.
+  resolves. Catch rejection to show a retryable error using the same control.
 - See [Authentication Flow](auth-flow.md) for diagrams of the same operations.
 
 ## Verification
@@ -201,10 +209,11 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
    - After a successful `/auth/logout` response, expect `/login` and removal of
      the refresh cookie. Opening `/app` again should return to login.
    - Log in again, stop User Service or switch offline, and attempt logout.
-     After failure or timeout, expect `/login` without a logout error or retry UI.
-   - Restore the connection and verify that logging in again works. If failed
-     logout left a valid cookie, reloading the website may restore the earlier
-     session; logging out again should clear it when the service is available.
+     After failure or timeout, expect to remain on `/app` with
+     `Unable to log out. Please try again.` (unless authentication separately fails).
+   - Restore the connection and click the same **Log out** button again without
+     reloading. Expect a new logout request, then `/login` after success and
+     removal of the refresh cookie.
 
 ### Responsive layout checks
 

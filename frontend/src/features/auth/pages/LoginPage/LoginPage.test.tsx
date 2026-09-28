@@ -185,31 +185,32 @@ describe('LoginPage', () => {
     },
   )
 
-  it.each([
-    [new AuthRequestError(), 'Unable to reach the server. Please try again.'],
-    [new Error('Internal details'), 'Unable to log in. Please try again.'],
-  ])('handles a failure without a response: %s', async (error, message) => {
-    loginMock.mockRejectedValue(error)
+  it('handles an unexpected error without exposing details', async () => {
+    loginMock.mockRejectedValue(new Error('Internal details'))
     await setup()
     const user = await fill()
     await user.click(screen.getByRole('button', { name: 'Log In' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to log in. Please try again.',
+    )
+    expect(screen.queryByText('Internal details')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Log In' })).toBeEnabled()
     expect(loginMock).toHaveBeenCalledTimes(1)
   })
 
   it('attempts the request while marked offline', async () => {
     loginMock.mockRejectedValue(new AuthRequestError())
-    await setup()
+    const router = await setup()
     const user = await fill()
     act(() => onlineManager.setOnline(false))
     await user.click(screen.getByRole('button', { name: 'Log In' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Unable to reach the server.',
+      'Unable to reach the server. Please try again.',
     )
     expect(loginMock).toHaveBeenCalledTimes(1)
+    expect(router.state.location.pathname).toBe('/login')
     expect(screen.getByRole('button', { name: 'Log In' })).toBeEnabled()
   })
 })
