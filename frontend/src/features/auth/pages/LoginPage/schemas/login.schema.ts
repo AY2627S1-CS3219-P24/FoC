@@ -1,6 +1,5 @@
 import { z } from 'zod'
 
-// Check for blank input without trimming the submitted password.
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, 'Please enter your email.'),
 
