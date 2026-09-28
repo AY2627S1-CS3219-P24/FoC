@@ -1,13 +1,11 @@
+import { AuthRouterProvider } from '#/App'
+import { AuthProvider } from '#/features/auth/providers/AuthProvider'
 import {
   QueryClient,
   QueryClientProvider,
   onlineManager,
 } from '@tanstack/react-query'
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRouter,
-} from '@tanstack/react-router'
+import { createMemoryHistory, createRouter } from '@tanstack/react-router'
 import {
   act,
   cleanup,
@@ -58,6 +56,7 @@ const renderRegisterPage = async () => {
 
   const router = createRouter({
     routeTree,
+    context: { auth: undefined! },
     history: createMemoryHistory({
       initialEntries: ['/register'],
     }),
@@ -65,7 +64,9 @@ const renderRegisterPage = async () => {
 
   render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <AuthRouterProvider router={router} />
+      </AuthProvider>
     </QueryClientProvider>,
   )
 

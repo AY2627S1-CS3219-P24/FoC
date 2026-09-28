@@ -5,21 +5,17 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { axiosClient } from '#/lib/axiosClient'
 import { setupAuthInterceptors } from './authInterceptors'
 import { AuthRequestError } from './authRequest'
-import {
-  clearSession,
-  establishSession,
-  getSession,
-  ensureSession,
-  SessionChangedError,
-  logout,
-} from './authSession'
+import { setAccessToken, getAccessToken } from './accessTokenStore'
+import { refreshAccessToken } from './refreshAccessToken'
 import { refreshSession } from '../api/refreshSession.api'
-import { logoutUser } from '../api/logoutUser.api'
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
-vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
-const onLoginRequired = vi.fn()
+let recoveryEnabled = true
+const onLoginRequired = vi.fn(() => {
+  setAccessToken(null)
+  recoveryEnabled = false
+})
 let removeInterceptors: () => void
 
 const refresh = vi.mocked(refreshSession)
@@ -51,35 +47,35 @@ const fail = (config: InternalAxiosRequestConfig, status: number): never => {
 }
 
 beforeEach(() => {
-  onLoginRequired.mockReset()
-  removeInterceptors = setupAuthInterceptors(axiosClient, onLoginRequired)
-  clearSession(true)
+  onLoginRequired.mockClear()
+  recoveryEnabled = true
+  removeInterceptors = setupAuthInterceptors(axiosClient, {
+    canRefresh: () => recoveryEnabled,
+    authenticationFailed: onLoginRequired,
+  })
+  setAccessToken(null)
   refresh.mockReset()
-  vi.mocked(logoutUser).mockReset()
-  establishSession(tokens())
+  setAccessToken('original')
 })
 
 afterEach(() => {
   removeInterceptors()
-  clearSession(true)
+  setAccessToken(null)
   vi.restoreAllMocks()
 })
 
-it('adds Bearer credentials and refreshes before an expired-token request', async () => {
-  establishSession(tokens('expired', -1))
-  refresh.mockResolvedValue(tokens('fresh'))
+it('attaches the current token without proactively refreshing', async () => {
   const adapter = vi.fn(async (config: InternalAxiosRequestConfig) =>
     response(config),
   )
   await axiosClient.get('/users/test', { adapter })
-
   expect(adapter.mock.calls[0][0].headers.get('Authorization')).toBe(
-    'Bearer fresh',
+    'Bearer original',
   )
-  expect(refresh).toHaveBeenCalledTimes(1)
+  expect(refresh).not.toHaveBeenCalled()
 })
 
-it('forces refresh for a rejected, unexpired token and retries only once', async () => {
+it('refreshes a rejected token and retries the request', async () => {
   refresh.mockResolvedValue(tokens('fresh'))
   const seen: Array<string> = []
   const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => {
@@ -101,10 +97,10 @@ it('blocks automatic recovery after a second 401', async () => {
 
   await expect(
     axiosClient.get('/users/test', { adapter }),
-  ).rejects.toBeInstanceOf(SessionChangedError)
+  ).rejects.toBeInstanceOf(AxiosError)
   expect(adapter).toHaveBeenCalledTimes(2)
   expect(onLoginRequired).toHaveBeenCalledTimes(1)
-  expect(await ensureSession()).toBeNull()
+  expect(getAccessToken()).toBeNull()
   expect(refresh).toHaveBeenCalledTimes(1)
 })
 
@@ -128,7 +124,7 @@ it('preserves a newer token when a retried request returns a late 401', async ()
   expect(sent).toEqual(['Bearer original', 'Bearer T1'])
 
   // Another caller refreshes within the same login while T1's retry is pending.
-  await ensureSession({ forceRefresh: true })
+  await refreshAccessToken()
   const lateError = new AxiosError(
     'Failed',
     undefined,
@@ -140,9 +136,9 @@ it('preserves a newer token when a retried request returns a late 401', async ()
   rejectRetry(lateError)
   await assertion
 
-  expect(getSession()).toEqual(t2)
+  expect(getAccessToken()).toBe(t2.accessToken)
   expect(onLoginRequired).not.toHaveBeenCalled()
-  expect(await ensureSession()).toEqual(t2)
+  expect(recoveryEnabled).toBe(true)
   expect(adapter).toHaveBeenCalledTimes(2)
   expect(refresh).toHaveBeenCalledTimes(2)
 })
@@ -223,53 +219,6 @@ it('preserves the session on refresh service failure', async () => {
   expect(onLoginRequired).not.toHaveBeenCalled()
 })
 
-it.each(['success', '401'])(
-  'rejects old %s responses after another login',
-  async (outcome) => {
-    let finish!: () => void
-    const adapter = vi.fn(
-      (config: InternalAxiosRequestConfig) =>
-        new Promise<AxiosResponse>((resolve, reject) => {
-          finish = () =>
-            outcome === 'success'
-              ? resolve(response(config))
-              : reject(
-                  new AxiosError(
-                    'Failed',
-                    undefined,
-                    config,
-                    undefined,
-                    response(config, 401),
-                  ),
-                )
-        }),
-    )
-    const request = axiosClient.get('/users/test', { adapter })
-    await vi.waitFor(() => expect(adapter).toHaveBeenCalledTimes(1))
-    establishSession(tokens('other-login'))
-    const assertion =
-      expect(request).rejects.toBeInstanceOf(SessionChangedError)
-    finish()
-    await assertion
-
-    expect(getSession()?.accessToken).toBe('other-login')
-    expect(refresh).not.toHaveBeenCalled()
-  },
-)
-
-it('rejects new requests when recovery is blocked', async () => {
-  clearSession()
-  const adapter = vi.fn(async (config: InternalAxiosRequestConfig) =>
-    response(config),
-  )
-
-  await expect(
-    axiosClient.get('/users/test', { adapter }),
-  ).rejects.toBeInstanceOf(SessionChangedError)
-  expect(adapter).not.toHaveBeenCalled()
-  expect(refresh).not.toHaveBeenCalled()
-})
-
 it.each(['/auth/refresh', 'https://example.com/users', '//example.com/users'])(
   'rejects non-business destination %s',
   async (url) => {
@@ -291,42 +240,11 @@ it('requires login when refresh rejects credentials', async () => {
     fail(config, 401),
   )
 
-  await expect(
-    axiosClient.get('/users/test', { adapter }),
-  ).rejects.toBeInstanceOf(SessionChangedError)
+  await expect(axiosClient.get('/users/test', { adapter })).rejects.toBe(
+    refreshError,
+  )
   expect(adapter).toHaveBeenCalledTimes(1)
   expect(onLoginRequired).toHaveBeenCalledTimes(1)
-  expect(await ensureSession()).toBeNull()
+  expect(getAccessToken()).toBeNull()
   expect(refresh).toHaveBeenCalledTimes(1)
-})
-
-it('rejects an in-flight business result after logout starts and blocks new requests', async () => {
-  let finish!: () => void
-  let finishLogout!: () => void
-  vi.mocked(logoutUser).mockReturnValue(
-    new Promise<void>((resolve) => {
-      finishLogout = resolve
-    }),
-  )
-  const adapter = vi.fn(
-    (config: InternalAxiosRequestConfig) =>
-      new Promise<AxiosResponse>((resolve) => {
-        finish = () => resolve(response(config))
-      }),
-  )
-  const request = axiosClient.get('/users/test', { adapter })
-  await vi.waitFor(() => expect(adapter).toHaveBeenCalledTimes(1))
-  const exiting = logout()
-  const assertion = expect(request).rejects.toBeInstanceOf(SessionChangedError)
-  finish()
-  await assertion
-
-  await expect(
-    axiosClient.get('/users/test', { adapter }),
-  ).rejects.toBeInstanceOf(SessionChangedError)
-  expect(adapter).toHaveBeenCalledTimes(1)
-
-  await vi.waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
-  finishLogout()
-  await exiting
 })

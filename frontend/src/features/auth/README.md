@@ -1,169 +1,134 @@
 # Authentication
 
-This feature connects registration and login pages to User Service and manages
-session recovery, protected routes, authenticated requests, and logout.
-Registration returns the user to login; successful login opens `/app`.
+This feature connects registration and login to User Service, restores login
+after a page reload, guards application routes, and handles authenticated
+business requests and logout. Registration returns to login; login opens `/app`.
 
 ## Structure and responsibilities
 
 ```text
 auth/
-├── api/          # Send auth requests to User Service and return its response data
-├── assets/       # Background image used by login and registration
-├── components/   # Show loading, failure, and retry controls during session recovery
-├── hooks/        # Start login/register requests and track their progress and errors
-├── layouts/      # Arrange the background and card for auth pages
-├── lib/          # Keep the login session and attach tokens to business requests
-├── pages/
-│   ├── LoginPage/
-│   │   ├── components/   # Email/password inputs and field errors
-│   │   └── schemas/      # Rules for validating login input
-│   └── RegisterPage/
-│       ├── components/   # Registration inputs and field errors
-│       └── schemas/      # Input rules, including password confirmation
-├── styles/       # Styles shared by auth forms and pages
-├── types/        # TypeScript types for data sent to and returned by User Service
-└── utils/        # Turn login and registration errors into display messages
+├── api/          # Send registration, login, refresh, and logout requests
+├── assets/       # Authentication background
+├── components/   # Session recovery loading and retry feedback
+├── hooks/        # Login/register submission progress and errors
+├── layouts/      # Authentication page layout
+├── lib/          # Token storage, fetch requests, refresh, and Axios interceptors
+├── pages/        # Each page owns its form, schema, styles, and tests
+├── providers/    # React authentication operations and invalidation notifications
+├── styles/       # Shared form and page styles
+├── types/        # Backend request and response types
+└── utils/        # Login/register error messages
 ```
 
-The three production files in `lib/` have separate responsibilities:
-`authRequest.ts` sends authentication HTTP requests; `authSession.ts` owns session
-credentials and coordinates refresh/logout; `authInterceptors.ts` exports
-`setupAuthInterceptors()` to attach request and response handling to Axios.
+| Part                                                                                            | What it does                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [accessTokenStore](lib/accessTokenStore.ts)                                                     | Holds the single in-memory access token. It does not store expiry, navigate, or manage React state.                                                                |
+| [refreshAccessToken](lib/refreshAccessToken.ts)                                                 | Shares one refresh request, saves its token, and ignores obsolete results after login or logout.                                                                   |
+| [AuthProvider](providers/AuthProvider.tsx)                                                      | Exposes `completeLogin`, `ensureAuthenticated`, and `logout`. Remembers explicit authentication termination and reports confirmed authentication failure to React. |
+| [authInterceptors](lib/authInterceptors.ts)                                                     | Attaches the current Bearer token and retries a business request at most once after 401.                                                                           |
+| [authRequest](lib/authRequest.ts)                                                               | Sends auth requests with fetch, parses responses, and handles HTTP errors and optional timeouts.                                                                   |
+| [useLogin](hooks/useLogin.ts), [useRegister](hooks/useRegister.ts)                              | Track submission progress and turn request errors into page messages.                                                                                              |
+| [LoginPage](pages/LoginPage/LoginPage.tsx), [RegisterPage](pages/RegisterPage/RegisterPage.tsx) | Connect validated form values to hooks and navigate after success.                                                                                                 |
+| Page-local forms and schemas                                                                    | Use React Hook Form and Zod for field state, validation, password matching, and name/email normalization.                                                          |
+| [SessionRecoveryFeedback](components/SessionRecoveryFeedback/SessionRecoveryFeedback.tsx)       | Shows delayed loading or a safe recovery error with a retry button.                                                                                                |
 
-`ensureSession({ forceRefresh: true })` explicitly requests a refresh even when
-the current token has not expired. `refreshPromise` shares that operation between
-callers; `activeRefreshRequests` also tracks unfinished requests from older
-sessions so logout can wait for them. `logoutPromise` shares an ongoing logout.
-Logout returns `completed` after success or failure; `session-changed` means a
-newer session replaced it and the caller must not navigate away from that session.
+[App.tsx](../../App.tsx) places the Router inside AuthProvider and passes its
+operations through Router context. [routes.tsx](../../routes.tsx) calls those
+operations from `beforeLoad`; it does not call React hooks. Confirmed request
+authentication failure causes the React bridge to invalidate the Router, so the
+same guard decides whether to redirect. Axios never navigates directly.
 
-Tests sit beside the code they verify. Each page owns its form and validation
-schema; shared authentication behavior stays at the feature level. Components
-with related styles or tests use a same-named folder, such as
-`components/SessionRecoveryFeedback/` and `pages/LoginPage/components/LoginForm/`.
+Provider installs the interceptors and removes them on unmount. It does not keep
+a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 
-| Part                                                                                               | Responsibility                                                                                                                                                                              |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [LoginPage](pages/LoginPage/LoginPage.tsx) and [RegisterPage](pages/RegisterPage/RegisterPage.tsx) | Receive valid form values, call useLogin/useRegister, pass loading and error state to the form, and navigate after success.                                                                 |
-| Page-local forms and schemas                                                                       | React Hook Form manages fields and validation timing; Zod validates and normalizes input. Forms receive submission state and server errors from their page.                                 |
-| [useLogin](hooks/useLogin.ts) and [useRegister](hooks/useRegister.ts)                              | Call the login/register API function, track request progress, and use the error helpers in `utils/` to provide display messages.                                                            |
-| [api/](api/)                                                                                       | Choose the backend URL and request body, send the HTTP request through fetch using [authRequest](lib/authRequest.ts), and return response data to the caller. See the four functions below. |
-| [authSession](lib/authSession.ts)                                                                  | Keep the current token in memory, obtain a new one when needed, share an ongoing refresh request, and coordinate logout without maintaining UI state.                                       |
-| [authInterceptors](lib/authInterceptors.ts)                                                        | Add the access token to the Authorization header. If a request returns 401, obtain or reuse a newer token and retry at most once. Reject old-session results after logout or another login. |
-| [AuthLayout](layouts/AuthLayout/AuthLayout.tsx)                                                    | Supply the shared background and card around login and registration pages.                                                                                                                  |
-| [SessionRecoveryFeedback](components/SessionRecoveryFeedback/SessionRecoveryFeedback.tsx)          | Show a loading message while checking whether the user is still signed in. If the check fails because of a service error, show a retry button.                                              |
+## What the API functions do
 
-Outside this feature, [routes.tsx](../../routes.tsx) connects layouts, pages, and
-session checks. [App.tsx](../../App.tsx) provides the Query client and Router, installs
-the auth interceptors on the shared Axios client, and connects session rejection
-to login navigation.
-[AppHomePage](../../pages/AppHomePage/AppHomePage.tsx) is the current minimal
-signed-in screen with a **Log out** button.
+| Function                                    | Request                                           | Caller uses the result to                                               |
+| ------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| [registerUser](api/registerUser.api.ts)     | `POST /auth/register` with name, email, password  | Confirm account creation and open login; registration does not sign in. |
+| [loginUser](api/loginUser.api.ts)           | `POST /auth/login` with email, password           | Pass the access token to Provider's `completeLogin` and open `/app`.    |
+| [refreshSession](api/refreshSession.api.ts) | `POST /auth/refresh`; browser supplies the cookie | Obtain a replacement access token through the shared refresh operation. |
+| [logoutUser](api/logoutUser.api.ts)         | `POST /auth/logout`; browser supplies the cookie  | Finish the logout attempt and return to login.                          |
 
-### What the API functions do
-
-These functions send requests and return data. Their callers decide what to
-show, where to navigate, and whether to save the returned token.
-
-| Function                                    | Request sent to User Service                                                       | Result returned to its caller                                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [registerUser](api/registerUser.api.ts)     | `POST /auth/register` with name, email, and password                               | The newly created user's profile, used by the registration flow to confirm success. It does not log the user in. |
-| [loginUser](api/loginUser.api.ts)           | `POST /auth/login` with email and password                                         | `accessToken` and `expiresAt`. LoginPage passes them to `establishSession()` before opening `/app`.              |
-| [refreshSession](api/refreshSession.api.ts) | `POST /auth/refresh` with no request body; the browser supplies the refresh cookie | A new access token and expiry time for `authSession` to save.                                                    |
-| [logoutUser](api/logoutUser.api.ts)         | `POST /auth/logout` with no request body; the browser supplies the refresh cookie  | No response data. `authSession` completes local logout whether this request succeeds or fails.                   |
-
-The backend sets or clears the refresh cookie through response headers; these
-functions do not read its value. Request errors are passed to the caller:
-login/register hooks use the helpers in `utils/` to choose page messages, while `authSession` handles refresh
-and logout outcomes.
+Auth APIs use fetch and bypass Axios interceptors. The backend's `expiresAt`
+remains part of the response contract, but the frontend does not proactively
+check it. The browser processes the HttpOnly refresh cookie; JavaScript does
+not read or delete its value.
 
 ## How the pieces work together
 
 ### Registration and login
 
 ```text
-Form validates input → Page → useLogin/useRegister → api function → User Service
-                          ↓ successful response
-             Register: /login with success notice
-             Login: establishSession(tokens) → /app
+Form → Page → useLogin/useRegister → fetch API → User Service
+                         ↓ success
+Register: open /login with success notice
+Login: completeLogin(accessToken) → open /app
 ```
 
-Forms submit validated values: surrounding whitespace is removed from names
-and emails, emails are lowercased, and passwords retain their original characters. The registration page sends only `name`,
-`email`, and `password`, excluding `confirmPassword`.
+Names and emails are trimmed, emails are lowercased, and passwords remain
+unchanged. Registration excludes `confirmPassword` from its request.
+Existing pending states and submission locks prevent duplicate form submissions.
 
-The page passes request state and error messages back to the form. Invalid input
-stays in the form; a failed request allows another submission. Registration does
-not create a logged-in session.
-
-### Session recovery and protected requests
+### Session recovery
 
 ```text
-/ → /app → protected route beforeLoad → ensureSession()
-                                        ├── usable token → render page
-                                        └── refresh API → render or show feedback
-
-Business API function → axiosClient → auth interceptors → request with token
+/ → /app → beforeLoad → auth.ensureAuthenticated()
+                         ├── token present → allow access
+                         ├── authentication explicitly ended → login
+                         └── shared refresh → allow access, login, or error
 ```
 
-The access token lives in memory. After a reload, the frontend calls
-`POST /auth/refresh`; the browser supplies the backend's HttpOnly refresh cookie.
-Frontend code does not read that cookie. Concurrent recovery calls in the same
-page instance share one request.
+A full reload clears the in-memory token and allows initial Cookie recovery.
+A refresh 401 ends authentication in this page instance; network and service
+errors remain retryable. The route waits before rendering protected content.
+Loading appears after 500ms; Try again calls `router.invalidate()`.
 
-The route starts checking the session immediately and waits before rendering
-protected content. It shows `Loading…` only if the check is still pending after
-500ms, and shows the page as soon as recovery succeeds. A refresh 401 leads to
-`/login`; a service failure shows recovery feedback. Its retry button calls
-`router.invalidate()` to run the route check again.
+After logout or confirmed authentication failure, the Provider prevents automatic
+recovery in the same page instance until login succeeds. This is separate from
+whether the token exists: an empty store on a fresh page still permits recovery.
 
-The single shared `axiosClient` checks the session before business requests. On
-401, its interceptors can refresh or reuse a newer token and retry once. A rejected
-refresh or a second 401 for the current token clears the session and navigates to
-login. Old requests cannot clear a newer login or its refreshed credentials.
+### Business requests
 
-The four authentication API functions use fetch instead, so they bypass Axios
-interceptors. `authRequest` converts non-success HTTP responses into errors and
-handles JSON and timeouts; it does not refresh or retry. The browser sends
-same-origin cookies. Refresh has a 15-second timeout; logout has a 10-second
-timeout. These bound client waiting, not backend processing.
+Business API functions use the shared `axiosClient` with relative API paths.
+The request interceptor attaches an existing token without checking expiry or
+refreshing first. After the first 401 it reuses a newer token, or joins one shared
+refresh, then retries once. A refresh 401 or a second 401 for the current token
+reports authentication failure to Provider. Network/service errors propagate
+without forcing login; non-401 business errors do not trigger refresh.
+
+The request marker contains only the token used and whether the request was
+retried. A late second 401 does not clear a newer token. Successful business
+responses are returned normally, without a global session-version check.
 
 ### Logout
 
 ```text
-AppHomePage button → authSession.logout()
-                          ↓
-               clear local session, block recovery
-                          ↓
-               wait for pending refresh → logout API
-                          ↓ success, failure, or timeout
-               AppHomePage navigates to /login
+Log out → Provider.logout()
+        → capture current refresh, invalidate its result, clear token
+        → wait for that refresh to settle
+        → call logout API
+        → page navigates to /login after success, failure, or timeout
 ```
 
-The page and **Log out** button stay unchanged while the operation runs. Repeated
-clicks share the same pending operation. There is no progress screen, disabled
-button, logout error, or retry UI. The caller navigates only if logout still
-belongs to the same session; an old completion must not redirect a newer login.
+The page and button stay unchanged while logout runs. Repeated clicks share the
+Provider's pending logout operation. No new automatic refresh starts during
+logout, and obsolete refresh results cannot restore the memory token.
+Waiting for the current refresh orders normal cookie rotation before logout.
 
-Automatic recovery stays blocked in the current page instance until a new login.
-If backend logout fails, its cookie may remain valid: a full reload or later visit
-can restore that session, and the user can log out again. A client timeout does
-not prove that the backend stopped processing. Logout waits for outstanding
-refresh requests to settle before sending the request that clears the cookie.
+Refresh has a 15-second timeout and logout has a 10-second timeout. These bound
+client waiting, not server processing. If server logout cannot be confirmed,
+a later full reload may restore login from a still-valid cookie.
 
-## Connecting new features
+## Adding a protected page or API
 
-- Add signed-in routes under `protectedRoute` in [routes.tsx](../../routes.tsx),
-  and include them in its `addChildren` list. This applies the session check to those pages.
-- Put functions that call business endpoints in their owning feature's `api/` directory. Use
-  the shared `axiosClient` with developer-defined relative business API paths for
-  endpoints that require authentication.
-- Use feature hooks for business request state. Pages do not need to read tokens,
-  build Authorization headers, or implement their own refresh handling.
-- Call `logout()` from a signed-in navigation control and navigate to login when
-  it returns `completed`. The control remains mounted while the operation runs; `session-changed`
-  means another session replaced it, so the caller must not redirect that session.
+- Add protected routes under the existing protected parent in `routes.tsx`.
+- Use the shared Axios client for business APIs; pages need not add Bearer
+  headers or implement their own refresh.
+- Use `useAuth().logout()` from a signed-in control, then navigate after it
+  resolves. Keep the control mounted until the operation finishes.
+- See [Authentication Flow](auth-flow.md) for diagrams of the same operations.
 
 ## Verification
 

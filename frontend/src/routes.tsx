@@ -1,5 +1,5 @@
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   createRoute,
   redirect,
   Outlet,
@@ -9,13 +9,13 @@ import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
-import { ensureSession } from '#/features/auth/lib/authSession'
+import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
   SessionRecoveryPending,
   SessionRecoveryError,
 } from '#/features/auth/components/SessionRecoveryFeedback/SessionRecoveryFeedback'
 
-const rootRoute = createRootRoute()
+const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -53,9 +53,10 @@ const protectedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'protected',
   component: Outlet,
-  beforeLoad: async () => {
-    const session = await ensureSession()
-    if (!session) throw redirect({ to: '/login', replace: true })
+  beforeLoad: async ({ context }) => {
+    if (!(await context.auth.ensureAuthenticated())) {
+      throw redirect({ to: '/login', replace: true })
+    }
   },
   pendingMs: 500,
   pendingMinMs: 0,

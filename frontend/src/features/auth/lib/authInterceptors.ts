@@ -1,109 +1,86 @@
 import { AxiosHeaders, isAxiosError } from 'axios'
-import type {
-  AxiosInstance,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
-} from 'axios'
+import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 
-import {
-  assertCurrentSession,
-  clearSession,
-  ensureSession,
-  getSession,
-  getSessionVersion,
-  isLoggingOut,
-  SessionChangedError,
-} from './authSession'
+import { getAccessToken } from './accessTokenStore'
+import { refreshAccessToken } from './refreshAccessToken'
+import { AuthRequestError } from './authRequest'
 
 type AuthConfig = InternalAxiosRequestConfig & {
-  authContext?: {
-    sessionVersion: number
-    accessToken: string
-    hasRetried: boolean
-  }
+  sentAccessToken?: string | null
+  authRetried?: boolean
+}
+
+type AuthEvents = {
+  canRefresh: () => boolean
+  authenticationFailed: () => void
 }
 
 export const setupAuthInterceptors = (
   client: AxiosInstance,
-  onLoginRequired: () => void,
+  auth: AuthEvents,
 ) => {
-  const requireLoginIfMissing = (session: ReturnType<typeof getSession>) => {
-    if (!session && !isLoggingOut() && !getSession()) onLoginRequired()
-  }
-
-  const attachAccessToken = async (config: AuthConfig) => {
-    // Credentials are only sent to relative, same-origin business endpoints.
+  const requestId = client.interceptors.request.use((config: AuthConfig) => {
+    // Restrict automatic credentials to this application's business APIs.
     const url = config.url ?? ''
+    const baseURL = config.baseURL ?? ''
     if (
       !url.startsWith('/') ||
       url.startsWith('//') ||
-      config.baseURL ||
-      /^\/auth(?:\/|\?|$)/.test(url)
+      (baseURL !== '' && baseURL !== '/api') ||
+      /^\/(?:api\/)?auth(?:\/|\?|$)/.test(url)
     ) {
       throw new Error(
         'Use a relative business API path with the authenticated client.',
       )
     }
 
-    const expected = config.authContext?.sessionVersion ?? getSessionVersion()
-    assertCurrentSession(expected)
-    const session = await ensureSession()
-    requireLoginIfMissing(session)
-    assertCurrentSession(expected)
-    if (!session) throw new SessionChangedError()
-
+    const token = getAccessToken()
     config.headers = AxiosHeaders.from(config.headers)
-    config.headers.set('Authorization', `Bearer ${session.accessToken}`)
-    config.authContext = {
-      sessionVersion: expected,
-      accessToken: session.accessToken,
-      hasRetried: config.authContext?.hasRetried ?? false,
-    }
-
+    if (token) config.headers.set('Authorization', `Bearer ${token}`)
+    else config.headers.delete('Authorization')
+    config.sentAccessToken = token
     return config
-  }
+  })
 
-  const checkResponseSession = (response: AxiosResponse) => {
-    const context = (response.config as AuthConfig).authContext
-    if (context) assertCurrentSession(context.sessionVersion)
-
-    return response
-  }
-
-  const handleRequestError = async (error: unknown) => {
-    if (!isAxiosError(error)) throw error
-
-    const config = error.config as AuthConfig | undefined
-    const context = config?.authContext
-    if (!config || !context) throw error
-
-    assertCurrentSession(context.sessionVersion)
-    if (error.response?.status !== 401) throw error
-
-    if (context.hasRetried) {
-      // A failed retry must not invalidate credentials refreshed since it was sent.
-      if (getSession()?.accessToken !== context.accessToken) throw error
-      clearSession()
-      onLoginRequired()
-      throw new SessionChangedError()
-    }
-
-    const current = getSession()
-    // A late 401 reuses credentials already refreshed by another request.
-    const session = await ensureSession({
-      forceRefresh: current?.accessToken === context.accessToken,
-    })
-    requireLoginIfMissing(session)
-
-    assertCurrentSession(context.sessionVersion)
-    config.authContext = { ...context, hasRetried: true }
-    return client.request(config)
-  }
-
-  const requestId = client.interceptors.request.use(attachAccessToken)
   const responseId = client.interceptors.response.use(
-    checkResponseSession,
-    handleRequestError,
+    undefined,
+    async (error: unknown) => {
+      if (
+        !isAxiosError(error) ||
+        error.response?.status !== 401 ||
+        !error.config
+      )
+        throw error
+      const config = error.config as AuthConfig
+      if (!auth.canRefresh()) throw error
+
+      const currentToken = getAccessToken()
+      if (config.authRetried) {
+        // A late retry failure must not discard credentials obtained since it was sent.
+        if (currentToken === config.sentAccessToken) auth.authenticationFailed()
+        throw error
+      }
+
+      let token = currentToken
+      if (!token || token === config.sentAccessToken) {
+        try {
+          token = await refreshAccessToken()
+        } catch (refreshError) {
+          if (
+            refreshError instanceof AuthRequestError &&
+            refreshError.status === 401 &&
+            auth.canRefresh()
+          ) {
+            auth.authenticationFailed()
+          }
+          throw refreshError
+        }
+      }
+
+      if (!token || !auth.canRefresh()) throw error
+      config.authRetried = true
+      return client.request(config)
+    },
   )
 
   return () => {

@@ -1,7 +1,7 @@
 import { Link, useSearch, useNavigate } from '@tanstack/react-router'
 import { useRef } from 'react'
 
-import { establishSession } from '#/features/auth/lib/authSession'
+import { useAuth } from '#/features/auth/providers/AuthProvider'
 import { useLogin } from '#/features/auth/hooks/useLogin'
 
 import type { LoginFormValues } from './schemas/login.schema'
@@ -13,6 +13,7 @@ import styles from '#/features/auth/styles/authPage.module.scss'
 export const LoginPage = () => {
   const { registered } = useSearch({ from: '/auth/login' })
   const login = useLogin()
+  const auth = useAuth()
   const navigate = useNavigate()
 
   // Acquire synchronously and retain the lock until successful navigation.
@@ -24,7 +25,7 @@ export const LoginPage = () => {
     submissionInProgress.current = true
     login.mutate(values, {
       onSuccess: (tokens) => {
-        establishSession(tokens)
+        auth.completeLogin(tokens.accessToken)
         void navigate({ to: '/app', replace: true })
       },
       onError: () => {

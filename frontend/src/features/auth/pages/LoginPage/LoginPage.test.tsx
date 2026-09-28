@@ -1,13 +1,11 @@
+import { AuthRouterProvider } from '#/App'
+import { AuthProvider } from '#/features/auth/providers/AuthProvider'
 import {
   QueryClient,
   QueryClientProvider,
   onlineManager,
 } from '@tanstack/react-query'
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRouter,
-} from '@tanstack/react-router'
+import { createMemoryHistory, createRouter } from '@tanstack/react-router'
 import {
   act,
   cleanup,
@@ -22,7 +20,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { loginUser } from '#/features/auth/api/loginUser.api'
 import { routeTree } from '#/routes'
-import { clearSession, getSession } from '#/features/auth/lib/authSession'
+import {
+  setAccessToken,
+  getAccessToken,
+} from '#/features/auth/lib/accessTokenStore'
 import type { AccessTokenResponse } from '#/features/auth/types/auth.types'
 
 vi.mock('#/features/auth/api/loginUser.api', () => ({ loginUser: vi.fn() }))
@@ -40,7 +41,7 @@ const httpError = (status: number) =>
 
 beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
-  clearSession(true)
+  setAccessToken(null)
   loginMock.mockReset()
   previousOnline = onlineManager.isOnline()
   onlineManager.setOnline(true)
@@ -48,7 +49,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
-  clearSession(true)
+  setAccessToken(null)
   clients.forEach((client) => client.clear())
   clients.length = 0
   onlineManager.setOnline(previousOnline)
@@ -62,11 +63,14 @@ const setup = async (path = '/login') => {
   clients.push(client)
   const router = createRouter({
     routeTree,
+    context: { auth: undefined! },
     history: createMemoryHistory({ initialEntries: [path] }),
   })
   render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <AuthRouterProvider router={router} />
+      </AuthProvider>
     </QueryClientProvider>,
   )
   await screen.findByRole('heading', { name: 'Welcome Back' })
@@ -122,7 +126,7 @@ describe('LoginPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Welcome to FoC' }),
     ).toBeInTheDocument()
-    expect(getSession()).toEqual(tokens)
+    expect(getAccessToken()).toBe(tokens.accessToken)
     expect(
       screen.queryByText('Account created successfully. Please log in.'),
     ).not.toBeInTheDocument()
@@ -154,7 +158,7 @@ describe('LoginPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Welcome to FoC' }),
     ).toBeInTheDocument()
-    expect(getSession()).toEqual(tokens)
+    expect(getAccessToken()).toBe(tokens.accessToken)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(loginMock).toHaveBeenCalledTimes(2)
     expect(loginMock).toHaveBeenLastCalledWith({
