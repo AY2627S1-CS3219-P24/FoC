@@ -18,10 +18,8 @@ import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
-import com.cs3219.foc.user.model.entity.AvatarCleanupTask;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
-import com.cs3219.foc.user.repository.AvatarCleanupRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
@@ -31,7 +29,6 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -51,6 +48,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -87,12 +85,6 @@ class UserProfilePersistenceTests {
     private AvatarService avatars;
 
     @Autowired
-    private AvatarCleanupService avatarCleanup;
-
-    @Autowired
-    private AvatarCleanupRepository avatarTasks;
-
-    @Autowired
     private DataSource dataSource;
 
     @Autowired
@@ -123,7 +115,6 @@ class UserProfilePersistenceTests {
     void cleanUsers() throws Exception {
         reset(avatarStorage);
         repository.deleteAll();
-        avatarTasks.deleteAll();
         try (var files = Files.list(avatarDirectory)) {
             for (var file : files.toList()) {
                 Files.delete(file);
@@ -205,7 +196,6 @@ class UserProfilePersistenceTests {
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
         assertThat(avatars.read(user.getId())).isNotEmpty();
         assertThat(avatarFileCount()).isEqualTo(1);
-        assertThat(avatarTasks.count()).isZero();
     }
 
     @Test
@@ -230,11 +220,10 @@ class UserProfilePersistenceTests {
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
         assertThat(avatars.read(user.getId())).isNotEmpty();
         assertThat(avatarFileCount()).isEqualTo(1);
-        assertThat(avatarTasks.count()).isZero();
     }
 
     @Test
-    void failedDeletionIsRetriedWithoutFailingSuccessfulReplacement() throws Exception {
+    void failedDeletionDoesNotFailSuccessfulReplacement() throws Exception {
         var user = createUser("avatar@example.com");
         avatars.upload(user.getId(), image("png", 10, 10));
         var previous = repository.findById(user.getId()).orElseThrow().getAvatarKey();
@@ -243,34 +232,23 @@ class UserProfilePersistenceTests {
                 .delete(previous);
         var replacement = avatars.upload(user.getId(), image("png", 20, 20));
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(replacement.avatarUrl());
-        assertThat(avatarTasks.count()).isEqualTo(1);
         assertThat(avatarFileCount()).isEqualTo(2);
-        reset(avatarStorage);
-        avatarCleanup.cleanPending();
-        assertThat(avatarTasks.count()).isZero();
-        assertThat(avatarFileCount()).isEqualTo(1);
         assertThat(avatars.read(user.getId())).isNotEmpty();
     }
 
     @Test
-    void cleanupRecoversAbandonedUploadsAndNeverDeletesReferencedImage() throws Exception {
-        var abandoned = UUID.randomUUID() + ".png";
-        avatarCleanup.reserve(abandoned);
-        avatarStorage.write(abandoned, image("png", 10, 10).getBytes());
-        avatarCleanup.cleanPending();
-        assertThat(avatarFileCount()).isEqualTo(1); // Ten-minute reservation grace period.
-        avatarTasks.saveAndFlush(
-                new AvatarCleanupTask(abandoned, OffsetDateTime.now().minusMinutes(1)));
-        avatarCleanup.cleanPending();
-        assertThat(avatarFileCount()).isZero();
+    void rolledBackReplacementKeepsPreviousFileAndDeletesNewFile() throws Exception {
         var user = createUser("avatar@example.com");
-        avatars.upload(user.getId(), image("png", 10, 10));
-        var active = repository.findById(user.getId()).orElseThrow().getAvatarKey();
-        avatarTasks.saveAndFlush(
-                new AvatarCleanupTask(active, OffsetDateTime.now().minusMinutes(1)));
-        avatarCleanup.cleanPending();
+        var original = avatars.upload(user.getId(), image("png", 10, 10));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            avatars.upload(user.getId(), image("png", 20, 20));
+            assertThat(avatarStorage.read(repository.findById(user.getId()).orElseThrow().getAvatarKey()))
+                    .isNotEmpty();
+            status.setRollbackOnly();
+        });
+        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
         assertThat(avatars.read(user.getId())).isNotEmpty();
-        assertThat(avatarTasks.count()).isZero();
+        assertThat(avatarFileCount()).isEqualTo(1);
     }
 
     @Test
@@ -290,14 +268,13 @@ class UserProfilePersistenceTests {
         }
         assertThat(avatars.read(user.getId())).isNotEmpty();
         assertThat(avatarFileCount()).isEqualTo(1);
-        assertThat(avatarTasks.count()).isZero();
     }
 
     @Test
-    void uploadForMissingAccountLeavesNoImage() {
+    void uploadForMissingAccountLeavesNoImage() throws Exception {
         assertThatThrownBy(() -> avatars.upload(UUID.randomUUID(), image("png", 10, 10)))
                 .isInstanceOf(UserNotFoundException.class);
-        assertThat(avatarTasks.count()).isZero();
+        assertThat(avatarFileCount()).isZero();
     }
 
     private long avatarFileCount() throws Exception {
@@ -571,7 +548,7 @@ class UserProfilePersistenceTests {
                 service.updateUserProfile(
                         id, new UpdateUserProfileRequest("Changed", "shared@example.com", null, null));
                 return true;
-            } catch (EntityAlreadyExistsException exception) {
+            } catch (EntityAlreadyExistsException | DataIntegrityViolationException exception) {
                 return false;
             }
         };
@@ -587,30 +564,8 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        AvatarCleanupService avatarCleanupService(
-                AvatarCleanupRepository tasks,
-                UserRepository users,
-                AvatarStorage storage,
-                PlatformTransactionManager manager) {
-            return new AvatarCleanupService(tasks, users, storage, Clock.systemUTC(), manager);
-        }
-
-        @Bean
-        AvatarService avatarService(
-                UserRepository users,
-                AvatarStorage storage,
-                AvatarCleanupRepository tasks,
-                AvatarCleanupService cleanup,
-                PlatformTransactionManager manager) {
-            return new AvatarService(
-                    users,
-                    Mappers.getMapper(UserMapper.class),
-                    storage,
-                    new AvatarImageProcessor(),
-                    tasks,
-                    cleanup,
-                    Clock.systemUTC(),
-                    manager);
+        AvatarService avatarService(UserRepository users, AvatarStorage storage) {
+            return new AvatarService(users, Mappers.getMapper(UserMapper.class), storage, new AvatarImageProcessor());
         }
 
         @Bean

@@ -12,8 +12,6 @@ import com.cs3219.foc.user.repository.UserRepository;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.exception.ConstraintViolationException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,21 +42,8 @@ public class UserService {
         user.setEmail(request.email());
         user.setPhoneNumber(request.phoneNumber());
         user.setFaculty(request.faculty());
-        try {
-            var savedUser = userRepository.saveAndFlush(user);
-            return userMapper.toUserProfileDto(savedUser);
-        } catch (DataIntegrityViolationException exception) {
-            // V1 creates this PostgreSQL constraint. Only translate the email race;
-            // unrelated integrity failures must not be reported as duplicate emails.
-            for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
-                if (cause instanceof ConstraintViolationException violation
-                        && "23505".equals(violation.getSQLState())
-                        && "users_email_key".equals(violation.getConstraintName())) {
-                    throw new EntityAlreadyExistsException("Email is already associated with another account");
-                }
-            }
-            throw exception;
-        }
+        var savedUser = userRepository.saveAndFlush(user);
+        return userMapper.toUserProfileDto(savedUser);
     }
 
     private User getUser(UUID userId) {

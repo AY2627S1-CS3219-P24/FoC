@@ -57,7 +57,6 @@ public class TokenService {
 
     @Transactional
     public RefreshTokenDto createRefreshToken(UUID userId) {
-        // Login and rotation already hold the account lock in their transaction.
         var refreshToken = generateRefreshToken();
         var refreshTokenHash = hashRefreshToken(refreshToken);
         var now = OffsetDateTime.now(clock);

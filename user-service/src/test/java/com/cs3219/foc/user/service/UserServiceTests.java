@@ -103,18 +103,6 @@ class UserServiceTests {
     }
 
     @Test
-    void translatesEmailConstraintViolationAfterConcurrentUpdate() {
-        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
-        var cause = new ConstraintViolationException(
-                "duplicate", new SQLException("duplicate", "23505"), "users_email_key");
-        when(repository.saveAndFlush(user)).thenThrow(new DataIntegrityViolationException("duplicate", cause));
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("Alex", "taken@example.com", null, null)))
-                .isInstanceOf(EntityAlreadyExistsException.class)
-                .hasMessage("Email is already associated with another account");
-    }
-
-    @Test
     void doesNotMislabelOtherDatabaseFailuresAsDuplicateEmail() {
         when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         var cause = new ConstraintViolationException("other", new SQLException("other", "23505"), "other_key");
