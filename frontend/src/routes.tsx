@@ -8,6 +8,7 @@ import {
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
@@ -71,6 +72,15 @@ const appRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
+  ...(import.meta.env.DEV
+    ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: '/preview/user-layout',
+          component: UserLayoutPreview,
+        }),
+      ]
+    : []),
   indexRoute,
   protectedRoute.addChildren([appRoute]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
