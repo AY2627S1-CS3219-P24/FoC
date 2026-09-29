@@ -1,0 +1,303 @@
+import { useRef, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { Button } from '@base-ui/react/button'
+import { Input } from '@base-ui/react/input'
+import {
+  useProfileActions,
+  useProfileAvatar,
+  useUserProfile,
+} from '../../hooks/useUserProfile'
+import { useAuth } from '../../providers/AuthProvider'
+import { getProfileError } from '../../utils/getProfileError'
+import type { UserProfileDto } from '../../types/auth.types'
+import styles from './EditProfilePage.module.scss'
+
+export const EditProfilePage = () => {
+  const profile = useUserProfile()
+  if (profile.isPending) return <p role="status">Loading your profile...</p>
+  if (!profile.data)
+    return (
+      <div role="alert">
+        <p>Could not load your profile.</p>
+        <Button
+          onClick={() => {
+            void profile.refetch()
+          }}
+        >
+          Try again
+        </Button>
+      </div>
+    )
+  return <EditProfileForm key={profile.data.id} profile={profile.data} />
+}
+
+const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
+  const [name, setName] = useState(profile.name)
+  const [phoneNumber, setPhoneNumber] = useState(profile.phoneNumber ?? '')
+  const [faculty, setFaculty] = useState(profile.faculty ?? '')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const locked = useRef(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const actions = useProfileActions()
+  const avatar = useProfileAvatar(profile.avatarUrl)
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const initials = profile.name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+
+  const save = async () => {
+    if (locked.current) return
+    const fields: Record<string, string> = {}
+    const changingPassword = Boolean(currentPassword || newPassword)
+    if (!name.trim()) fields.name = 'Enter your full name.'
+    if (changingPassword) {
+      if (!currentPassword.trim())
+        fields.currentPassword = 'Enter your current password.'
+      if (newPassword.length < 8 || !newPassword.trim())
+        fields.newPassword = 'Use at least 8 characters.'
+      if (new TextEncoder().encode(newPassword).length > 72)
+        fields.newPassword = 'Password is too long (maximum 72 UTF-8 bytes).'
+      if (new TextEncoder().encode(currentPassword).length > 72)
+        fields.currentPassword = 'Current password is too long.'
+      if (newPassword && currentPassword === newPassword)
+        fields.newPassword = 'Choose a different password.'
+    }
+    setErrors(fields)
+    setError('')
+    setMessage('')
+    if (Object.keys(fields).length) return
+    locked.current = true
+    setBusy(true)
+    let profileSaved = false
+    try {
+      const updated = await actions.update.mutateAsync({
+        name,
+        email: profile.email,
+        phoneNumber,
+        faculty,
+      })
+      profileSaved = true
+      setName(updated.name)
+      setPhoneNumber(updated.phoneNumber ?? '')
+      setFaculty(updated.faculty ?? '')
+      if (changingPassword) {
+        await actions.password.mutateAsync({ currentPassword, newPassword })
+        setCurrentPassword('')
+        setNewPassword('')
+        await auth.logout()
+        await navigate({
+          to: '/login',
+          replace: true,
+        })
+      } else setMessage('Profile saved.')
+    } catch (failure) {
+      const details = getProfileError(failure)
+      setErrors(details.fields)
+      setError(
+        profileSaved
+          ? `Profile saved, but password was not changed. ${details.message}`
+          : details.message,
+      )
+    } finally {
+      actions.password.reset()
+      locked.current = false
+      setBusy(false)
+    }
+  }
+
+  const changePhoto = async (file?: File) => {
+    if (locked.current) return
+    setError('')
+    setMessage('')
+    if (
+      file &&
+      (!['image/jpeg', 'image/png'].includes(file.type) ||
+        file.size > 2 * 1024 * 1024)
+    ) {
+      setError('Choose a JPEG or PNG image up to 2 MB.')
+      return
+    }
+    locked.current = true
+    setBusy(true)
+    try {
+      if (file) await actions.upload.mutateAsync(file)
+      else await actions.remove.mutateAsync()
+      setMessage(file ? 'Photo updated.' : 'Photo removed.')
+    } catch (failure) {
+      setError(getProfileError(failure).message)
+    } finally {
+      locked.current = false
+      setBusy(false)
+    }
+  }
+
+  const fieldError = (field: string) =>
+    errors[field] ? (
+      <p className={styles.fieldError} id={`${field}-error`}>
+        {errors[field]}
+      </p>
+    ) : null
+
+  return (
+    <div className={styles.page}>
+      <aside className={styles.summary} aria-label="Your profile">
+        <div className={styles.avatar}>
+          {avatar ? (
+            <img src={avatar} alt={profile.name} />
+          ) : (
+            <span aria-label="Profile initials">{initials}</span>
+          )}
+        </div>
+        <div className={styles.identity}>
+          <h1>{profile.name}</h1>
+          <p>{profile.email}</p>
+        </div>
+        <div className={styles.photoActions}>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/jpeg,image/png"
+            hidden
+            aria-label="Profile photo"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void changePhoto(file)
+            }}
+          />
+          <Button disabled={busy} onClick={() => fileInput.current?.click()}>
+            Change photo
+          </Button>
+          {profile.avatarUrl && (
+            <Button
+              disabled={busy}
+              onClick={() => {
+                void changePhoto()
+              }}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      </aside>
+      <form
+        className={styles.form}
+        noValidate
+        aria-busy={busy}
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <fieldset className={styles.card} disabled={busy}>
+          <legend className={styles.srOnly}>Edit your profile</legend>
+          <h2>Edit Profile</h2>
+          <div className={styles.field}>
+            <label htmlFor="profile-name">
+              Full Name <span aria-hidden="true">*</span>
+            </label>
+            <Input
+              id="profile-name"
+              value={name}
+              onValueChange={setName}
+              autoComplete="name"
+              required
+              maxLength={255}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? 'name-error' : undefined}
+            />
+            {fieldError('name')}
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="profile-phone">Phone Number</label>
+            <Input
+              id="profile-phone"
+              type="tel"
+              value={phoneNumber}
+              onValueChange={setPhoneNumber}
+              autoComplete="tel"
+              placeholder="+65 9123 5436"
+              aria-invalid={Boolean(errors.phoneNumber)}
+              aria-describedby={
+                errors.phoneNumber ? 'phoneNumber-error' : undefined
+              }
+            />
+            {fieldError('phoneNumber')}
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="profile-faculty">Faculty</label>
+            <Input
+              id="profile-faculty"
+              value={faculty}
+              onValueChange={setFaculty}
+              maxLength={255}
+              placeholder="School of Computing"
+              aria-invalid={Boolean(errors.faculty)}
+              aria-describedby={errors.faculty ? 'faculty-error' : undefined}
+            />
+            {fieldError('faculty')}
+          </div>
+          <h2 className={styles.passwordHeading}>Change Password</h2>
+          <p className={styles.hint}>
+            Leave blank to keep your password. Changing it will sign you out.
+          </p>
+          <div className={styles.field}>
+            <label htmlFor="current-password">Current password</label>
+            <Input
+              id="current-password"
+              type="password"
+              value={currentPassword}
+              onValueChange={setCurrentPassword}
+              autoComplete="current-password"
+              aria-invalid={Boolean(errors.currentPassword)}
+              aria-describedby={
+                errors.currentPassword ? 'currentPassword-error' : undefined
+              }
+            />
+            {fieldError('currentPassword')}
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="new-password">New password</label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onValueChange={setNewPassword}
+              autoComplete="new-password"
+              aria-invalid={Boolean(errors.newPassword)}
+              aria-describedby={
+                errors.newPassword ? 'newPassword-error' : undefined
+              }
+            />
+            {fieldError('newPassword')}
+          </div>
+        </fieldset>
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        {message && (
+          <p className={styles.success} role="status">
+            {message}
+          </p>
+        )}
+        <div className={styles.footer}>
+          <Button className={styles.save} type="submit" disabled={busy}>
+            {busy ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

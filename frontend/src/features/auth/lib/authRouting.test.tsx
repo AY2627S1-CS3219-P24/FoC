@@ -27,6 +27,16 @@ vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
+vi.mock('../api/userProfile.api', () => ({
+  getUserProfile: vi.fn(async () => ({
+    id: '1',
+    name: 'Alex Tan',
+    email: 'alex@example.com',
+    roles: ['USER'],
+    avatarUrl: null,
+  })),
+}))
+
 const refresh = vi.mocked(refreshSession)
 const clients: Array<QueryClient> = []
 

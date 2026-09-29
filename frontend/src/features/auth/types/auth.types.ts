@@ -17,5 +17,8 @@ export type UserProfileDto = {
   id: string
   email: string
   name: string
+  phoneNumber?: string | null
+  faculty?: string | null
+  avatarUrl?: string | null
   roles: string[]
 }

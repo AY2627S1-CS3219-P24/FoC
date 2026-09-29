@@ -9,6 +9,8 @@ import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
+import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
+import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
@@ -65,8 +67,20 @@ const protectedRoute = createRoute({
   errorComponent: SessionRecoveryError,
 })
 
-const appRoute = createRoute({
+const accountRoute = createRoute({
   getParentRoute: () => protectedRoute,
+  id: 'account',
+  component: AccountLayout,
+})
+
+const editProfileRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/profile/edit',
+  component: EditProfilePage,
+})
+
+const appRoute = createRoute({
+  getParentRoute: () => accountRoute,
   path: '/app',
   component: AppHomePage,
 })
@@ -82,6 +96,8 @@ export const routeTree = rootRoute.addChildren([
       ]
     : []),
   indexRoute,
-  protectedRoute.addChildren([appRoute]),
+  protectedRoute.addChildren([
+    accountRoute.addChildren([appRoute, editProfileRoute]),
+  ]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])
