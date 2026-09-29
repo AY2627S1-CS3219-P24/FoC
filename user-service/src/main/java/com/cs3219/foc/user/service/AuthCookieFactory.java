@@ -16,7 +16,7 @@ public class AuthCookieFactory {
                 .httpOnly(true)
                 .secure(authProperties.refreshCookieSecure())
                 .sameSite("Strict")
-                .path("/auth")
+                .path("/api/auth")
                 .maxAge(authProperties.refreshTokenTtl())
                 .build();
     }
@@ -26,7 +26,7 @@ public class AuthCookieFactory {
                 .httpOnly(true)
                 .secure(authProperties.refreshCookieSecure())
                 .sameSite("Strict")
-                .path("/auth")
+                .path("/api/auth")
                 .maxAge(Duration.ZERO)
                 .build();
     }

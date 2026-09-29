@@ -41,7 +41,7 @@ public class AuthController {
         authService.logout(refreshToken);
         var cookie = authCookieFactory.clearRefreshTokenCookie();
 
-        return ResponseEntity.ok()
+        return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .build();
     }

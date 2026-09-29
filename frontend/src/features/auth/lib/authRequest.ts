@@ -13,16 +13,14 @@ export class AuthRequestError extends Error {
 const readErrorMessage = async (
   response: Response,
 ): Promise<string | undefined> => {
-  // Proxy errors may be HTML or empty rather than backend JSON.
   const data: unknown = await response.json().catch(() => null)
-  const detail =
-    data &&
+
+  return data &&
     typeof data === 'object' &&
     'message' in data &&
     typeof data.message === 'string'
-      ? data.message
-      : undefined
-  return detail
+    ? data.message
+    : undefined
 }
 
 export const authRequest = async <T = void>(
@@ -38,7 +36,7 @@ export const authRequest = async <T = void>(
   try {
     let response: Response
     try {
-      response = await fetch(path, {
+      response = await fetch('/api' + path, {
         method: 'POST',
         credentials: 'same-origin',
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
@@ -54,8 +52,8 @@ export const authRequest = async <T = void>(
       throw new AuthRequestError(response.status, detail)
     }
 
-    const text = await response.text()
-    return (text ? JSON.parse(text) : undefined) as T
+    if (response.status === 204) return undefined as T
+    return (await response.json()) as T
   } finally {
     clearTimeout(timer)
   }

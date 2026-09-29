@@ -17,4 +17,6 @@ auth:
   public-key-location: classpath:keys/public.pem
   key-id: user-service
 server:
+  servlet:
+    context-path: /api
   port: 8080

@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?currentSchema=users
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: ${RABBITMQ_DEFAULT_USER}
+    password: ${RABBITMQ_DEFAULT_PASS}
+server:
+  forward-headers-strategy: framework
+auth:
+  refresh-cookie-secure: true
+  private-key-location: file:/run/secrets/jwt_private_key
+  public-key-location: file:/run/secrets/jwt_public_key
