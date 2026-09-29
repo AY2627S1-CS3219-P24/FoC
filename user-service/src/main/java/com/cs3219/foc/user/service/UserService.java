@@ -43,14 +43,11 @@ public class UserService {
         validateSort(pageable.getSort());
 
         var pageRequest = buildPageRequest(pageable);
-        var normalizedSearch = Optional.ofNullable(search)
-                .map(String::strip)
-                .map(String::toLowerCase)
-                .orElse(null);
+        search = search.strip().toLowerCase();
 
         var roleName = role == null ? null : role.name();
 
-        var matches = userRepository.findAllBySearchAndRolePaginated(normalizedSearch, roleName, pageRequest);
+        var matches = userRepository.findAllBySearchAndRolePaginated(search, roleName, pageRequest);
         var items = matches.map(userMapper::toUserProfileDto).getContent();
 
         return new PageDto<>(items, matches.getTotalElements(), pageable.getPageNumber(), pageable.getPageSize());
