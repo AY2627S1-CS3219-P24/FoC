@@ -61,7 +61,7 @@ class PasswordControllerTests {
                 .andExpect(content().string(""))
                 .andExpect(cookie().value("refreshToken", ""))
                 .andExpect(cookie().maxAge("refreshToken", 0))
-                .andExpect(cookie().path("refreshToken", "/auth"))
+                .andExpect(cookie().path("refreshToken", "/api/auth"))
                 .andExpect(cookie().httpOnly("refreshToken", true))
                 .andExpect(cookie().secure("refreshToken", true));
         verify(service).changePassword(userId, new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
