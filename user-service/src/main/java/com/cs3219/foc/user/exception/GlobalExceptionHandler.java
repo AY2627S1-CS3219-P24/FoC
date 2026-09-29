@@ -2,6 +2,7 @@ package com.cs3219.foc.user.exception;
 
 import com.cs3219.foc.user.model.dto.ErrorResponse;
 import com.cs3219.foc.user.model.dto.ValidationErrorResponse;
+import java.util.Map;
 import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,13 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    ResponseEntity<ValidationErrorResponse> handleInvalidPassword(InvalidPasswordException exception) {
+        return ResponseEntity.badRequest()
+                .body(new ValidationErrorResponse(
+                        "Validation failed", Map.of(exception.getField(), exception.getMessage())));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ValidationErrorResponse> handleValidationException(MethodArgumentNotValidException exception) {
