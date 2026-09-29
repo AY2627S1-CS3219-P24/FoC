@@ -8,13 +8,11 @@ afterEach(() => {
 })
 
 it('preserves HTTP errors and their backend message', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: 'Duplicate email' }), {
-        status: 400,
-      }),
-    )
+  const fetchMock = vi.fn().mockResolvedValueOnce(
+    new Response(JSON.stringify({ message: 'Duplicate email' }), {
+      status: 400,
+    }),
+  )
   vi.stubGlobal('fetch', fetchMock)
 
   await expect(authRequest('/auth/register')).rejects.toMatchObject({

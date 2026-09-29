@@ -23,7 +23,7 @@ export const authRequest = async <T = void>(
   try {
     let response: Response
     try {
-      response = await fetch("/api" + path, {
+      response = await fetch('/api' + path, {
         method: 'POST',
         credentials: 'same-origin',
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
