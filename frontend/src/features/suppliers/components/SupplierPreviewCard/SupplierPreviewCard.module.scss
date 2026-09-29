@@ -12,7 +12,9 @@
   height: 180px;
   align-items: center;
   justify-content: center;
-  --media-tint: var(--color-primary); // use nus color, orange for food and drink
+  --media-tint: var(
+    --color-primary
+  ); // use nus color, orange for food and drink
   --media-soft: var(--color-primary-soft); // blue for other categories
 
   background: linear-gradient(

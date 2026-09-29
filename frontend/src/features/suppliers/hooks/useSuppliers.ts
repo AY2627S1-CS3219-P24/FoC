@@ -11,18 +11,12 @@ import {
   setSupplierActive,
   updateSupplier,
 } from '../api/suppliers.api'
+import { supplierQueryKeys } from '../constants/supplierQueryKeys'
 import type { SupplierRequest } from '../types/supplier.types'
-
-export const supplierKeys = {
-  all: ['suppliers'] as const,
-  list: (includeInactive: boolean) =>
-    [...supplierKeys.all, 'list', { includeInactive }] as const,
-  detail: (id: string) => [...supplierKeys.all, 'detail', id] as const,
-}
 
 export const useSuppliers = (includeInactive: boolean) =>
   useQuery({
-    queryKey: supplierKeys.list(includeInactive),
+    queryKey: supplierQueryKeys.list(includeInactive),
     queryFn: () => listSuppliers(includeInactive),
     // When toggle the "show inactive suppliers" need to keep the previous supplier listing table
     placeholderData: keepPreviousData,
@@ -30,13 +24,14 @@ export const useSuppliers = (includeInactive: boolean) =>
 
 export const useSupplier = (id: string) =>
   useQuery({
-    queryKey: supplierKeys.detail(id),
+    queryKey: supplierQueryKeys.detail(id),
     queryFn: () => getSupplier(id),
   })
 
 const useInvalidateSuppliers = () => {
   const queryClient = useQueryClient()
-  return () => queryClient.invalidateQueries({ queryKey: supplierKeys.all })
+  return () =>
+    queryClient.invalidateQueries({ queryKey: supplierQueryKeys.all })
 }
 
 export const useCreateSupplier = () => {

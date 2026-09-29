@@ -7,7 +7,7 @@ import styles from './AdminLayout.module.scss'
 const sections = [
   { label: 'Overview', to: null },
   { label: 'Suppliers', to: '/admin/suppliers' },
-  { label: 'Users', to: null },
+  { label: 'Users', to: '/admin/users' },
   { label: 'Orders', to: null },
   { label: 'Audit log', to: null },
 ] as const

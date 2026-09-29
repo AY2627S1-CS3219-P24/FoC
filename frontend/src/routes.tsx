@@ -1,15 +1,14 @@
 import {
-  createRootRouteWithContext,
   createRoute,
   redirect,
   Outlet,
+  createRootRouteWithContext,
 } from '@tanstack/react-router'
 
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
-import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
   SessionRecoveryPending,
   SessionRecoveryError,
@@ -18,7 +17,11 @@ import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
-import {AuthLayout} from "#/features/auth/layouts/AuthLayout/AuthLayout";
+import { UserListPage } from '#/features/users/pages/UserListPage/UserListPage'
+import { UserEditPage } from '#/features/users/pages/UserEditPage/UserEditPage'
+import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
+import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
+import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -79,6 +82,18 @@ const adminLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/admin',
   component: AdminLayout,
+  beforeLoad: async ({ context }) => {
+    if (!(await context.auth.ensureAuthenticated())) {
+      throw redirect({ to: '/login', replace: true })
+    }
+    if (!context.auth.isAdmin()) {
+      throw redirect({ to: '/app', replace: true })
+    }
+  },
+  pendingMs: 500,
+  pendingMinMs: 0,
+  pendingComponent: SessionRecoveryPending,
+  errorComponent: SessionRecoveryError,
 })
 
 const adminIndexRoute = createRoute({
@@ -107,6 +122,20 @@ const supplierEditRoute = createRoute({
   component: SupplierEditPage,
 })
 
+const userListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users',
+  component: UserListPage,
+  validateSearch: validateUserListSearch,
+})
+
+const userEditRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users/$userId/edit',
+  component: UserEditPage,
+  validateSearch: validateUserListSearch,
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -125,5 +154,7 @@ export const routeTree = rootRoute.addChildren([
     supplierListRoute,
     supplierCreateRoute,
     supplierEditRoute,
+    userListRoute,
+    userEditRoute,
   ]),
 ])

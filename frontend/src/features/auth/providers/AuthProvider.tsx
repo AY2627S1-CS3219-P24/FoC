@@ -17,9 +17,11 @@ import {
   invalidateRefresh,
   refreshAccessToken,
 } from '../lib/refreshAccessToken'
+import { hasAccessTokenRole } from '../utils/accessTokenClaims'
 
 export type AuthOperations = {
   ensureAuthenticated: () => Promise<boolean>
+  isAdmin: () => boolean
   completeLogin: (accessToken: string) => void
   logout: () => Promise<void>
 }
@@ -97,6 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     return {
       ensureAuthenticated,
+      isAdmin: () => hasAccessTokenRole(getAccessToken(), 'ADMIN'),
       completeLogin,
       logout,
       authenticationFailed,
@@ -109,6 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo(
     () => ({
       ensureAuthenticated: operations.ensureAuthenticated,
+      isAdmin: operations.isAdmin,
       completeLogin: operations.completeLogin,
       logout: operations.logout,
       invalidation,
