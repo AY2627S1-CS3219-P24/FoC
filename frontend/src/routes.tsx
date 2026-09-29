@@ -11,6 +11,7 @@ import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
+import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
@@ -73,6 +74,12 @@ const accountRoute = createRoute({
   component: AccountLayout,
 })
 
+const profileRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/profile',
+  component: ProfilePage,
+})
+
 const editProfileRoute = createRoute({
   getParentRoute: () => accountRoute,
   path: '/profile/edit',
@@ -97,7 +104,7 @@ export const routeTree = rootRoute.addChildren([
     : []),
   indexRoute,
   protectedRoute.addChildren([
-    accountRoute.addChildren([appRoute, editProfileRoute]),
+    accountRoute.addChildren([appRoute, profileRoute, editProfileRoute]),
   ]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])

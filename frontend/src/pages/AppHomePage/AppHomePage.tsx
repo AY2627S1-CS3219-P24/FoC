@@ -1,4 +1,4 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 
 import { useAuth } from '#/features/auth/providers/AuthProvider'
@@ -18,7 +18,6 @@ export const AppHomePage = () => {
     <section className={styles.page}>
       <h1>Welcome to FoC</h1>
       <p>You are signed in.</p>
-      <Link to="/profile/edit">Edit profile</Link>
       <Button
         className={styles.logout}
         onClick={() => {

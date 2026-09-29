@@ -19,7 +19,7 @@ export const AccountLayout = () => {
         </>
       }
       onAccountClick={() => {
-        void navigate({ to: '/profile/edit' })
+        void navigate({ to: '/profile' })
       }}
     />
   )
