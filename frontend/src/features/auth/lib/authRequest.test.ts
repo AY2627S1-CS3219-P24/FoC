@@ -7,17 +7,25 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-it('preserves HTTP errors and their backend message', async () => {
-  const fetchMock = vi.fn().mockResolvedValueOnce(
-    new Response(JSON.stringify({ message: 'Duplicate email' }), {
-      status: 400,
-    }),
-  )
+it('preserves HTTP errors even when the server returns non-JSON content', async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Duplicate email' }), {
+        status: 400,
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response('<html>Bad gateway</html>', { status: 502 }),
+    )
   vi.stubGlobal('fetch', fetchMock)
 
   await expect(authRequest('/auth/register')).rejects.toMatchObject({
     status: 400,
     detail: 'Duplicate email',
+  })
+  await expect(authRequest('/auth/login')).rejects.toMatchObject({
+    status: 502,
   })
 })
 

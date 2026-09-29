@@ -10,6 +10,19 @@ export class AuthRequestError extends Error {
   }
 }
 
+const readErrorMessage = async (
+  response: Response,
+): Promise<string | undefined> => {
+  const data: unknown = await response.json().catch(() => null)
+
+  return data &&
+    typeof data === 'object' &&
+    'message' in data &&
+    typeof data.message === 'string'
+    ? data.message
+    : undefined
+}
+
 export const authRequest = async <T = void>(
   path: string,
   body?: object,
@@ -35,7 +48,7 @@ export const authRequest = async <T = void>(
     }
 
     if (!response.ok) {
-      const { message: detail } = await response.json()
+      const detail = await readErrorMessage(response)
       throw new AuthRequestError(response.status, detail)
     }
 
