@@ -243,7 +243,8 @@ class UserProfilePersistenceTests {
         var replacement = image("png", 20, 20);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             avatars.upload(user.getId(), replacement);
-            assertThat(avatarStorage.read(repository.findById(user.getId()).orElseThrow().getAvatarKey()))
+            assertThat(avatarStorage.read(
+                            repository.findById(user.getId()).orElseThrow().getAvatarKey()))
                     .isNotEmpty();
             status.setRollbackOnly();
         });

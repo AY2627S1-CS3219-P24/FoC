@@ -41,8 +41,7 @@ public class AvatarService {
         });
         try {
             storage.write(key, image);
-            var user =
-                    users.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+            var user = users.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
             var previous = user.getAvatarKey();
             user.setAvatarKey(key);
             users.saveAndFlush(user);
