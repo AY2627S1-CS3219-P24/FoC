@@ -1,40 +1,64 @@
-import { useMemo, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Button } from '@base-ui/react/button'
 import { Input } from '@base-ui/react/input'
 import { Switch } from '@base-ui/react/switch'
 import { Toast } from '@base-ui/react/toast'
+import { Toggle } from '@base-ui/react/toggle'
+import { ToggleGroup } from '@base-ui/react/toggle-group'
 import { useSetSupplierActive, useSuppliers } from '../../hooks/useSuppliers'
 import {
   categoryLabels,
   formatLocation,
-  formatOpeningHours,
   getErrorMessage,
 } from '../../utils/supplierFormat'
-import type { Supplier } from '../../types/supplier.types'
+import { formatWeeklyHours } from '../../utils/openingHours'
+import {
+  hasActiveFilters,
+  toCategoryParam,
+  toSupplierFilters,
+} from '../../utils/supplierFilters'
+import { SUPPLIER_CATEGORIES } from '../../types/supplier.types'
+import type { Supplier, SupplierListSearch } from '../../types/supplier.types'
 import ui from '../../styles/supplier.module.scss'
 import styles from './SupplierListPage.module.scss'
 
+const SEARCH_DEBOUNCE_MS = 300
+
 export const SupplierListPage = () => {
-  const [showInactive, setShowInactive] = useState(false)
-  const [search, setSearch] = useState('')
+  // Filters live in the URL so refresh, back/forward and shared links keep them.
+  const filters = useSearch({ from: '/protected/admin/suppliers' })
+  const selectedCategories = toSupplierFilters(filters).category ?? []
+  const navigate = useNavigate({ from: '/admin/suppliers' })
+  const updateFilters = (patch: SupplierListSearch) =>
+    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
+
+  const [searchText, setSearchText] = useState(filters.q ?? '')
   const [pendingDeactivation, setPendingDeactivation] =
     useState<Supplier | null>(null)
-  const suppliers = useSuppliers(showInactive)
+  const suppliers = useSuppliers(toSupplierFilters(filters))
   const setActive = useSetSupplierActive()
   const toast = Toast.useToastManager()
 
-  const visibleSuppliers = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    if (!query) return suppliers.data ?? []
-    return (suppliers.data ?? []).filter((supplier) =>
-      [supplier.name, supplier.building, categoryLabels[supplier.category]]
-        .join(' ')
-        .toLowerCase()
-        .includes(query),
+  // Push typed text to the URL once the user pauses, instead of on every key.
+  useEffect(() => {
+    const q = searchText.trim()
+    if (q === (filters.q ?? '')) return
+    const timer = setTimeout(
+      () => updateFilters({ q: q || undefined }),
+      SEARCH_DEBOUNCE_MS,
     )
-  }, [suppliers.data, search])
+    return () => clearTimeout(timer)
+  }, [searchText])
+
+  // Follow URL changes made elsewhere, e.g. "Clear filters" or browser back.
+  useEffect(() => {
+    if ((filters.q ?? '') !== searchText.trim()) setSearchText(filters.q ?? '')
+  }, [filters.q])
+
+  const visibleSuppliers = suppliers.data ?? []
+  const filtered = hasActiveFilters(filters)
 
   const changeActive = (supplier: Supplier, active: boolean) =>
     setActive.mutate(
@@ -64,25 +88,78 @@ export const SupplierListPage = () => {
         </Link>
       </header>
 
-      <div className={styles.toolbar}>
-        <Input
-          type="search"
-          placeholder="Search by name, building or category"
-          aria-label="Search suppliers"
-          className={`${ui.input} ${styles.search}`}
-          value={search}
-          onValueChange={setSearch}
-        />
-        <label className={styles.switchLabel}>
-          <Switch.Root
-            className={styles.switch}
-            checked={showInactive}
-            onCheckedChange={setShowInactive}
+      <div className={`${ui.card} ${styles.filters}`}>
+        <div className={styles.filterRow}>
+          <Input
+            type="search"
+            placeholder="Search by name, building or location"
+            aria-label="Search suppliers"
+            className={`${ui.input} ${styles.search}`}
+            value={searchText}
+            onValueChange={setSearchText}
+          />
+          <label className={styles.switchLabel}>
+            <Switch.Root
+              className={styles.switch}
+              checked={Boolean(filters.inactive)}
+              onCheckedChange={(checked) =>
+                updateFilters({ inactive: checked || undefined })
+              }
+            >
+              <Switch.Thumb className={styles.thumb} />
+            </Switch.Root>
+            Show deactivated
+          </label>
+        </div>
+
+        <div className={styles.filterRow}>
+          <ToggleGroup
+            multiple
+            aria-label="Filter by category"
+            className={styles.chips}
+            value={selectedCategories}
+            onValueChange={(value) =>
+              updateFilters({ category: toCategoryParam(value) })
+            }
           >
-            <Switch.Thumb className={styles.thumb} />
-          </Switch.Root>
-          Show inactive suppliers
-        </label>
+            {SUPPLIER_CATEGORIES.map((category) => (
+              <Toggle key={category} value={category} className={styles.chip}>
+                {categoryLabels[category]}
+              </Toggle>
+            ))}
+          </ToggleGroup>
+          <Toggle
+            className={`${styles.chip} ${styles.openNowChip}`}
+            pressed={Boolean(filters.openNow)}
+            onPressedChange={(pressed) =>
+              updateFilters({ openNow: pressed || undefined })
+            }
+          >
+            <span className={styles.dot} aria-hidden="true" />
+            Open now
+          </Toggle>
+        </div>
+      </div>
+
+      <div className={styles.resultBar} aria-live="polite">
+        <span className={ui.muted}>
+          {suppliers.isSuccess &&
+            `${visibleSuppliers.length} ${visibleSuppliers.length === 1 ? 'supplier' : 'suppliers'}`}
+          {suppliers.isFetching && suppliers.isSuccess && ' · updating…'}
+        </span>
+        {filtered && (
+          <Button
+            className={styles.clear}
+            onClick={() =>
+              navigate({
+                search: (prev) => ({ inactive: prev.inactive }),
+                replace: true,
+              })
+            }
+          >
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {suppliers.isPending && <p className={ui.muted}>Loading suppliers…</p>}
@@ -92,7 +169,10 @@ export const SupplierListPage = () => {
         </p>
       )}
       {suppliers.isSuccess && (
-        <div className={`${ui.card} ${styles.tableWrapper}`}>
+        <div
+          className={`${ui.card} ${styles.tableWrapper}`}
+          data-stale={suppliers.isPlaceholderData || undefined}
+        >
           <table className={styles.table}>
             <thead>
               <tr>
@@ -117,7 +197,11 @@ export const SupplierListPage = () => {
                   <td>{categoryLabels[supplier.category]}</td>
                   <td>{formatLocation(supplier)}</td>
                   <td className={styles.nowrap}>
-                    {formatOpeningHours(supplier)}
+                    {formatWeeklyHours(supplier.openingHours).map((line) => (
+                      <span key={line} className={styles.hoursLine}>
+                        {line}
+                      </span>
+                    ))}
                   </td>
                   <td>
                     <div className={styles.actions}>
@@ -151,7 +235,9 @@ export const SupplierListPage = () => {
               {visibleSuppliers.length === 0 && (
                 <tr>
                   <td colSpan={5} className={styles.empty}>
-                    No suppliers found.
+                    {filtered
+                      ? 'No suppliers match these filters.'
+                      : 'No suppliers found.'}
                   </td>
                 </tr>
               )}

@@ -1,4 +1,11 @@
-.toolbar {
+.filters {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+}
+
+.filterRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -7,7 +14,85 @@
 }
 
 .search {
-  max-width: 340px;
+  max-width: 420px;
+  flex: 1 1 260px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 6px;
+
+  &:hover {
+    border-color: var(--color-primary);
+  }
+
+  &[data-pressed] {
+    border-color: var(--color-primary);
+    background-color: var(--color-primary);
+    color: #fff;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.openNowChip[data-pressed] {
+  border-color: #15803d;
+  background-color: #15803d;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #16a34a;
+
+  .openNowChip[data-pressed] & {
+    background-color: #fff;
+  }
+}
+
+.resultBar {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: -8px;
+  font-size: 14px;
+}
+
+.clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .switchLabel {
@@ -54,6 +139,12 @@
 
 .tableWrapper {
   overflow-x: auto;
+  transition: opacity 0.15s;
+
+  // Previous results stay visible, dimmed, while new filters load.
+  &[data-stale] {
+    opacity: 0.6;
+  }
 }
 
 .table {
@@ -158,4 +249,8 @@
   justify-content: flex-end;
   margin-top: 8px;
   gap: 8px;
+}
+
+.hoursLine {
+  display: block;
 }
