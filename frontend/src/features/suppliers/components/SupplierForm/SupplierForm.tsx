@@ -1,12 +1,12 @@
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@base-ui/react/button'
-import { Checkbox } from '@base-ui/react/checkbox'
 import { Input } from '@base-ui/react/input'
 import { Select } from '@base-ui/react/select'
 import { supplierSchema } from '../../schemas/supplier.schema'
 import { SUPPLIER_CATEGORIES } from '../../types/supplier.types'
 import { categoryLabels } from '../../utils/supplierFormat'
+import { OpeningHoursField } from '../OpeningHoursField/OpeningHoursField'
 import { SupplierPreviewCard } from '../SupplierPreviewCard/SupplierPreviewCard'
 import type { Control, FieldErrors } from 'react-hook-form'
 import type { SupplierFormValues } from '../../schemas/supplier.schema'
@@ -21,10 +21,7 @@ type SupplierFormProps = {
   onCancel: () => void
 }
 
-type TextFieldName = Exclude<
-  keyof SupplierFormValues,
-  'category' | 'closesAfterMidnight'
->
+type TextFieldName = Exclude<keyof SupplierFormValues, 'category' | 'hours'>
 
 type TextFieldProps = {
   name: TextFieldName
@@ -35,8 +32,6 @@ type TextFieldProps = {
   type?: 'text' | 'time' | 'url'
   placeholder?: string
   hint?: string
-  /** check both timing when one of it changes, see if still valid */
-  deps?: Array<TextFieldName>
 }
 
 const TextField = ({
@@ -48,7 +43,6 @@ const TextField = ({
   type = 'text',
   placeholder,
   hint,
-  deps,
 }: TextFieldProps) => {
   const id = `supplier-${name}`
   const error = errors[name]?.message
@@ -65,7 +59,6 @@ const TextField = ({
       <Controller
         name={name}
         control={control}
-        rules={{ deps }}
         render={({ field: { onChange, ...field } }) => (
           <Input
             {...field}
@@ -75,7 +68,7 @@ const TextField = ({
             className={ui.input}
             onValueChange={onChange}
             aria-invalid={Boolean(error)}
-            aria-describedby={describedBy} //
+            aria-describedby={describedBy}
           />
         )}
       />
@@ -108,6 +101,8 @@ export const SupplierForm = ({
   const {
     control,
     handleSubmit,
+    setValue,
+    trigger,
     formState: { errors },
   } = useForm<SupplierFormValues>({
     defaultValues,
@@ -222,46 +217,11 @@ export const SupplierForm = ({
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Opening hours</h2>
-          <div className={styles.row}>
-            <TextField
-              {...fieldProps}
-              name="openingTime"
-              label="Opens at"
-              type="time"
-              deps={['closingTime']}
-              required
-            />
-            <TextField
-              {...fieldProps}
-              name="closingTime"
-              label="Closes at"
-              type="time"
-              required
-            />
-          </div>
-
-          <Controller
-            name="closesAfterMidnight"
+          <OpeningHoursField
             control={control}
-            rules={{ deps: ['closingTime'] }}
-            render={({ field }) => (
-              <label className={styles.checkboxLabel}>
-                <Checkbox.Root
-                  className={styles.checkbox}
-                  checked={field.value}
-                  onCheckedChange={(checked) => field.onChange(checked)}
-                  onBlur={field.onBlur}
-                  aria-labelledby="supplier-closesAfterMidnight-label"
-                >
-                  <Checkbox.Indicator className={styles.checkboxIndicator}>
-                    ✓
-                  </Checkbox.Indicator>
-                </Checkbox.Root>
-                <span id="supplier-closesAfterMidnight-label">
-                  Closes after midnight (eg. 11:00 AM – 2:00 AM)
-                </span>
-              </label>
-            )}
+            errors={errors}
+            setValue={setValue}
+            trigger={trigger}
           />
         </section>
 

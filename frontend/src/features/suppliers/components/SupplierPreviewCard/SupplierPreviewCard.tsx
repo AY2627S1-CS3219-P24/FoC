@@ -1,10 +1,18 @@
 import { useState } from 'react'
-import { categoryLabels, isOpenAt } from '../../utils/supplierFormat'
+import { categoryLabels } from '../../utils/supplierFormat'
+import {
+  closesAfterMidnight,
+  formatWeeklyHours,
+  isOpenAt,
+} from '../../utils/openingHours'
+import { toOpeningHours } from '../../schemas/supplier.schema'
+import type { DeepPartial } from 'react-hook-form'
 import type { SupplierFormValues } from '../../schemas/supplier.schema'
 import styles from './SupplierPreviewCard.module.scss'
 
 type SupplierPreviewCardProps = {
-  values: Partial<SupplierFormValues>
+  /** Live form, field may be empty while the admin types */
+  values: DeepPartial<SupplierFormValues>
 }
 
 const isHttpUrl = (value: string) => /^https?:\/\/\S+$/.test(value)
@@ -22,9 +30,7 @@ export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
     building = '',
     floor = '',
     locationDescription = '',
-    openingTime = '',
-    closingTime = '',
-    closesAfterMidnight = false,
+    hours = [],
     latitude = '',
     longitude = '',
     imageUrl = '',
@@ -32,9 +38,20 @@ export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
   const [failedImage, setFailedImage] = useState<string | null>(null)
 
   const showImage = isHttpUrl(imageUrl) && failedImage !== imageUrl
-  const hasHours =
-    isTime(openingTime) && isTime(closingTime) && openingTime !== closingTime
-  const open = hasHours && isOpenAt(openingTime, closingTime, new Date())
+  const openingHours = toOpeningHours(
+    hours.filter(
+      (day): day is SupplierFormValues['hours'][number] =>
+        day !== undefined &&
+        day.dayOfWeek !== undefined &&
+        day.open === true &&
+        isTime(day.opensAt ?? '') &&
+        isTime(day.closesAt ?? '') &&
+        day.opensAt !== day.closesAt,
+    ),
+  )
+  const hasHours = openingHours.length > 0
+  const open = hasHours && isOpenAt(openingHours, new Date())
+  const overnight = openingHours.some(closesAfterMidnight)
   const hasCoordinates =
     isCoordinate(latitude, 90) && isCoordinate(longitude, 180)
   const location = [building.trim(), floor.trim() && `Level ${floor.trim()}`]
@@ -88,9 +105,13 @@ export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
           <dd>
             {hasHours ? (
               <>
-                {openingTime} – {closingTime}
-                {closesAfterMidnight && (
-                  <span className={styles.subtle}>Closes the next day</span>
+                {formatWeeklyHours(openingHours).map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+                {overnight && (
+                  <span className={styles.overnight}>
+                    Closes after midnight
+                  </span>
                 )}
               </>
             ) : (

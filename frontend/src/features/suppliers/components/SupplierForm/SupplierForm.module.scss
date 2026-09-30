@@ -140,50 +140,6 @@
   }
 }
 
-.checkboxLabel {
-  display: inline-flex;
-  align-items: center;
-  margin-top: -4px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 14px;
-  gap: 8px;
-}
-
-.checkbox {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background-color: var(--color-surface);
-  color: #fff;
-  cursor: pointer;
-
-  &[data-checked] {
-    border-color: var(--color-primary);
-    background-color: var(--color-primary);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-}
-
-.checkboxIndicator {
-  font-size: 12px;
-  line-height: 1;
-
-  &[data-unchecked] {
-    display: none;
-  }
-}
-
 .actions {
   display: flex;
   justify-content: flex-end;

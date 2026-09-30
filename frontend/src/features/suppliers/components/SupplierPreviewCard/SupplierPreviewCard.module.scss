@@ -130,3 +130,14 @@
     text-decoration: underline;
   }
 }
+
+.overnight {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-top: 4px;
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent-hover);
+  font-size: 12px;
+  font-weight: 600;
+}
