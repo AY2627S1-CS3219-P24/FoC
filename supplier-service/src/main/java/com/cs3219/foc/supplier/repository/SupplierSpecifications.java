@@ -13,8 +13,8 @@ import org.springframework.data.jpa.domain.Specification;
 
 /** Composable filters for {@link SupplierRepository#findAll(Specification, org.springframework.data.domain.Sort)}. */
 public final class SupplierSpecifications {
-    private static final char LIKE_ESCAPE_CHAR =
-            '\\'; // when user is input some char to search, treat as normal text
+    // Escape character for LIKE, so wildcards the user types (% and _) are matched as plain text.
+    private static final char LIKE_ESCAPE_CHAR = '\\';
 
     private SupplierSpecifications() {}
 

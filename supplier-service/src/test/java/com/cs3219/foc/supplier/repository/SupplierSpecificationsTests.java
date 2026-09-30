@@ -32,6 +32,7 @@ class SupplierSpecificationsTests {
 
     private static final List<DayOfWeek> EVERY_DAY = Arrays.asList(DayOfWeek.values());
     private static final List<DayOfWeek> WEEKDAYS = EVERY_DAY.subList(0, 5);
+
     @Autowired
     private SupplierRepository repository;
 
@@ -65,21 +66,21 @@ class SupplierSpecificationsTests {
             String opensAt,
             String closesAt,
             boolean active) {
-                    var supplier = Supplier.builder()
-                            .name(name)
-                            .category(category)
-                            .building(building)
-                            .locationDescription(description)
-                            .active(active)
-                            .build();
-                    supplier.replaceOpeningHours(days.stream()
-                            .map(day -> SupplierOpeningHours.builder()
-                                    .dayOfWeek(day)
-                                    .opensAt(LocalTime.parse(opensAt))
-                                    .closesAt(LocalTime.parse(closesAt))
-                                    .build())
-                            .toList());
-                    return supplier;
+        var supplier = Supplier.builder()
+                .name(name)
+                .category(category)
+                .building(building)
+                .locationDescription(description)
+                .active(active)
+                .build();
+        supplier.replaceOpeningHours(days.stream()
+                .map(day -> SupplierOpeningHours.builder()
+                        .dayOfWeek(day)
+                        .opensAt(LocalTime.parse(opensAt))
+                        .closesAt(LocalTime.parse(closesAt))
+                        .build())
+                .toList());
+        return supplier;
     }
 
     private List<String> names(Specification<Supplier> spec) {

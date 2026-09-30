@@ -7,7 +7,6 @@ type PanelProps = {
   children: ReactNode
 }
 
-
 export const Panel = ({ title, action, children }: PanelProps) => (
   <section className={styles.panel}>
     <header className={styles.header}>
