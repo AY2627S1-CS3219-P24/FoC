@@ -8,6 +8,28 @@ export const SUPPLIER_CATEGORIES = [
 
 export type SupplierCategory = (typeof SUPPLIER_CATEGORIES)[number]
 
+export const DAYS_OF_WEEK = [
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+  'SUNDAY',
+] as const
+
+export type DayOfWeek = (typeof DAYS_OF_WEEK)[number]
+
+/**
+ * Hours for one day "HH:MM". A closing time earlier
+ * than the opening time means the supplier closes after midnight.
+ */
+export type OpeningHours = {
+  dayOfWeek: DayOfWeek
+  opensAt: string
+  closesAt: string
+}
+
 export type Supplier = {
   id: string
   name: string
@@ -17,9 +39,8 @@ export type Supplier = {
   locationDescription: string | null
   latitude: number | null
   longitude: number | null
-  /** Use ISO local time, eg."09:00:00". */
-  openingTime: string
-  closingTime: string
+  /** Days the supplier opens, Monday first. Missing days are closed. */
+  openingHours: Array<OpeningHours>
   imageUrl: string | null
   active: boolean
   createdAt: string
@@ -30,3 +51,18 @@ export type SupplierRequest = Omit<
   Supplier,
   'id' | 'active' | 'createdAt' | 'updatedAt'
 >
+
+export type SupplierFilters = {
+  q?: string
+  category?: Array<SupplierCategory>
+  openNow?: boolean
+  inactive?: boolean
+}
+
+/**
+ * The supplier list page's URL search params are filters.
+ * Categories are comma-separated (`?category=FOOD,COFFEE`)
+ */
+export type SupplierListSearch = Omit<SupplierFilters, 'category'> & {
+  category?: string
+}

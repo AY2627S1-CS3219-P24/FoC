@@ -1,4 +1,5 @@
 import { isAxiosError } from 'axios'
+import { isOpenAt } from './openingHours'
 import type { Supplier, SupplierCategory } from '../types/supplier.types'
 
 export const categoryLabels: Record<SupplierCategory, string> = {
@@ -9,28 +10,10 @@ export const categoryLabels: Record<SupplierCategory, string> = {
   OTHER: 'Other',
 }
 
-export const formatOpeningHours = (supplier: Supplier) =>
-  `${supplier.openingTime.slice(0, 5)} – ${supplier.closingTime.slice(0, 5)}`
-
 export const formatLocation = (supplier: Supplier) =>
   supplier.floor
     ? `${supplier.building}, Level ${supplier.floor}`
     : supplier.building
-
-/**
- * Time is in format "HH:MM".
- * If a closing time earlier than the opening time, then means the supplier closes after midnight, need to check the box
- */
-export const isOpenAt = (
-  openingTime: string,
-  closingTime: string,
-  now: Date,
-) => {
-  const current = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  return closingTime < openingTime
-    ? current >= openingTime || current < closingTime
-    : current >= openingTime && current < closingTime
-}
 
 export const getErrorMessage = (error: unknown) => {
   if (isAxiosError<{ message?: string }>(error)) {
@@ -40,4 +23,24 @@ export const getErrorMessage = (error: unknown) => {
     if (error.response?.data.message) return error.response.data.message
   }
   return 'Something went wrong. Please try again.'
+}
+
+export type SupplierSummary = {
+  active: number
+  deactivated: number
+  openNow: number
+}
+
+// the dashboard stats for admin to view
+export const summarizeSuppliers = (
+  suppliers: Array<Supplier>,
+  now: Date,
+): SupplierSummary => {
+  const active = suppliers.filter((supplier) => supplier.active)
+  return {
+    active: active.length,
+    deactivated: suppliers.length - active.length,
+    openNow: active.filter((supplier) => isOpenAt(supplier.openingHours, now))
+      .length,
+  }
 }
