@@ -1,8 +1,12 @@
 package com.cs3219.foc.supplier.model.entity;
 
 import jakarta.persistence.*;
-import java.time.LocalTime;
+import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.List;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,13 +46,13 @@ public class Supplier {
 
     private Double longitude;
 
-    @Column(nullable = false)
-    private LocalTime openingTime;
-
-    @Column(nullable = false)
-    private LocalTime closingTime;
-
     private String imageUrl;
+
+    /** Days without an entry are closed. */
+    @OneToMany(mappedBy = "supplier", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("dayOfWeek")
+    @Builder.Default
+    private List<SupplierOpeningHours> openingHours = new ArrayList<>();
 
     @Builder.Default
     @Column(nullable = false)
@@ -59,4 +63,24 @@ public class Supplier {
 
     @UpdateTimestamp
     private OffsetDateTime updatedAt;
+
+    /**
+     * Replaces the weekly schedule. Days that already exist are updated in place instead of deleted and re-added
+     */
+    public void replaceOpeningHours(List<SupplierOpeningHours> hours) {
+        var byDay = new EnumMap<DayOfWeek, SupplierOpeningHours>(DayOfWeek.class);
+        hours.forEach(entry -> byDay.put(entry.getDayOfWeek(), entry));
+
+        openingHours.removeIf(existing -> !byDay.containsKey(existing.getDayOfWeek()));
+        for (var existing : openingHours) {
+            var updated = byDay.remove(existing.getDayOfWeek());
+            existing.setOpensAt(updated.getOpensAt());
+            existing.setClosesAt(updated.getClosesAt());
+        }
+        byDay.values().forEach(entry -> {
+            entry.setSupplier(this);
+            openingHours.add(entry);
+        });
+        openingHours.sort(Comparator.comparing(SupplierOpeningHours::getDayOfWeek));
+    }
 }

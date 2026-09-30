@@ -11,15 +11,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.cs3219.foc.supplier.config.SecurityConfig;
 import com.cs3219.foc.supplier.exception.GlobalExceptionHandler;
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
+import com.cs3219.foc.supplier.model.dto.OpeningHoursDto;
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
 import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.service.SupplierService;
+import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +45,9 @@ class SupplierControllerTests {
     private static final String VALID_BODY = """
             {"name":"Cool Spot","category":"FOOD","building":"COM2","floor":"1",
              "locationDescription":"Opp LT16","latitude":1.294,"longitude":103.7738,
-             "openingTime":"09:00","closingTime":"21:30","imageUrl":null}
+             "openingHours":[{"dayOfWeek":"MONDAY","opensAt":"09:00","closesAt":"21:30"},
+                             {"dayOfWeek":"FRIDAY","opensAt":"18:00","closesAt":"02:00"}],
+             "imageUrl":null}
             """;
 
     @Autowired
@@ -70,8 +75,7 @@ class SupplierControllerTests {
                 "Opp LT16",
                 1.294,
                 103.7738,
-                LocalTime.of(9, 0),
-                LocalTime.of(21, 30),
+                List.of(new OpeningHoursDto(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(21, 30))),
                 null,
                 true,
                 OffsetDateTime.now(),
@@ -98,7 +102,10 @@ class SupplierControllerTests {
         mvc.perform(get("/suppliers").param("includeInactive", "true").with(user()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Cool Spot"))
-                .andExpect(jsonPath("$[0].openingTime").value("09:00:00"));
+                .andExpect(jsonPath("$[0].openingHours[0].dayOfWeek").value("MONDAY"))
+                .andExpect(jsonPath("$[0].openingHours[0].opensAt").value("09:00:00"))
+                .andExpect(jsonPath("$[0].openingHours[0].closingDifferentFromOpening")
+                        .doesNotExist());
         verify(service).listSuppliers(new SupplierSearchCriteria(null, List.of(), false, false));
     }
 
@@ -176,8 +183,9 @@ class SupplierControllerTests {
                         "Opp LT16",
                         1.294,
                         103.7738,
-                        LocalTime.of(9, 0),
-                        LocalTime.of(21, 30),
+                        List.of(
+                                new OpeningHoursDto(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(21, 30)),
+                                new OpeningHoursDto(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(2, 0))),
                         null));
     }
 
@@ -188,10 +196,26 @@ class SupplierControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":" ","category":"FOOD","building":"COM2","latitude":91,
-                                 "openingTime":"09:00","closingTime":"21:30","imageUrl":"javascript:alert(1)"}
+                                 "openingHours":[],"imageUrl":"javascript:alert(1)"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").exists());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsRepeatedDaysAndIdenticalOpeningAndClosingTimes() throws Exception {
+        mvc.perform(post("/suppliers")
+                        .with(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Cool Spot","category":"FOOD","building":"COM2",
+                                 "openingHours":[{"dayOfWeek":"MONDAY","opensAt":"09:00","closesAt":"09:00"},
+                                                 {"dayOfWeek":"MONDAY","opensAt":"10:00","closesAt":"12:00"}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("eachDayListedOnce")))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("closingDifferentFromOpening")));
         verifyNoInteractions(service);
     }
 

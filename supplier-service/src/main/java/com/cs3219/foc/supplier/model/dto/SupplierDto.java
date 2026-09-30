@@ -1,8 +1,8 @@
 package com.cs3219.foc.supplier.model.dto;
 
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record SupplierDto(
@@ -14,8 +14,7 @@ public record SupplierDto(
         String locationDescription,
         Double latitude,
         Double longitude,
-        LocalTime openingTime,
-        LocalTime closingTime,
+        List<OpeningHoursDto> openingHours,
         String imageUrl,
         boolean active,
         OffsetDateTime createdAt,

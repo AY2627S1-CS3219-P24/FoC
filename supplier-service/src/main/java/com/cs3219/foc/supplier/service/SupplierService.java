@@ -9,7 +9,7 @@ import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
 import com.cs3219.foc.supplier.repository.SupplierSpecifications;
 import java.time.Clock;
-import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,7 +41,9 @@ public class SupplierService {
             filters.add(SupplierSpecifications.inCategories(criteria.categories()));
         }
         if (criteria.openNow()) {
-            filters.add(SupplierSpecifications.openAt(LocalTime.now(clock).truncatedTo(ChronoUnit.MINUTES)));
+            var now = ZonedDateTime.now(clock);
+            filters.add(SupplierSpecifications.openAt(
+                    now.getDayOfWeek(), now.toLocalTime().truncatedTo(ChronoUnit.MINUTES)));
         }
 
         return supplierRepository.findAll(Specification.allOf(filters), Sort.by("name")).stream()
@@ -57,14 +59,18 @@ public class SupplierService {
 
     @Transactional
     public SupplierDto createSupplier(SupplierRequest request) {
-        var supplier = supplierMapper.toSupplier(request);
+        var normalized = request.normalized();
+        var supplier = supplierMapper.toSupplier(normalized);
+        supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
         return supplierMapper.toSupplierDto(supplierRepository.saveAndFlush(supplier));
     }
 
     @Transactional
     public SupplierDto updateSupplier(UUID id, SupplierRequest request) {
+        var normalized = request.normalized();
         var supplier = findSupplier(id);
-        supplierMapper.updateSupplier(request, supplier);
+        supplierMapper.updateSupplier(normalized, supplier);
+        supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
         return supplierMapper.toSupplierDto(supplierRepository.saveAndFlush(supplier));
     }
 

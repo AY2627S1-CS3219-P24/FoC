@@ -8,15 +8,19 @@ import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.mapper.SupplierMapperImpl;
+import com.cs3219.foc.supplier.model.dto.OpeningHoursDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
 import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
+import com.cs3219.foc.supplier.model.entity.SupplierOpeningHours;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,30 +43,36 @@ class SupplierServiceTests {
         service = new SupplierService(repository, new SupplierMapperImpl(), clock);
     }
 
-    private static SupplierRequest request(String name) {
+    private static SupplierRequest request(String name, String building) {
         return new SupplierRequest(
                 name,
                 SupplierCategory.COFFEE,
-                "COM3",
+                building,
                 "1",
                 null,
                 null,
                 null,
-                LocalTime.of(8, 0),
-                LocalTime.of(18, 0),
+                List.of(
+                        new OpeningHoursDto(DayOfWeek.MONDAY, LocalTime.of(8, 0), LocalTime.of(18, 0)),
+                        new OpeningHoursDto(DayOfWeek.SATURDAY, LocalTime.of(10, 0), LocalTime.of(14, 0))),
                 null);
     }
 
     private Supplier existingSupplier() {
-        return Supplier.builder()
+        var supplier = Supplier.builder()
                 .id(supplierId)
                 .name("Old name")
                 .category(SupplierCategory.FOOD)
                 .building("COM2")
-                .openingTime(LocalTime.of(9, 0))
-                .closingTime(LocalTime.of(17, 0))
                 .active(false)
+                .openingHours(new ArrayList<>())
                 .build();
+        supplier.replaceOpeningHours(new ArrayList<>(List.of(SupplierOpeningHours.builder()
+                .dayOfWeek(DayOfWeek.SUNDAY)
+                .opensAt(LocalTime.of(9, 0))
+                .closesAt(LocalTime.of(17, 0))
+                .build())));
+        return supplier;
     }
 
     @Test
@@ -74,20 +84,33 @@ class SupplierServiceTests {
     }
 
     @Test
-    void createsActiveSupplier() {
-        var created = service.createSupplier(request("CoffeeBean"));
+    void createsActiveSupplierWithWeeklyHours() {
+        var created = service.createSupplier(request("CoffeeBean", "COM3"));
         assertThat(created.name()).isEqualTo("CoffeeBean");
         assertThat(created.active()).isTrue();
+        assertThat(created.openingHours())
+                .extracting(OpeningHoursDto::dayOfWeek)
+                .containsExactly(DayOfWeek.MONDAY, DayOfWeek.SATURDAY);
     }
 
     @Test
-    void updateReplacesDetailsButKeepsIdentityAndStatus() {
+    void normalizesSpacingBeforeSaving() {
+        var created = service.createSupplier(request("  Cool   Spot ", " COM2  "));
+        assertThat(created.name()).isEqualTo("Cool Spot");
+        assertThat(created.building()).isEqualTo("COM2");
+    }
+
+    @Test
+    void updateReplacesDetailsAndHoursButKeepsIdentityAndStatus() {
         when(repository.findById(supplierId)).thenReturn(Optional.of(existingSupplier()));
-        var updated = service.updateSupplier(supplierId, request("New name"));
+        var updated = service.updateSupplier(supplierId, request("New name", "COM3"));
         assertThat(updated.id()).isEqualTo(supplierId);
         assertThat(updated.name()).isEqualTo("New name");
         assertThat(updated.category()).isEqualTo(SupplierCategory.COFFEE);
         assertThat(updated.active()).isFalse();
+        assertThat(updated.openingHours())
+                .extracting(OpeningHoursDto::dayOfWeek)
+                .containsExactly(DayOfWeek.MONDAY, DayOfWeek.SATURDAY);
     }
 
     @Test
@@ -105,7 +128,7 @@ class SupplierServiceTests {
     @Test
     void updatingMissingSupplierFails() {
         when(repository.findById(supplierId)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.updateSupplier(supplierId, request("x")))
+        assertThatThrownBy(() -> service.updateSupplier(supplierId, request("x", "COM3")))
                 .isInstanceOf(SupplierNotFoundException.class);
         verify(repository, never()).saveAndFlush(any());
     }
