@@ -11,7 +11,16 @@ export const registerSchema = z
       .trim()
       .toLowerCase()
       .min(1, 'Please enter your email.')
-      .regex(emailPattern, 'Please enter a valid email address.'),
+      .regex(emailPattern, 'Please enter a valid email address.')
+      .pipe(
+        z
+          .string()
+          .refine(
+            (email) =>
+              ['u.nus.edu', 'nus.edu.sg'].includes(email.split('@')[1]),
+            'Please use your NUS email address.',
+          ),
+      ),
 
     password: z
       .string()

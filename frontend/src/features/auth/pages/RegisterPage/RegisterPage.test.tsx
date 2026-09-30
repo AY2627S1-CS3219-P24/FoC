@@ -31,7 +31,7 @@ const registerUserMock = vi.mocked(registerUser)
 const profile: UserProfileDto = {
   id: 'test-user-id',
   name: 'Jamie',
-  email: 'jamie@example.com',
+  email: 'jamie@u.nus.edu',
   roles: ['USER'],
 }
 
@@ -81,7 +81,7 @@ const fillValidForm = async () => {
   const user = userEvent.setup()
 
   await user.type(screen.getByLabelText('Name'), ' Jamie ')
-  await user.type(screen.getByLabelText('Email'), ' JAMIE@EXAMPLE.COM ')
+  await user.type(screen.getByLabelText('Email'), ' JAMIE@U.NUS.EDU ')
   await user.type(screen.getByLabelText('Password'), ' password123 ')
   await user.type(screen.getByLabelText('Confirm password'), ' password123 ')
 
@@ -165,7 +165,7 @@ describe('RegisterPage', () => {
     expect(registerUserMock).toHaveBeenCalledTimes(1)
     expect(registerUserMock).toHaveBeenCalledWith({
       name: 'Jamie',
-      email: 'jamie@example.com',
+      email: 'jamie@u.nus.edu',
       password: ' password123 ',
     })
 
@@ -186,7 +186,7 @@ describe('RegisterPage', () => {
     )
     registerUserMock.mockResolvedValueOnce({
       ...profile,
-      email: 'jamie2@example.com',
+      email: 'jamie2@u.nus.edu',
     })
 
     const router = await renderRegisterPage()
@@ -208,7 +208,7 @@ describe('RegisterPage', () => {
     })
 
     await user.clear(screen.getByLabelText('Email'))
-    await user.type(screen.getByLabelText('Email'), 'jamie2@example.com')
+    await user.type(screen.getByLabelText('Email'), 'jamie2@u.nus.edu')
 
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
 
@@ -216,12 +216,17 @@ describe('RegisterPage', () => {
     expect(registerUserMock).toHaveBeenCalledTimes(2)
     expect(registerUserMock).toHaveBeenLastCalledWith({
       name: 'Jamie',
-      email: 'jamie2@example.com',
+      email: 'jamie2@u.nus.edu',
       password: ' password123 ',
     })
   })
 
   it.each([
+    {
+      scenario: 'an unsupported email domain',
+      error: createHttpError(400, 'Please use your NUS email address.'),
+      message: 'Please use your NUS email address.',
+    },
     {
       scenario: 'a network failure',
       error: new AuthRequestError(),
