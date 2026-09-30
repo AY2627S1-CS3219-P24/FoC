@@ -1,10 +1,20 @@
 // The shared client adds the access token and refreshes it on 401.
 import { axiosClient } from '#/lib/axiosClient'
-import type { Supplier, SupplierRequest } from '../types/supplier.types'
+import type {
+  Supplier,
+  SupplierFilters,
+  SupplierRequest,
+} from '../types/supplier.types'
 
-export const listSuppliers = async (includeInactive: boolean) => {
+export const listSuppliers = async (filters: SupplierFilters) => {
   const { data } = await axiosClient.get<Array<Supplier>>('/suppliers', {
-    params: { includeInactive },
+    params: {
+      q: filters.q,
+      category: filters.category,
+      openNow: filters.openNow,
+      includeInactive: filters.inactive,
+    },
+    paramsSerializer: { indexes: null },
   })
   return data
 }
