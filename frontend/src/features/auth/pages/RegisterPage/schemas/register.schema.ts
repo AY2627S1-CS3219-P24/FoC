@@ -1,9 +1,7 @@
 import { z } from 'zod'
 
-// Match the current backend email constraint after normalization.
 const emailPattern = /^\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b$/
 
-// Preserve password whitespace because it is part of the credential.
 export const registerSchema = z
   .object({
     name: z.string().trim().min(1, 'Please enter your name.'),
@@ -17,10 +15,14 @@ export const registerSchema = z
 
     password: z
       .string()
-      .min(1, 'Please enter your password.')
+      .refine((value) => value.trim().length > 0, {
+        message: 'Please enter your password.',
+      })
       .min(8, 'Password must contain at least 8 characters.'),
 
-    confirmPassword: z.string().min(1, 'Please confirm your password.'),
+    confirmPassword: z.string().refine((value) => value.trim().length > 0, {
+      message: 'Please confirm your password.',
+    }),
   })
   .refine((values) => values.password === values.confirmPassword, {
     message: 'Passwords do not match.',

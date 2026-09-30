@@ -1,19 +1,32 @@
-import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
-import { AuthLayout } from '#/features/auth/layouts/AuthLayout'
+import {
+  createRootRouteWithContext,
+  createRoute,
+  redirect,
+  Outlet,
+} from '@tanstack/react-router'
+
+import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
+import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
+import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
+import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
+import {
+  SessionRecoveryPending,
+  SessionRecoveryError,
+} from '#/features/auth/components/SessionRecoveryFeedback/SessionRecoveryFeedback'
 
-const rootRoute = createRootRoute()
+const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/login', replace: true })
+    throw redirect({ to: '/app', replace: true })
   },
 })
 
@@ -27,6 +40,11 @@ const loginRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   component: LoginPage,
   path: '/login',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { registered?: boolean } => ({
+    registered: search.registered === true ? true : undefined,
+  }),
 })
 
 const registerRoute = createRoute({
@@ -35,9 +53,31 @@ const registerRoute = createRoute({
   path: '/register',
 })
 
-// Below are admin routes
-const adminLayoutRoute = createRoute({
+const protectedRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'protected',
+  component: Outlet,
+  beforeLoad: async ({ context }) => {
+    if (!(await context.auth.ensureAuthenticated())) {
+      throw redirect({ to: '/login', replace: true })
+    }
+  },
+  pendingMs: 500,
+  pendingMinMs: 0,
+  pendingComponent: SessionRecoveryPending,
+  errorComponent: SessionRecoveryError,
+})
+
+const appRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/app',
+  component: AppHomePage,
+})
+
+// Below are admin routes
+// Admin pages require a signed-in session.
+const adminLayoutRoute = createRoute({
+  getParentRoute: () => protectedRoute,
   path: '/admin',
   component: AdminLayout,
 })
@@ -69,12 +109,24 @@ const supplierEditRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
+  ...(import.meta.env.DEV
+    ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: '/preview/user-layout',
+          component: UserLayoutPreview,
+        }),
+      ]
+    : []),
   indexRoute,
-  authLayoutRoute.addChildren([loginRoute, registerRoute]),
-  adminLayoutRoute.addChildren([
-    adminIndexRoute,
-    supplierListRoute,
-    supplierCreateRoute,
-    supplierEditRoute,
+  protectedRoute.addChildren([
+    appRoute,
+    adminLayoutRoute.addChildren([
+      adminIndexRoute,
+      supplierListRoute,
+      supplierCreateRoute,
+      supplierEditRoute,
+    ]),
   ]),
+  authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])

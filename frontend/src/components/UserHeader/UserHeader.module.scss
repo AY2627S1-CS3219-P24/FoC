@@ -1,0 +1,154 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding: 16px 24px;
+  min-height: 72px;
+}
+.brand {
+  font-size: 24px;
+  font-weight: 750;
+  flex-shrink: 0;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+.navigation {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  font-size: 15px;
+  a {
+    color: var(--color-text);
+    text-decoration: none;
+    padding: 8px 0;
+  }
+  [aria-current='page'] {
+    font-weight: 700;
+  }
+  [aria-disabled='true'] {
+    color: var(--color-text-muted);
+    cursor: default;
+  }
+}
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.notifications,
+.account {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.notifications {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  &:not(:disabled):hover {
+    background: #e9edf4;
+  }
+}
+.dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text);
+  border: 1px solid #f5f7fb;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  text-align: left;
+  border-radius: 8px;
+  min-width: 0;
+}
+button.account {
+  cursor: pointer;
+  &:hover {
+    background: #e9edf4;
+  }
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-text);
+  border-radius: 50%;
+  background: #e2e9f4;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+.identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.name {
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 180px;
+  overflow-wrap: anywhere;
+}
+.balance {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+.chevron {
+  margin-left: 30px;
+  flex-shrink: 0;
+}
+.header :focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+@media (max-width: 700px) {
+  .header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+  }
+  .navigation {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 14px;
+  }
+  .name {
+    max-width: 130px;
+  }
+  .chevron {
+    margin-left: 4px;
+  }
+  .actions {
+    gap: 4px;
+  }
+}

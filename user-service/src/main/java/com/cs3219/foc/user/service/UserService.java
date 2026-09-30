@@ -1,13 +1,16 @@
 package com.cs3219.foc.user.service;
 
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
+import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
+import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,6 +22,33 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
+
+    @Transactional(readOnly = true)
+    public UserProfileDto getUserProfile(UUID userId) {
+        var user = getUser(userId);
+        return userMapper.toUserProfileDto(user);
+    }
+
+    @Transactional
+    public UserProfileDto updateUserProfile(UUID userId, UpdateUserProfileRequest request) {
+        // Avoid saving a stale password hash if a password change happens concurrently.
+        var user =
+                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
+            throw new EntityAlreadyExistsException("Email is already associated with another account");
+        }
+
+        user.setName(request.name());
+        user.setEmail(request.email());
+        user.setPhoneNumber(request.phoneNumber());
+        user.setFaculty(request.faculty());
+        var savedUser = userRepository.saveAndFlush(user);
+        return userMapper.toUserProfileDto(savedUser);
+    }
+
+    private User getUser(UUID userId) {
+        return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+    }
 
     @Transactional
     public UserProfileDto registerUser(RegisterUserRequest request) {

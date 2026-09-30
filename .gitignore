@@ -6,6 +6,8 @@ out/
 # Environment / secrets
 .env
 .env.local
+.env.prod
+secrets/
 .env.*.local
 *.pem
 *.key

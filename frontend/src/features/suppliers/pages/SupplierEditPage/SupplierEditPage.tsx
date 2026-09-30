@@ -11,7 +11,7 @@ import ui from '../../styles/supplier.module.scss'
 
 export const SupplierEditPage = () => {
   const { supplierId } = useParams({
-    from: '/admin/suppliers/$supplierId/edit',
+    from: '/protected/admin/suppliers/$supplierId/edit',
   })
   const navigate = useNavigate()
   const toast = Toast.useToastManager()

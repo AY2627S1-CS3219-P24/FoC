@@ -4,6 +4,7 @@
 
 - JDK 25
 - Docker with Docker Compose
+- Node.js 22.12 or newer and npm
 - IntelliJ IDEA
 
 ## Setup
@@ -23,15 +24,14 @@ Also set up the keys needed for signing and verifying JWT tokens:
 
 ```bash
   mkdir -p user-service/src/main/resources/keys/
-  cd user-service/src/main/resources/keys/
   openssl genpkey \
   -algorithm EC \
   -pkeyopt ec_paramgen_curve:P-256 \
-  -out private.pem
+  -out user-service/src/main/resources/keys/private.pem
   openssl pkey \
-  -in private.pem \
+  -in user-service/src/main/resources/keys/private.pem \
   -pubout \
-  -out public.pem
+  -out user-service/src/main/resources/keys/public.pem
 ```
 
 Copy run configurations for IntelliJ:
@@ -52,15 +52,26 @@ Select the **Start all microservices** run configuration and click **Run**. Indi
 | Order | 8082 |
 | Credit | 8083 |
 
+In a second terminal, start the frontend from the repository root:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Vite forwards `/api`
+requests to the local backend services.
+
 ## Stop
 
-Stop the services in IntelliJ, then stop Postgres and RabbitMQ:
+Stop the frontend dev server and services in IntelliJ, then stop Postgres and RabbitMQ:
 
 ```bash
 docker compose down
 ```
 
-IF you'd like to delete the database volumes, run this instead:
+If you'd like to delete the database volumes, run this instead:
 
 ```bash
 docker compose down -v
