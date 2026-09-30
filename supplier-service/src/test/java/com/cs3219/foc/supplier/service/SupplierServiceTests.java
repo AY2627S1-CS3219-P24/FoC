@@ -3,23 +3,32 @@ package com.cs3219.foc.supplier.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.mapper.SupplierMapperImpl;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
+import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 class SupplierServiceTests {
     private final UUID supplierId = UUID.randomUUID();
+    // SG 23:00
+    private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T15:00:00Z"), ZoneId.of("Asia/Singapore"));
     private SupplierRepository repository;
     private SupplierService service;
 
@@ -27,7 +36,7 @@ class SupplierServiceTests {
     void setUp() {
         repository = mock(SupplierRepository.class);
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new SupplierService(repository, new SupplierMapperImpl());
+        service = new SupplierService(repository, new SupplierMapperImpl(), clock);
     }
 
     private static SupplierRequest request(String name) {
@@ -57,10 +66,11 @@ class SupplierServiceTests {
     }
 
     @Test
-    void listsOnlyActiveSuppliersByDefault() {
-        when(repository.findAllByActiveTrueOrderByNameAsc()).thenReturn(List.of(existingSupplier()));
-        assertThat(service.listSuppliers(false)).hasSize(1);
-        verify(repository, never()).findAllByOrderByNameAsc();
+    @SuppressWarnings("unchecked")
+    void listsSuppliersSortedByName() {
+        when(repository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of(existingSupplier()));
+        assertThat(service.listSuppliers(SupplierSearchCriteria.activeOnly())).hasSize(1);
+        verify(repository).findAll(any(Specification.class), eq(Sort.by("name")));
     }
 
     @Test

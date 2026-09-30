@@ -13,6 +13,7 @@ import com.cs3219.foc.supplier.exception.GlobalExceptionHandler;
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
+import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.service.SupplierService;
 import java.time.LocalTime;
@@ -93,20 +94,44 @@ class SupplierControllerTests {
 
     @Test
     void userListsOnlyActiveSuppliersEvenWhenAskingForInactive() throws Exception {
-        when(service.listSuppliers(false)).thenReturn(List.of(supplier));
+        when(service.listSuppliers(any())).thenReturn(List.of(supplier));
         mvc.perform(get("/suppliers").param("includeInactive", "true").with(user()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Cool Spot"))
                 .andExpect(jsonPath("$[0].openingTime").value("09:00:00"));
-        verify(service).listSuppliers(false);
+        verify(service).listSuppliers(new SupplierSearchCriteria(null, List.of(), false, false));
+    }
+
+    @Test
+    void passesSearchAndFiltersToService() throws Exception {
+        when(service.listSuppliers(any())).thenReturn(List.of(supplier));
+        mvc.perform(get("/suppliers")
+                        .param("q", "coffee")
+                        .param("category", "FOOD", "COFFEE")
+                        .param("openNow", "true")
+                        .with(user()))
+                .andExpect(status().isOk());
+        verify(service)
+                .listSuppliers(new SupplierSearchCriteria(
+                        "coffee", List.of(SupplierCategory.FOOD, SupplierCategory.COFFEE), true, false));
+    }
+
+    @Test
+    void rejectsUnknownCategory() throws Exception {
+        mvc.perform(get("/suppliers").param("category", "PIZZA").with(user()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Invalid value for category: PIZZA"
+                                + " (expected one of [FOOD, COFFEE, SHOPPING, PRINTING, OTHER])"));
+        verifyNoInteractions(service);
     }
 
     @Test
     void adminCanListInactiveSuppliers() throws Exception {
-        when(service.listSuppliers(true)).thenReturn(List.of(supplier));
+        when(service.listSuppliers(any())).thenReturn(List.of(supplier));
         mvc.perform(get("/suppliers").param("includeInactive", "true").with(admin()))
                 .andExpect(status().isOk());
-        verify(service).listSuppliers(true);
+        verify(service).listSuppliers(new SupplierSearchCriteria(null, List.of(), false, true));
     }
 
     @Test
