@@ -3,6 +3,7 @@ import {
   createRoute,
   redirect,
   Outlet,
+  Link,
 } from '@tanstack/react-router'
 
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
@@ -10,6 +11,8 @@ import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
+import { UserLayout } from '#/layouts/UserLayout'
+import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
   SessionRecoveryPending,
@@ -71,6 +74,28 @@ const appRoute = createRoute({
   component: AppHomePage,
 })
 
+const courierRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/courier',
+  component: () => (
+    <UserLayout
+      name="My account"
+      brand={<Link to="/courier">FoC</Link>}
+      navigation={
+        <>
+          <Link to="/courier" aria-current="page">
+            Home
+          </Link>
+          <span aria-disabled="true">Locations</span>
+          <span aria-disabled="true">My Errands</span>
+        </>
+      }
+    >
+      <CourierHomePage />
+    </UserLayout>
+  ),
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -82,6 +107,6 @@ export const routeTree = rootRoute.addChildren([
       ]
     : []),
   indexRoute,
-  protectedRoute.addChildren([appRoute]),
+  protectedRoute.addChildren([appRoute, courierRoute]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
 ])
