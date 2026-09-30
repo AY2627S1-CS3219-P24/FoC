@@ -5,11 +5,11 @@ import styles from './AdminLayout.module.scss'
 
 // The sidebar sections, add in other pages later on
 const sections = [
-  { label: 'Overview', to: null },
-  { label: 'Suppliers', to: '/admin/suppliers' },
-  { label: 'Users', to: null },
-  { label: 'Orders', to: null },
-  { label: 'Audit log', to: null },
+  { label: 'Overview', to: '/admin', exact: true },
+  { label: 'Suppliers', to: '/admin/suppliers', exact: false },
+  { label: 'Users', to: null, exact: false },
+  { label: 'Orders', to: null, exact: false },
+  { label: 'Audit log', to: null, exact: false },
 ] as const
 
 export const AdminLayout = () => {
@@ -31,12 +31,13 @@ export const AdminLayout = () => {
           </Button>
         </div>
         <nav className={styles.nav}>
-          {sections.map(({ label, to }) =>
+          {sections.map(({ label, to, exact }) =>
             to ? (
               <Link
                 key={label}
                 to={to}
                 className={styles.link}
+                activeOptions={{ exact }}
                 activeProps={{ 'data-active': true }}
                 onClick={closeMenu}
               >
