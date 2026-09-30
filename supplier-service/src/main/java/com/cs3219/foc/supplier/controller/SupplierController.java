@@ -2,6 +2,8 @@ package com.cs3219.foc.supplier.controller;
 
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
+import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
+import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.service.SupplierService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -17,11 +19,21 @@ import org.springframework.web.bind.annotation.*;
 public class SupplierController {
     private final SupplierService supplierService;
 
-    /** Admin users view inactive suppliers, (clicked the view inactive supplier checkbox) */
+    /**
+     * Searches suppliers, all filters are optional and combined with AND, eg:
+     * {@code /suppliers?q=coffee&category=FOOD&category=COFFEE&openNow=true}. Inactive suppliers are only returned
+     * to admins when purposely chose that option.
+     */
     @GetMapping
     public List<SupplierDto> listSuppliers(
-            @RequestParam(defaultValue = "false") boolean includeInactive, Authentication authentication) {
-        return supplierService.listSuppliers(includeInactive && isAdmin(authentication));
+            @RequestParam(required = false) String q,
+            @RequestParam(name = "category", required = false) List<SupplierCategory> categories,
+            @RequestParam(defaultValue = "false") boolean openNow,
+            @RequestParam(defaultValue = "false") boolean includeInactive,
+            Authentication authentication) {
+        var criteria = new SupplierSearchCriteria(
+                q, categories == null ? List.of() : categories, openNow, includeInactive && isAdmin(authentication));
+        return supplierService.listSuppliers(criteria);
     }
 
     @PostMapping
