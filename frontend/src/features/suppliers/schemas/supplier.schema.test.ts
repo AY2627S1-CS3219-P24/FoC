@@ -36,36 +36,44 @@ describe('supplierSchema', () => {
 })
 
 describe('opening hours', () => {
-  const hours = (
-    openingTime: string,
-    closingTime: string,
-    closesAfterMidnight = false,
-  ) =>
-    supplierSchema.safeParse({
+  const withMonday = (
+    patch: Partial<(typeof validForm.hours)[number]>,
+  ): typeof validForm => ({
+    ...validForm,
+    hours: validForm.hours.map((day) =>
+      day.dayOfWeek === 'MONDAY' ? { ...day, ...patch } : day,
+    ),
+  })
+
+  it('accepts hours that close after midnight', () => {
+    expect(
+      supplierSchema.safeParse(
+        withMonday({ opensAt: '18:00', closesAt: '02:00' }),
+      ).success,
+    ).toBe(true)
+  })
+
+  it('rejects identical opening and closing times on an open day', () => {
+    const result = supplierSchema.safeParse(
+      withMonday({ opensAt: '09:00', closesAt: '09:00' }),
+    )
+    expect(result.error?.issues[0].path).toEqual(['hours', 0, 'closesAt'])
+  })
+
+  it('ignores the times of closed days', () => {
+    expect(
+      supplierSchema.safeParse(
+        withMonday({ open: false, opensAt: '', closesAt: '' }),
+      ).success,
+    ).toBe(true)
+  })
+
+  it('needs at least one open day', () => {
+    const result = supplierSchema.safeParse({
       ...validForm,
-      openingTime,
-      closingTime,
-      closesAfterMidnight,
+      hours: validForm.hours.map((day) => ({ ...day, open: false })),
     })
-
-  it('accepts a same-day schedule', () => {
-    expect(hours('09:00', '18:00').success).toBe(true)
-  })
-
-  it('rejects early morning closing time as default unless it indeed closes after midnight', () => {
-    const result = hours('09:00', '02:00')
-    expect(result.error?.issues[0].path).toEqual(['closingTime'])
-    expect(result.error?.issues[0].message).toMatch(/Closes after midnight/)
-    expect(hours('09:00', '02:00', true).success).toBe(true)
-  })
-
-  it('rejects "closes after midnight" with a later closing time', () => {
-    expect(hours('09:00', '18:00', true).success).toBe(false)
-  })
-
-  it('rejects identical opening and closing times', () => {
-    expect(hours('09:00', '09:00').success).toBe(false)
-    expect(hours('09:00', '09:00', true).success).toBe(false)
+    expect(result.error?.issues[0].path).toEqual(['hours'])
   })
 })
 
@@ -95,27 +103,40 @@ describe('supplier form conversion', () => {
     expect(result.error?.issues[0].path).toEqual(['longitude'])
   })
 
-  it('does not send the form-only overnight flag', () => {
-    expect(
-      toSupplierRequest({ ...validForm, closesAfterMidnight: true }),
-    ).not.toHaveProperty('closesAfterMidnight')
+  it('only sends the days marked open', () => {
+    const request = toSupplierRequest(validForm)
+    expect(request.openingHours.map((day) => day.dayOfWeek)).toEqual([
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+    ])
+    expect(request).not.toHaveProperty('hours')
   })
 
-  it('trims seconds from API times for the form', () => {
+  it('fills all days from the API, marking missing ones closed', () => {
     const supplier: Supplier = {
       id: '1',
       ...toSupplierRequest(validForm),
-      openingTime: '09:00:00',
-      closingTime: '02:00:00',
+      openingHours: [
+        { dayOfWeek: 'FRIDAY', opensAt: '18:00:00', closesAt: '02:00:00' },
+      ],
       active: true,
       createdAt: '',
       updatedAt: '',
     }
-    expect(toSupplierFormValues(supplier)).toMatchObject({
-      openingTime: '09:00',
-      closingTime: '02:00',
-      floor: '',
-      closesAfterMidnight: true,
+    const form = toSupplierFormValues(supplier)
+    expect(form.hours).toHaveLength(7)
+    expect(form.hours.find((day) => day.dayOfWeek === 'FRIDAY')).toEqual({
+      dayOfWeek: 'FRIDAY',
+      open: true,
+      opensAt: '18:00',
+      closesAt: '02:00',
     })
+    expect(form.hours.find((day) => day.dayOfWeek === 'MONDAY')?.open).toBe(
+      false,
+    )
+    expect(form.floor).toBe('')
   })
 })
