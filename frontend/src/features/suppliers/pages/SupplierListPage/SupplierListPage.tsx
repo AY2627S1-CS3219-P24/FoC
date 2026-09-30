@@ -27,7 +27,7 @@ import styles from './SupplierListPage.module.scss'
 const SEARCH_DEBOUNCE_MS = 300
 
 export const SupplierListPage = () => {
-  // Filters live in the URL so refresh, back/forward and shared links keep them.
+  // filters live in the URL, back or forward or shared links will keepp the filters
   const filters = useSearch({ from: '/protected/admin/suppliers' })
   const selectedCategories = toSupplierFilters(filters).category ?? []
   const navigate = useNavigate({ from: '/admin/suppliers' })
@@ -41,7 +41,7 @@ export const SupplierListPage = () => {
   const setActive = useSetSupplierActive()
   const toast = Toast.useToastManager()
 
-  // Push typed text to the URL once the user pauses, instead of on every key.
+  // add typed text to the URL once the user pauses
   useEffect(() => {
     const q = searchText.trim()
     if (q === (filters.q ?? '')) return
@@ -52,7 +52,7 @@ export const SupplierListPage = () => {
     return () => clearTimeout(timer)
   }, [searchText])
 
-  // Follow URL changes made elsewhere, e.g. "Clear filters" or browser back.
+  // keep check the current filters
   useEffect(() => {
     if ((filters.q ?? '') !== searchText.trim()) setSearchText(filters.q ?? '')
   }, [filters.q])

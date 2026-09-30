@@ -141,7 +141,7 @@
   overflow-x: auto;
   transition: opacity 0.15s;
 
-  // Previous results stay visible, dimmed, while new filters load.
+  // previous results stay visible
   &[data-stale] {
     opacity: 0.6;
   }

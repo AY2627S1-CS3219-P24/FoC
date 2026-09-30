@@ -1,8 +1,8 @@
 import { useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router'
 
 /**
- * Returns to wherever the admin came from (the filtered list or the overview),
- * or to the supplier list when the page was opened directly.
+ * Go to wherever the admin came from (the filtered list or the overview),
+ * or to the supplier list
  */
 export const useBackToSupplierList = () => {
   const router = useRouter()
