@@ -34,6 +34,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -91,6 +92,21 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.refreshToken").doesNotExist());
         verify(service).getUserProfile(userId);
+    }
+
+    @Test
+    void adminCanReadAnotherUserProfile() throws Exception {
+        when(service.getUserProfile(userId)).thenReturn(profile);
+        mvc.perform(get("/users/{id}", userId).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId.toString()));
+        verify(service).getUserProfile(userId);
+    }
+
+    @Test
+    void nonAdminCannotReadAnotherUserProfile() throws Exception {
+        mvc.perform(get("/users/{id}", userId).with(jwt())).andExpect(status().isForbidden());
+        verifyNoInteractions(service);
     }
 
     @Test

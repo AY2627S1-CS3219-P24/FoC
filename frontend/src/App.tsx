@@ -9,6 +9,7 @@ import { useEffect } from 'react'
 import { queryClient } from '#/lib/queryClient'
 import { AuthProvider, useAuth } from '#/features/auth/providers/AuthProvider'
 import { routeTree } from '#/routes'
+import { ToastProvider } from '#/components/ToastProvider/ToastProvider'
 
 const router = createRouter({
   routeTree,
@@ -41,9 +42,11 @@ declare module '@tanstack/react-router' {
 export const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AuthRouterProvider router={router} />
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <AuthRouterProvider router={router} />
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   )
 }

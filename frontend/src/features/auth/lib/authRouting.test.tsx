@@ -147,7 +147,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   const router = setup('/app')
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Unable to restore your session',
+    'Something went wrong. Please try again.',
   )
   expect(screen.queryByText('Private server details')).not.toBeInTheDocument()
   expect(
