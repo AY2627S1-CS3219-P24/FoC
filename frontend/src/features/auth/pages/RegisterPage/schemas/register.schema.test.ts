@@ -3,30 +3,43 @@ import { registerSchema } from './register.schema'
 
 const validValues = {
   name: 'Jamie Loh',
-  email: 'jamie@example.com',
+  email: 'jamie@u.nus.edu',
   password: 'abcdefgh',
   confirmPassword: 'abcdefgh',
 }
 
 describe('registerSchema', () => {
-  it('accepts valid registration values', () => {
-    const result = registerSchema.safeParse(validValues)
+  it.each(['jamie@u.nus.edu', 'jamie@nus.edu.sg'])('accepts %s', (email) => {
+    const result = registerSchema.safeParse({ ...validValues, email })
 
     expect(result.success).toBe(true)
   })
+
+  it.each(['jamie@gmail.com', 'jamie@u.nus.edu.example.com'])(
+    'rejects an unsupported domain: %s',
+    (email) => {
+      const result = registerSchema.safeParse({ ...validValues, email })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues[0].message).toBe(
+          'Please use your NUS email address.',
+        )
+      }
+    },
+  )
 
   it('normalizes the name and email', () => {
     const result = registerSchema.safeParse({
       ...validValues,
       name: '  Jamie Loh  ',
-      email: '  JAMIE@EXAMPLE.COM  ',
+      email: '  JAMIE@U.NUS.EDU  ',
     })
 
     expect(result.success).toBe(true)
 
     if (result.success) {
       expect(result.data.name).toBe('Jamie Loh')
-      expect(result.data.email).toBe('jamie@example.com')
+      expect(result.data.email).toBe('jamie@u.nus.edu')
     }
   })
 
@@ -45,7 +58,7 @@ describe('registerSchema', () => {
     }
   })
 
-  it.each(['', 'jamie', 'jamie@', 'jamie@example.com extra'])(
+  it.each(['', 'jamie', 'jamie@', 'jamie@u.nus.edu extra'])(
     'rejects an invalid email: %j',
     (email) => {
       const result = registerSchema.safeParse({
