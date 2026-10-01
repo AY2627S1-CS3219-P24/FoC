@@ -49,7 +49,7 @@ export type Supplier = {
 
 export type SupplierRequest = Omit<
   Supplier,
-  'id' | 'active' | 'createdAt' | 'updatedAt'
+  'id' | 'active' | 'imageUrl' | 'createdAt' | 'updatedAt'
 >
 
 export type SupplierFilters = {
@@ -66,3 +66,7 @@ export type SupplierFilters = {
 export type SupplierListSearch = Omit<SupplierFilters, 'category'> & {
   category?: string
 }
+
+// 3 conditions for image upload
+export type SupplierImageChange =
+  { type: 'keep' } | { type: 'upload'; file: File } | { type: 'remove' }

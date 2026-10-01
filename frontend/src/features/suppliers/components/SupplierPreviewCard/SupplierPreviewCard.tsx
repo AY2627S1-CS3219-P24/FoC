@@ -13,9 +13,10 @@ import styles from './SupplierPreviewCard.module.scss'
 type SupplierPreviewCardProps = {
   /** Live form, field may be empty while the admin types */
   values: DeepPartial<SupplierFormValues>
+  /** Newly uploaded file or the saved image, null shows the placeholder. */
+  imageUrl: string | null
 }
 
-const isHttpUrl = (value: string) => /^https?:\/\/\S+$/.test(value)
 const isTime = (value: string) => /^\d{2}:\d{2}$/.test(value)
 const isCoordinate = (value: string, limit: number) =>
   value.trim() !== '' &&
@@ -23,7 +24,10 @@ const isCoordinate = (value: string, limit: number) =>
   Math.abs(Number(value)) <= limit
 
 /** Provide admin a live preview for the card display to student users */
-export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
+export const SupplierPreviewCard = ({
+  values,
+  imageUrl,
+}: SupplierPreviewCardProps) => {
   const {
     name = '',
     category,
@@ -33,11 +37,10 @@ export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
     hours = [],
     latitude = '',
     longitude = '',
-    imageUrl = '',
   } = values
   const [failedImage, setFailedImage] = useState<string | null>(null)
 
-  const showImage = isHttpUrl(imageUrl) && failedImage !== imageUrl
+  const showImage = Boolean(imageUrl) && failedImage !== imageUrl
   const openingHours = toOpeningHours(
     hours.filter(
       (day): day is SupplierFormValues['hours'][number] =>
@@ -63,7 +66,7 @@ export const SupplierPreviewCard = ({ values }: SupplierPreviewCardProps) => {
       <div className={styles.media} data-category={category}>
         {showImage ? (
           <img
-            src={imageUrl}
+            src={imageUrl ?? undefined}
             alt=""
             className={styles.image}
             onError={() => setFailedImage(imageUrl)}

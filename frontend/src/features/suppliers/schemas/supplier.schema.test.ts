@@ -24,14 +24,10 @@ describe('supplierSchema', () => {
     expect(fields).toEqual(expect.arrayContaining(['name', 'building']))
   })
 
-  it('rejects non-http image URLs and out-of-range coordinates', () => {
-    const result = supplierSchema.safeParse({
-      ...validForm,
-      imageUrl: 'javascript:alert(1)',
-      latitude: '91',
-    })
+  it('rejects out-of-range coordinates', () => {
+    const result = supplierSchema.safeParse({ ...validForm, latitude: '91' })
     const fields = result.error?.issues.map((issue) => issue.path[0])
-    expect(fields).toEqual(expect.arrayContaining(['imageUrl', 'latitude']))
+    expect(fields).toEqual(['latitude'])
   })
 })
 
@@ -84,7 +80,6 @@ describe('supplier form conversion', () => {
       locationDescription: null,
       latitude: null,
       longitude: null,
-      imageUrl: null,
     })
   })
 
@@ -119,6 +114,7 @@ describe('supplier form conversion', () => {
     const supplier: Supplier = {
       id: '1',
       ...toSupplierRequest(validForm),
+      imageUrl: null,
       openingHours: [
         { dayOfWeek: 'FRIDAY', opensAt: '18:00:00', closesAt: '02:00:00' },
       ],

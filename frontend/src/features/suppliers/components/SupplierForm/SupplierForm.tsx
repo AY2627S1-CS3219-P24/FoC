@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@base-ui/react/button'
@@ -7,9 +8,11 @@ import { supplierSchema } from '../../schemas/supplier.schema'
 import { SUPPLIER_CATEGORIES } from '../../types/supplier.types'
 import { categoryLabels } from '../../utils/supplierFormat'
 import { OpeningHoursField } from '../OpeningHoursField/OpeningHoursField'
+import { SupplierImageField } from '../SupplierImageField/SupplierImageField'
 import { SupplierPreviewCard } from '../SupplierPreviewCard/SupplierPreviewCard'
 import type { Control, FieldErrors } from 'react-hook-form'
 import type { SupplierFormValues } from '../../schemas/supplier.schema'
+import type { SupplierImageChange } from '../../types/supplier.types'
 import ui from '../../styles/supplier.module.scss'
 import styles from './SupplierForm.module.scss'
 
@@ -17,7 +20,8 @@ type SupplierFormProps = {
   defaultValues: SupplierFormValues
   submitLabel: string
   submitting?: boolean
-  onSubmit: (values: SupplierFormValues) => void
+  currentImageUrl?: string | null
+  onSubmit: (values: SupplierFormValues, image: SupplierImageChange) => void
   onCancel: () => void
 }
 
@@ -29,7 +33,7 @@ type TextFieldProps = {
   control: Control<SupplierFormValues>
   errors: FieldErrors<SupplierFormValues>
   required?: boolean
-  type?: 'text' | 'time' | 'url'
+  type?: 'text' | 'time'
   placeholder?: string
   hint?: string
 }
@@ -95,9 +99,30 @@ export const SupplierForm = ({
   defaultValues,
   submitLabel,
   submitting = false,
+  currentImageUrl = null,
   onSubmit,
   onCancel,
 }: SupplierFormProps) => {
+  const [imageChange, setImageChange] = useState<SupplierImageChange>({
+    type: 'keep',
+  })
+  // A local preview URL for a newly chosen file, released when it changes.
+  const selectedImageUrl = useMemo(
+    () =>
+      imageChange.type === 'upload'
+        ? URL.createObjectURL(imageChange.file)
+        : null,
+    [imageChange],
+  )
+  useEffect(
+    () => () => {
+      if (selectedImageUrl) URL.revokeObjectURL(selectedImageUrl)
+    },
+    [selectedImageUrl],
+  )
+  const previewImageUrl =
+    imageChange.type === 'remove' ? null : (selectedImageUrl ?? currentImageUrl)
+
   const {
     control,
     handleSubmit,
@@ -116,7 +141,7 @@ export const SupplierForm = ({
       <form
         className={`${ui.card} ${styles.form}`}
         noValidate
-        onSubmit={handleSubmit(onSubmit)}
+        onSubmit={handleSubmit((submitted) => onSubmit(submitted, imageChange))}
       >
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Basic information</h2>
@@ -227,13 +252,10 @@ export const SupplierForm = ({
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Image</h2>
-          <TextField
-            {...fieldProps}
-            name="imageUrl"
-            label="Image URL"
-            type="url"
-            placeholder="https://…"
-            hint="Shown on the supplier card. Leave blank to use a placeholder."
+          <SupplierImageField
+            previewUrl={previewImageUrl}
+            hasSavedImage={Boolean(currentImageUrl)}
+            onChange={setImageChange}
           />
         </section>
 
@@ -258,7 +280,7 @@ export const SupplierForm = ({
 
       <aside className={styles.preview} aria-label="Preview">
         <p className={styles.previewLabel}>Preview</p>
-        <SupplierPreviewCard values={values} />
+        <SupplierPreviewCard values={values} imageUrl={previewImageUrl} />
         <p className={styles.previewHint}>
           This is how students will see the supplier.
         </p>

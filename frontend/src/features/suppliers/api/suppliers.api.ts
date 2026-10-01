@@ -41,3 +41,19 @@ export const setSupplierActive = async (id: string, active: boolean) => {
   )
   return data
 }
+
+// Uploads a jpeg or png
+export const uploadSupplierImage = async (id: string, file: File) => {
+  const body = new FormData()
+  body.append('file', file)
+  const { data } = await axiosClient.put<Supplier>(
+    `/suppliers/${id}/image`,
+    body,
+  )
+  return data
+}
+
+export const removeSupplierImage = async (id: string) => {
+  const { data } = await axiosClient.delete<Supplier>(`/suppliers/${id}/image`)
+  return data
+}

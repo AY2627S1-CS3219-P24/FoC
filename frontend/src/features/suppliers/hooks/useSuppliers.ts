@@ -8,10 +8,16 @@ import {
   createSupplier,
   getSupplier,
   listSuppliers,
+  removeSupplierImage,
   setSupplierActive,
   updateSupplier,
+  uploadSupplierImage,
 } from '../api/suppliers.api'
-import type { SupplierFilters, SupplierRequest } from '../types/supplier.types'
+import type {
+  SupplierFilters,
+  SupplierImageChange,
+  SupplierRequest,
+} from '../types/supplier.types'
 
 export const supplierKeys = {
   all: ['suppliers'] as const,
@@ -59,6 +65,25 @@ export const useSetSupplierActive = () => {
   return useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       setSupplierActive(id, active),
+    onSuccess: invalidate,
+  })
+}
+
+// Uploads or removes the image
+export const useApplySupplierImageChange = () => {
+  const invalidate = useInvalidateSuppliers()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      change,
+    }: {
+      id: string
+      change: SupplierImageChange
+    }) => {
+      if (change.type === 'upload') return uploadSupplierImage(id, change.file)
+      if (change.type === 'remove') return removeSupplierImage(id)
+      return null
+    },
     onSuccess: invalidate,
   })
 }

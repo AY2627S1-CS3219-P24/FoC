@@ -63,13 +63,6 @@ export const supplierSchema = z.object({
     }),
   latitude: coordinate(-90, 90),
   longitude: coordinate(-180, 180),
-  imageUrl: z
-    .string()
-    .trim()
-    .max(2048)
-    .refine((value) => value === '' || /^https?:\/\/\S+$/.test(value), {
-      message: 'Please enter an http(s) URL.',
-    }),
 })
 
 export type SupplierFormValues = z.infer<typeof supplierSchema>
@@ -91,7 +84,6 @@ export const emptySupplierForm: SupplierFormValues = {
   })),
   latitude: '',
   longitude: '',
-  imageUrl: '',
 }
 
 export const toOpeningHours = (
@@ -126,7 +118,6 @@ export const toSupplierFormValues = (
   }),
   latitude: supplier.latitude?.toString() ?? '',
   longitude: supplier.longitude?.toString() ?? '',
-  imageUrl: supplier.imageUrl ?? '',
 })
 
 const optional = (value: string) => (value === '' ? null : value)
@@ -142,6 +133,5 @@ export const toSupplierRequest = ({
   locationDescription: optional(values.locationDescription),
   latitude: optionalNumber(values.latitude),
   longitude: optionalNumber(values.longitude),
-  imageUrl: optional(values.imageUrl),
   openingHours: toOpeningHours(hours),
 })

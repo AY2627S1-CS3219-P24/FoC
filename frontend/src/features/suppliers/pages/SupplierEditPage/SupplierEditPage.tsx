@@ -1,22 +1,22 @@
 import { Link, useParams } from '@tanstack/react-router'
-import { Toast } from '@base-ui/react/toast'
 import { SupplierForm } from '../../components/SupplierForm/SupplierForm'
 import { useSupplier, useUpdateSupplier } from '../../hooks/useSuppliers'
+import { useSaveSupplier } from '../../hooks/useSaveSupplier'
+import { useBackToSupplierList } from '../../hooks/useBackToSupplierList'
 import {
   toSupplierFormValues,
   toSupplierRequest,
 } from '../../schemas/supplier.schema'
 import { getErrorMessage } from '../../utils/supplierFormat'
-import { useBackToSupplierList } from '../../hooks/useBackToSupplierList'
 import ui from '../../styles/supplier.module.scss'
 
 export const SupplierEditPage = () => {
   const { supplierId } = useParams({
     from: '/protected/admin/suppliers/$supplierId/edit',
   })
-  const toast = Toast.useToastManager()
   const supplier = useSupplier(supplierId)
   const updateSupplier = useUpdateSupplier(supplierId)
+  const { save, savingImage } = useSaveSupplier('updated')
   const backToList = useBackToSupplierList()
 
   return (
@@ -36,21 +36,15 @@ export const SupplierEditPage = () => {
       {supplier.isSuccess && (
         <SupplierForm
           defaultValues={toSupplierFormValues(supplier.data)}
+          currentImageUrl={supplier.data.imageUrl}
           submitLabel="Save Changes"
-          submitting={updateSupplier.isPending}
+          submitting={updateSupplier.isPending || savingImage}
           onCancel={backToList}
-          onSubmit={(values) =>
-            updateSupplier.mutate(toSupplierRequest(values), {
-              onSuccess: (updated) => {
-                toast.add({
-                  type: 'success',
-                  title: `${updated.name} was updated.`,
-                })
-                backToList()
-              },
-              onError: (error) =>
-                toast.add({ type: 'error', title: getErrorMessage(error) }),
-            })
+          onSubmit={(values, image) =>
+            void save(
+              () => updateSupplier.mutateAsync(toSupplierRequest(values)),
+              image,
+            )
           }
         />
       )}

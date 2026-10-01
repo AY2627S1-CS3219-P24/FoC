@@ -1,18 +1,17 @@
 import { Link } from '@tanstack/react-router'
-import { Toast } from '@base-ui/react/toast'
 import { SupplierForm } from '../../components/SupplierForm/SupplierForm'
 import { useCreateSupplier } from '../../hooks/useSuppliers'
+import { useSaveSupplier } from '../../hooks/useSaveSupplier'
+import { useBackToSupplierList } from '../../hooks/useBackToSupplierList'
 import {
   emptySupplierForm,
   toSupplierRequest,
 } from '../../schemas/supplier.schema'
-import { getErrorMessage } from '../../utils/supplierFormat'
-import { useBackToSupplierList } from '../../hooks/useBackToSupplierList'
 import ui from '../../styles/supplier.module.scss'
 
 export const SupplierCreatePage = () => {
-  const toast = Toast.useToastManager()
   const createSupplier = useCreateSupplier()
+  const { save, savingImage } = useSaveSupplier('added')
   const backToList = useBackToSupplierList()
 
   return (
@@ -26,20 +25,13 @@ export const SupplierCreatePage = () => {
       <SupplierForm
         defaultValues={emptySupplierForm}
         submitLabel="Add Supplier"
-        submitting={createSupplier.isPending}
+        submitting={createSupplier.isPending || savingImage}
         onCancel={backToList}
-        onSubmit={(values) =>
-          createSupplier.mutate(toSupplierRequest(values), {
-            onSuccess: (supplier) => {
-              toast.add({
-                type: 'success',
-                title: `${supplier.name} was added.`,
-              })
-              backToList()
-            },
-            onError: (error) =>
-              toast.add({ type: 'error', title: getErrorMessage(error) }),
-          })
+        onSubmit={(values, image) =>
+          void save(
+            () => createSupplier.mutateAsync(toSupplierRequest(values)),
+            image,
+          )
         }
       />
     </section>
