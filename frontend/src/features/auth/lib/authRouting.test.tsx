@@ -98,19 +98,19 @@ it.each(['/app', '/'])(
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+      screen.queryByRole('heading', { name: 'What do you need?' }),
     ).not.toBeInTheDocument()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(screen.getByRole('status')).toHaveTextContent('Loading…')
     expect(
-      screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+      screen.queryByRole('heading', { name: 'What do you need?' }),
     ).not.toBeInTheDocument()
 
     await act(async () => resolve(tokens()))
 
     expect(
-      screen.getByRole('heading', { name: 'Welcome to FoC' }),
+      screen.getByRole('heading', { name: 'What do you need?' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app')
     expect(refresh).toHaveBeenCalledTimes(1)
@@ -134,7 +134,7 @@ it('opens the app without showing loading when recovery finishes before 500ms', 
   await act(async () => resolve(tokens()))
 
   expect(
-    screen.getByRole('heading', { name: 'Welcome to FoC' }),
+    screen.getByRole('heading', { name: 'What do you need?' }),
   ).toBeInTheDocument()
   await act(async () => vi.advanceTimersByTimeAsync(500))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -161,7 +161,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   )
   expect(screen.queryByText('Private server details')).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+    screen.queryByRole('heading', { name: 'What do you need?' }),
   ).not.toBeInTheDocument()
   expect(router.state.location.pathname).toBe('/app')
 
@@ -170,7 +170,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
     .click(screen.getByRole('button', { name: 'Try again' }))
 
   expect(
-    await screen.findByRole('heading', { name: 'Welcome to FoC' }),
+    await screen.findByRole('heading', { name: 'What do you need?' }),
   ).toBeInTheDocument()
   expect(refresh).toHaveBeenCalledTimes(2)
 })
@@ -179,7 +179,7 @@ it('routes a confirmed business authentication failure through Provider and the 
   setAccessToken('original')
   refresh.mockResolvedValue(tokens())
   const router = setup('/app')
-  await screen.findByRole('heading', { name: 'Welcome to FoC' })
+  await screen.findByRole('heading', { name: 'What do you need?' })
   const adapter = vi.fn(async (config) => {
     throw new AxiosError('Unauthorized', undefined, config, undefined, {
       config,
@@ -279,7 +279,7 @@ it.each(['success', 'failure'])(
     expect(button).toBeEnabled()
     expect(button).toHaveTextContent('Log out')
     expect(
-      screen.getByRole('heading', { name: 'Welcome to FoC' }),
+      screen.getByRole('heading', { name: 'What do you need?' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app')
 
