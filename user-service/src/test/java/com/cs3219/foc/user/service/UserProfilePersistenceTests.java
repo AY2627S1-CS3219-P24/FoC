@@ -144,7 +144,7 @@ class UserProfilePersistenceTests {
 
     @Test
     void uploadsReplacesAndRemovesAvatarWithoutChangingProfileOrPassword() throws Exception {
-        var user = createPasswordUser("avatar@example.com");
+        var user = createPasswordUser("avatar@u.nus.edu");
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
         var first = avatars.upload(user.getId(), image("jpeg", 32, 32));
         assertThat(first.avatarUrl()).startsWith("/users/me/avatar?v=");
@@ -154,7 +154,7 @@ class UserProfilePersistenceTests {
         assertThat(second.avatarUrl()).isNotEqualTo(first.avatarUrl());
         assertThat(Files.exists(avatarDirectory.resolve(oldKey))).isFalse();
         service.updateUserProfile(
-                user.getId(), new UpdateUserProfileRequest("New Name", "avatar@example.com", null, null));
+                user.getId(), new UpdateUserProfileRequest("New Name", "avatar@u.nus.edu", null, null));
         passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(second.avatarUrl());
         avatars.remove(user.getId());
@@ -398,14 +398,14 @@ class UserProfilePersistenceTests {
 
     @Test
     void simultaneousProfileSaveCannotRestoreThePreviousPassword() throws Exception {
-        var user = createPasswordUser("password@example.com");
+        var user = createPasswordUser("password@u.nus.edu");
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var profile = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
                 return service.updateUserProfile(
                         user.getId(),
-                        new UpdateUserProfileRequest("Changed Name", "password@example.com", null, "Computing"));
+                        new UpdateUserProfileRequest("Changed Name", "password@u.nus.edu", null, "Computing"));
             });
             var password = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
@@ -424,45 +424,44 @@ class UserProfilePersistenceTests {
 
     @Test
     void persistsProfileAndAllowsUsersToShareARealName() {
-        var first = createUser("first@example.com");
-        createUser("second@example.com");
+        var first = createUser("first@u.nus.edu");
+        createUser("second@u.nus.edu");
         service.updateUserProfile(
-                first.getId(), new UpdateUserProfileRequest("Alex Tan", " NEW@EXAMPLE.COM ", null, null));
+                first.getId(), new UpdateUserProfileRequest("Alex Tan", " NEW@U.NUS.EDU ", null, null));
         var reloaded = repository.findById(first.getId()).orElseThrow();
-        assertThat(reloaded.getEmail()).isEqualTo("new@example.com");
+        assertThat(reloaded.getEmail()).isEqualTo("new@u.nus.edu");
         assertThat(reloaded.getName()).isEqualTo("Alex Tan");
         assertThat(reloaded.getPasswordHash()).isEqualTo("unchanged-hash");
         assertThat(reloaded.getRoles()).containsExactly(UserRole.USER);
-        service.updateUserProfile(
-                first.getId(), new UpdateUserProfileRequest("Alex Tan", "new@example.com", null, null));
+        service.updateUserProfile(first.getId(), new UpdateUserProfileRequest("Alex Tan", "new@u.nus.edu", null, null));
     }
 
     @Test
     void rejectedUpdateLeavesBothFieldsUnchanged() {
-        var first = createUser("first@example.com");
-        createUser("taken@example.com");
+        var first = createUser("first@u.nus.edu");
+        createUser("taken@u.nus.edu");
         assertThatThrownBy(() -> service.updateUserProfile(
-                        first.getId(), new UpdateUserProfileRequest("Changed Name", "taken@example.com", null, null)))
+                        first.getId(), new UpdateUserProfileRequest("Changed Name", "taken@u.nus.edu", null, null)))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         var reloaded = repository.findById(first.getId()).orElseThrow();
         assertThat(reloaded.getName()).isEqualTo("Alex Tan");
-        assertThat(reloaded.getEmail()).isEqualTo("first@example.com");
+        assertThat(reloaded.getEmail()).isEqualTo("first@u.nus.edu");
     }
 
     @Test
     void persistsReadsAndClearsOptionalDetails() {
-        var user = createUser("details@example.com");
+        var user = createUser("details@u.nus.edu");
         assertThat(service.getUserProfile(user.getId()).phoneNumber()).isNull();
         assertThat(service.getUserProfile(user.getId()).faculty()).isNull();
         service.updateUserProfile(
                 user.getId(),
                 new UpdateUserProfileRequest(
-                        "Alex Tan", "details@example.com", " +65 9123-5436 ", " School of Computing "));
+                        "Alex Tan", "details@u.nus.edu", " +65 9123-5436 ", " School of Computing "));
         var profile = service.getUserProfile(user.getId());
         assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
         assertThat(profile.faculty()).isEqualTo("School of Computing");
         service.updateUserProfile(
-                user.getId(), new UpdateUserProfileRequest("Alex Tan", "details@example.com", " ", " "));
+                user.getId(), new UpdateUserProfileRequest("Alex Tan", "details@u.nus.edu", " ", " "));
         var reloaded = repository.findById(user.getId()).orElseThrow();
         assertThat(reloaded.getPhoneNumber()).isNull();
         assertThat(reloaded.getFaculty()).isNull();
@@ -509,14 +508,14 @@ class UserProfilePersistenceTests {
 
     @Test
     void duplicateEmailDoesNotChangeOptionalDetails() {
-        var user = createUser("details@example.com");
-        createUser("taken@example.com");
+        var user = createUser("details@u.nus.edu");
+        createUser("taken@u.nus.edu");
         service.updateUserProfile(
                 user.getId(),
-                new UpdateUserProfileRequest("Alex Tan", "details@example.com", "+6591235436", "School of Computing"));
+                new UpdateUserProfileRequest("Alex Tan", "details@u.nus.edu", "+6591235436", "School of Computing"));
         assertThatThrownBy(() -> service.updateUserProfile(
                         user.getId(),
-                        new UpdateUserProfileRequest("Changed", "taken@example.com", "+6591239999", "Changed faculty")))
+                        new UpdateUserProfileRequest("Changed", "taken@u.nus.edu", "+6591239999", "Changed faculty")))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         var profile = service.getUserProfile(user.getId());
         assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
@@ -525,8 +524,8 @@ class UserProfilePersistenceTests {
 
     @Test
     void concurrentClaimsForSameEmailHaveOnlyOneWinner() throws Exception {
-        var first = createUser("first@example.com");
-        var second = createUser("second@example.com");
+        var first = createUser("first@u.nus.edu");
+        var second = createUser("second@u.nus.edu");
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var one = executor.submit(claimEmail(first.getId(), barrier));
@@ -534,10 +533,10 @@ class UserProfilePersistenceTests {
             assertThat(List.of(one.get(20, TimeUnit.SECONDS), two.get(20, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(true, false);
         }
-        assertThat(repository.findAll().stream().filter(user -> "shared@example.com".equals(user.getEmail())))
+        assertThat(repository.findAll().stream().filter(user -> "shared@u.nus.edu".equals(user.getEmail())))
                 .hasSize(1);
         var loser = repository.findAll().stream()
-                .filter(user -> !"shared@example.com".equals(user.getEmail()))
+                .filter(user -> !"shared@u.nus.edu".equals(user.getEmail()))
                 .findFirst()
                 .orElseThrow();
         assertThat(loser.getName()).isEqualTo("Alex Tan");
@@ -547,8 +546,7 @@ class UserProfilePersistenceTests {
         return () -> {
             barrier.await(10, TimeUnit.SECONDS);
             try {
-                service.updateUserProfile(
-                        id, new UpdateUserProfileRequest("Changed", "shared@example.com", null, null));
+                service.updateUserProfile(id, new UpdateUserProfileRequest("Changed", "shared@u.nus.edu", null, null));
                 return true;
             } catch (EntityAlreadyExistsException | DataIntegrityViolationException exception) {
                 return false;

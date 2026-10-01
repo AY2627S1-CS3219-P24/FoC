@@ -3,7 +3,6 @@ import {
   createRoute,
   redirect,
   Outlet,
-  Link,
 } from '@tanstack/react-router'
 
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
@@ -16,8 +15,10 @@ import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePag
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
 import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
+import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
+import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
+import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
-import { UserLayout } from '#/layouts/UserLayout'
 import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
@@ -73,10 +74,34 @@ const protectedRoute = createRoute({
   errorComponent: SessionRecoveryError,
 })
 
-const appRoute = createRoute({
+const accountRoute = createRoute({
   getParentRoute: () => protectedRoute,
+  id: 'account',
+  component: AccountLayout,
+})
+
+const profileRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/profile',
+  component: ProfilePage,
+})
+
+const editProfileRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/profile/edit',
+  component: EditProfilePage,
+})
+
+const appRoute = createRoute({
+  getParentRoute: () => accountRoute,
   path: '/app',
   component: AppHomePage,
+})
+
+const courierRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/courier',
+  component: CourierHomePage,
 })
 
 // Below are admin routes
@@ -124,7 +149,14 @@ export const routeTree = rootRoute.addChildren([
     : []),
   indexRoute,
   protectedRoute.addChildren([
-    appRoute,
+    // Student pages share the top-header account layout.
+    accountRoute.addChildren([
+      appRoute,
+      courierRoute,
+      profileRoute,
+      editProfileRoute,
+    ]),
+    // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,
       supplierListRoute,

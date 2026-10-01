@@ -9,6 +9,10 @@ describe('RegisterForm', () => {
 
     render(<RegisterForm />)
 
+    expect(
+      screen.queryByText('Please use your NUS email address.'),
+    ).not.toBeInTheDocument()
+
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Password'), 'abc')
@@ -60,7 +64,7 @@ describe('RegisterForm', () => {
     const confirmInput = screen.getByLabelText('Confirm password')
 
     await user.type(screen.getByLabelText('Name'), 'Jamie')
-    await user.type(screen.getByLabelText('Email'), 'jamie@example.com')
+    await user.type(screen.getByLabelText('Email'), 'jamie@u.nus.edu')
     await user.type(passwordInput, 'abcdefgh')
     await user.type(confirmInput, 'different')
 
@@ -115,7 +119,15 @@ describe('RegisterForm', () => {
     expect(onValidSubmit).not.toHaveBeenCalled()
 
     await user.clear(emailInput)
-    await user.type(emailInput, 'jamie@example.com')
+    await user.type(emailInput, 'jamie@gmail.com')
+
+    expect(emailInput).toHaveAccessibleDescription(
+      'Please use your NUS email address.',
+    )
+    expect(onValidSubmit).not.toHaveBeenCalled()
+
+    await user.clear(emailInput)
+    await user.type(emailInput, 'jamie@u.nus.edu')
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(onValidSubmit).not.toHaveBeenCalled()

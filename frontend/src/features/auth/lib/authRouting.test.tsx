@@ -27,6 +27,20 @@ vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
+vi.mock('../api/userProfile.api', () => ({
+  updateUserProfile: vi.fn(),
+  changePassword: vi.fn(),
+  uploadAvatar: vi.fn(),
+  removeAvatar: vi.fn(),
+  getUserProfile: vi.fn(async () => ({
+    id: '1',
+    name: 'Alex Tan',
+    email: 'alex@example.com',
+    roles: ['USER'],
+    avatarUrl: null,
+  })),
+}))
+
 const refresh = vi.mocked(refreshSession)
 const clients: Array<QueryClient> = []
 
@@ -68,6 +82,46 @@ const setup = (path: string) => {
   )
   return router
 }
+
+it('shares one account layout across home, courier and profile routes', async () => {
+  setAccessToken('token')
+  const router = setup('/app')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('button', { name: 'Open account for Alex Tan' })
+  const header = screen.getByRole('banner')
+
+  await act(async () => {
+    await router.navigate({ to: '/courier' })
+  })
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(screen.getByRole('banner')).toBe(header)
+  expect(screen.getAllByRole('main')).toHaveLength(1)
+
+  await user.click(
+    screen.getByRole('button', { name: 'Open account for Alex Tan' }),
+  )
+  expect(router.state.location.pathname).toBe('/courier')
+  await user.click(await screen.findByRole('menuitem', { name: 'Profile' }))
+  await screen.findByRole('heading', { name: 'My Profile' })
+  expect(router.state.location.pathname).toBe('/profile')
+  expect(screen.getByRole('banner')).toBe(header)
+
+  await user.click(screen.getByRole('link', { name: 'Edit Profile' }))
+  await screen.findByRole('heading', { name: 'Edit Profile' })
+  expect(router.state.location.pathname).toBe('/profile/edit')
+  expect(screen.getByRole('banner')).toBe(header)
+  expect(screen.getAllByRole('main')).toHaveLength(1)
+  vi.mocked(logoutUser).mockResolvedValue()
+  await user.click(
+    screen.getByRole('button', { name: 'Open account for Alex Tan' }),
+  )
+  await user.click(await screen.findByRole('menuitem', { name: 'Log out' }))
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(router.state.location.pathname).toBe('/login')
+  expect(getAccessToken()).toBeNull()
+  expect(logoutUser).toHaveBeenCalledOnce()
+})
 
 it.each(['/app', '/'])(
   'shows loading after 500ms and waits for recovery from %s',

@@ -12,6 +12,10 @@ export const getRegisterErrorMessage = (error: unknown): string | undefined => {
 
     const { status, detail } = error
 
+    if (status === 400 && detail === 'Please use your NUS email address.') {
+      return detail
+    }
+
     if (status === 400 && detail === 'User already exists with this email') {
       return 'An account with this email already exists.'
     }
