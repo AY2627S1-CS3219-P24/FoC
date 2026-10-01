@@ -10,12 +10,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.supplier.config.SecurityConfig;
 import com.cs3219.foc.supplier.exception.GlobalExceptionHandler;
+import com.cs3219.foc.supplier.exception.SupplierImageException;
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.model.dto.OpeningHoursDto;
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
 import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
+import com.cs3219.foc.supplier.service.SupplierImageService;
 import com.cs3219.foc.supplier.service.SupplierService;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -29,7 +31,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -46,8 +51,7 @@ class SupplierControllerTests {
             {"name":"Cool Spot","category":"FOOD","building":"COM2","floor":"1",
              "locationDescription":"Opp LT16","latitude":1.294,"longitude":103.7738,
              "openingHours":[{"dayOfWeek":"MONDAY","opensAt":"09:00","closesAt":"21:30"},
-                             {"dayOfWeek":"FRIDAY","opensAt":"18:00","closesAt":"02:00"}],
-             "imageUrl":null}
+                             {"dayOfWeek":"FRIDAY","opensAt":"18:00","closesAt":"02:00"}]}
             """;
 
     @Autowired
@@ -56,13 +60,16 @@ class SupplierControllerTests {
     @Autowired
     private SupplierService service;
 
+    @Autowired
+    private SupplierImageService imageService;
+
     private MockMvc mvc;
     private final UUID supplierId = UUID.randomUUID();
     private SupplierDto supplier;
 
     @BeforeEach
     void setUp() {
-        reset(service);
+        reset(service, imageService);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -185,8 +192,7 @@ class SupplierControllerTests {
                         103.7738,
                         List.of(
                                 new OpeningHoursDto(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(21, 30)),
-                                new OpeningHoursDto(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(2, 0))),
-                        null));
+                                new OpeningHoursDto(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(2, 0)))));
     }
 
     @Test
@@ -196,7 +202,7 @@ class SupplierControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":" ","category":"FOOD","building":"COM2","latitude":91,
-                                 "openingHours":[],"imageUrl":"javascript:alert(1)"}
+                                 "openingHours":[]}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").exists());
@@ -233,6 +239,50 @@ class SupplierControllerTests {
         verify(service).setSupplierActive(supplierId, false);
     }
 
+    @Test
+    void anyoneCanReadASupplierImage() throws Exception {
+        when(imageService.read(supplierId)).thenReturn(new byte[] {1, 2, 3});
+        mvc.perform(get("/suppliers/{id}/image", supplierId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(content().bytes(new byte[] {1, 2, 3}));
+    }
+
+    @Test
+    void onlyAdminsCanUploadOrRemoveImages() throws Exception {
+        var file = new MockMultipartFile("file", "photo.png", "image/png", new byte[] {1});
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .file(file))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .file(file)
+                        .with(user()))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/suppliers/{id}/image", supplierId).with(user())).andExpect(status().isForbidden());
+        verifyNoInteractions(imageService);
+
+        when(imageService.upload(eq(supplierId), any())).thenReturn(supplier);
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .file(file)
+                        .with(admin()))
+                .andExpect(status().isOk());
+        verify(imageService).upload(eq(supplierId), any());
+    }
+
+    @Test
+    void reportsImageErrorsWithTheirStatus() throws Exception {
+        when(imageService.upload(eq(supplierId), any()))
+                .thenThrow(new SupplierImageException(
+                        HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only JPEG and PNG images are supported"));
+        var file = new MockMultipartFile("file", "notes.txt", "text/plain", new byte[] {1});
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .file(file)
+                        .with(admin()))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.message").value("Only JPEG and PNG images are supported"));
+    }
+
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
@@ -241,6 +291,11 @@ class SupplierControllerTests {
         @Bean
         SupplierService supplierService() {
             return mock(SupplierService.class);
+        }
+
+        @Bean
+        SupplierImageService supplierImageService() {
+            return mock(SupplierImageService.class);
         }
 
         @Bean

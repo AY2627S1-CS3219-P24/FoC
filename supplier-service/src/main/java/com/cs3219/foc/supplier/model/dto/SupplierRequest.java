@@ -9,7 +9,6 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Objects;
@@ -25,10 +24,7 @@ public record SupplierRequest(
         @DecimalMin("-180.0") @DecimalMax("180.0") Double longitude,
 
         /** Days that the supplier opens and rest are closed. */
-        @NotEmpty @Size(max = 7) List<@NotNull @Valid OpeningHoursDto> openingHours,
-
-        @Size(max = 2048) @Pattern(regexp = "^https?://\\S+$", message = "must be an http(s) URL")
-        String imageUrl) {
+        @NotEmpty @Size(max = 7) List<@NotNull @Valid OpeningHoursDto> openingHours) {
 
     @JsonIgnore
     @AssertTrue(message = "each day can only be listed once") public boolean isEachDayListedOnce() {
@@ -57,8 +53,7 @@ public record SupplierRequest(
                 tidy(locationDescription),
                 latitude,
                 longitude,
-                openingHours,
-                tidy(imageUrl));
+                openingHours);
     }
 
     private static String tidy(String text) {

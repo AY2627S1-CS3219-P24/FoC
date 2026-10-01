@@ -54,8 +54,7 @@ class SupplierServiceTests {
                 null,
                 List.of(
                         new OpeningHoursDto(DayOfWeek.MONDAY, LocalTime.of(8, 0), LocalTime.of(18, 0)),
-                        new OpeningHoursDto(DayOfWeek.SATURDAY, LocalTime.of(10, 0), LocalTime.of(14, 0))),
-                null);
+                        new OpeningHoursDto(DayOfWeek.SATURDAY, LocalTime.of(10, 0), LocalTime.of(14, 0))));
     }
 
     private Supplier existingSupplier() {

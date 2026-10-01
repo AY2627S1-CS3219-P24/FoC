@@ -10,9 +10,21 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(SupplierImageException.class)
+    ResponseEntity<ErrorResponse> handleSupplierImage(SupplierImageException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(new ErrorResponse(ex.getMessage()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ErrorResponse("Image must not exceed 5 MB"));
+    }
 
     @ExceptionHandler(SupplierNotFoundException.class)
     ResponseEntity<ErrorResponse> handleSupplierNotFound(SupplierNotFoundException ex) {

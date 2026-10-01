@@ -46,7 +46,7 @@ public class Supplier {
 
     private Double longitude;
 
-    private String imageUrl;
+    private String imageKey; // file name for uploaded image in storage place
 
     /** Days without an entry are closed. */
     @OneToMany(mappedBy = "supplier", cascade = CascadeType.ALL, orphanRemoval = true)

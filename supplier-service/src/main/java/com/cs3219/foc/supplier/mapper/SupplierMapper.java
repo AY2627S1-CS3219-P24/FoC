@@ -12,13 +12,27 @@ import org.mapstruct.MappingTarget;
 
 @Mapper
 public interface SupplierMapper {
+    @Mapping(target = "imageUrl", expression = "java(imageUrlOf(supplier))")
     SupplierDto toSupplierDto(Supplier supplier);
+
+    /**
+     * Access the image location, will be null if no image
+     * The key in the query string will change every upload
+     */
+    default String imageUrlOf(Supplier supplier) {
+        if (supplier.getImageKey() == null) {
+            return null;
+        }
+        return "/api/suppliers/" + supplier.getId() + "/image?v="
+                + supplier.getImageKey().substring(0, 8);
+    }
 
     OpeningHoursDto toOpeningHoursDto(SupplierOpeningHours hours);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "openingHours", ignore = true)
+    @Mapping(target = "imageKey", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     Supplier toSupplier(SupplierRequest request);
@@ -26,6 +40,7 @@ public interface SupplierMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "active", ignore = true)
     @Mapping(target = "openingHours", ignore = true)
+    @Mapping(target = "imageKey", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateSupplier(SupplierRequest request, @MappingTarget Supplier supplier);
