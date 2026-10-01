@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 
 import { useAuth } from '#/features/auth/providers/AuthProvider'
+import { RequesterHomePage } from '#/features/orders/pages/RequesterHomePage/RequesterHomePage'
 
 import styles from './AppHomePage.module.scss'
 
@@ -15,9 +16,8 @@ export const AppHomePage = () => {
   }
 
   return (
-    <main className={styles.page}>
-      <h1>Welcome to FoC</h1>
-      <p>You are signed in.</p>
+    <>
+      <RequesterHomePage />
       <Button
         className={styles.logout}
         onClick={() => {
@@ -26,6 +26,6 @@ export const AppHomePage = () => {
       >
         Log out
       </Button>
-    </main>
+    </>
   )
 }

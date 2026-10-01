@@ -1,5 +1,6 @@
 .header {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 40px;
   padding: 16px 24px;
@@ -16,6 +17,9 @@
 }
 .navigation {
   display: flex;
+  flex: 1;
+  min-width: 0;
+  justify-content: space-evenly;
   gap: 28px;
   align-items: center;
   font-size: 15px;
@@ -124,6 +128,35 @@ button.account {
   margin-left: 30px;
   flex-shrink: 0;
 }
+.account[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
+}
+.menuPositioner {
+  z-index: 30;
+}
+.menu {
+  min-width: 230px;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 10%);
+}
+.menuItem,
+.logout {
+  padding: 18px 22px;
+  color: var(--color-text);
+  font-size: 16px;
+  cursor: pointer;
+  outline: none;
+  &[data-highlighted] {
+    background: #e9edf4;
+  }
+}
+.logout {
+  border-top: 1px solid #e3e7ee;
+  color: #c52213;
+}
 .header :focus-visible {
   outline: 3px solid var(--color-primary);
   outline-offset: 3px;
@@ -137,6 +170,7 @@ button.account {
   }
   .navigation {
     order: 3;
+    flex-basis: 100%;
     width: 100%;
     justify-content: space-between;
     gap: 16px;

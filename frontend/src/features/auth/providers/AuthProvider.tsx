@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import { axiosClient } from '#/lib/axiosClient'
@@ -35,16 +36,22 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const queryClient = useQueryClient()
   // An explicit end to authentication must not immediately trigger cookie recovery.
   const authenticationEnded = useRef(false)
   const exiting = useRef<Promise<void> | null>(null)
   const [invalidation, setInvalidation] = useState(0)
 
   const operations = useMemo(() => {
+    const clearProfile = () => {
+      void queryClient.cancelQueries({ queryKey: ['current-user'] })
+      queryClient.removeQueries({ queryKey: ['current-user'] })
+    }
     const canRefresh = () => !authenticationEnded.current
 
     const authenticationFailed = () => {
       if (authenticationEnded.current) return
+      clearProfile()
       authenticationEnded.current = true
       invalidateRefresh()
       setAccessToken(null)
@@ -68,6 +75,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const completeLogin = (accessToken: string) => {
+      clearProfile()
       invalidateRefresh()
       setAccessToken(accessToken)
       authenticationEnded.current = false
@@ -77,6 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (exiting.current) return exiting.current
 
       const pendingRefresh = invalidateRefresh()
+      clearProfile()
       authenticationEnded.current = true
       setAccessToken(null)
 
@@ -102,7 +111,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       authenticationFailed,
       canRefresh,
     }
-  }, [])
+  }, [queryClient])
 
   useEffect(() => setupAuthInterceptors(axiosClient, operations), [operations])
 

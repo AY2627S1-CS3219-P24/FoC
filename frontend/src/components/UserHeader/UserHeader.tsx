@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@base-ui/react/button'
+import { Menu } from '@base-ui/react/menu'
 import type { ReactNode } from 'react'
 import styles from './UserHeader.module.scss'
 
@@ -12,6 +13,7 @@ export type UserHeaderProps = {
   hasUnreadNotifications?: boolean
   onNotificationsClick?: () => void
   onAccountClick?: () => void
+  onLogout?: () => void
 }
 
 export const UserHeader = ({
@@ -23,6 +25,7 @@ export const UserHeader = ({
   hasUnreadNotifications = false,
   onNotificationsClick,
   onAccountClick,
+  onLogout,
 }: UserHeaderProps) => {
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
   const initials =
@@ -105,13 +108,35 @@ export const UserHeader = ({
           {hasUnreadNotifications && <span className={styles.dot} />}
         </Button>
         {onAccountClick ? (
-          <Button
-            className={styles.account}
-            onClick={onAccountClick}
-            aria-label={`Open account for ${name}`}
-          >
-            {account}
-          </Button>
+          <Menu.Root>
+            <Menu.Trigger
+              className={styles.account}
+              aria-label={`Open account for ${name}`}
+            >
+              {account}
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner
+                align="end"
+                sideOffset={12}
+                className={styles.menuPositioner}
+              >
+                <Menu.Popup className={styles.menu}>
+                  <Menu.Item
+                    className={styles.menuItem}
+                    onClick={onAccountClick}
+                  >
+                    Profile
+                  </Menu.Item>
+                  {onLogout && (
+                    <Menu.Item className={styles.logout} onClick={onLogout}>
+                      Log out
+                    </Menu.Item>
+                  )}
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
         ) : (
           <div className={styles.account}>{account}</div>
         )}

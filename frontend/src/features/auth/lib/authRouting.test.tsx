@@ -27,6 +27,20 @@ vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
+vi.mock('../api/userProfile.api', () => ({
+  updateUserProfile: vi.fn(),
+  changePassword: vi.fn(),
+  uploadAvatar: vi.fn(),
+  removeAvatar: vi.fn(),
+  getUserProfile: vi.fn(async () => ({
+    id: '1',
+    name: 'Alex Tan',
+    email: 'alex@example.com',
+    roles: ['USER'],
+    avatarUrl: null,
+  })),
+}))
+
 const refresh = vi.mocked(refreshSession)
 const clients: Array<QueryClient> = []
 
@@ -69,6 +83,46 @@ const setup = (path: string) => {
   return router
 }
 
+it('shares one account layout across home, courier and profile routes', async () => {
+  setAccessToken('token')
+  const router = setup('/app')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('button', { name: 'Open account for Alex Tan' })
+  const header = screen.getByRole('banner')
+
+  await act(async () => {
+    await router.navigate({ to: '/courier' })
+  })
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(screen.getByRole('banner')).toBe(header)
+  expect(screen.getAllByRole('main')).toHaveLength(1)
+
+  await user.click(
+    screen.getByRole('button', { name: 'Open account for Alex Tan' }),
+  )
+  expect(router.state.location.pathname).toBe('/courier')
+  await user.click(await screen.findByRole('menuitem', { name: 'Profile' }))
+  await screen.findByRole('heading', { name: 'My Profile' })
+  expect(router.state.location.pathname).toBe('/profile')
+  expect(screen.getByRole('banner')).toBe(header)
+
+  await user.click(screen.getByRole('link', { name: 'Edit Profile' }))
+  await screen.findByRole('heading', { name: 'Edit Profile' })
+  expect(router.state.location.pathname).toBe('/profile/edit')
+  expect(screen.getByRole('banner')).toBe(header)
+  expect(screen.getAllByRole('main')).toHaveLength(1)
+  vi.mocked(logoutUser).mockResolvedValue()
+  await user.click(
+    screen.getByRole('button', { name: 'Open account for Alex Tan' }),
+  )
+  await user.click(await screen.findByRole('menuitem', { name: 'Log out' }))
+  await screen.findByRole('heading', { name: 'Welcome Back' })
+  expect(router.state.location.pathname).toBe('/login')
+  expect(getAccessToken()).toBeNull()
+  expect(logoutUser).toHaveBeenCalledOnce()
+})
+
 it.each(['/app', '/'])(
   'shows loading after 500ms and waits for recovery from %s',
   async (path) => {
@@ -88,19 +142,19 @@ it.each(['/app', '/'])(
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+      screen.queryByRole('heading', { name: 'What do you need?' }),
     ).not.toBeInTheDocument()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(screen.getByRole('status')).toHaveTextContent('Loading…')
     expect(
-      screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+      screen.queryByRole('heading', { name: 'What do you need?' }),
     ).not.toBeInTheDocument()
 
     await act(async () => resolve(tokens()))
 
     expect(
-      screen.getByRole('heading', { name: 'Welcome to FoC' }),
+      screen.getByRole('heading', { name: 'What do you need?' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app')
     expect(refresh).toHaveBeenCalledTimes(1)
@@ -124,7 +178,7 @@ it('opens the app without showing loading when recovery finishes before 500ms', 
   await act(async () => resolve(tokens()))
 
   expect(
-    screen.getByRole('heading', { name: 'Welcome to FoC' }),
+    screen.getByRole('heading', { name: 'What do you need?' }),
   ).toBeInTheDocument()
   await act(async () => vi.advanceTimersByTimeAsync(500))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -151,7 +205,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   )
   expect(screen.queryByText('Private server details')).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('heading', { name: 'Welcome to FoC' }),
+    screen.queryByRole('heading', { name: 'What do you need?' }),
   ).not.toBeInTheDocument()
   expect(router.state.location.pathname).toBe('/app')
 
@@ -160,7 +214,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
     .click(screen.getByRole('button', { name: 'Try again' }))
 
   expect(
-    await screen.findByRole('heading', { name: 'Welcome to FoC' }),
+    await screen.findByRole('heading', { name: 'What do you need?' }),
   ).toBeInTheDocument()
   expect(refresh).toHaveBeenCalledTimes(2)
 })
@@ -169,7 +223,7 @@ it('routes a confirmed business authentication failure through Provider and the 
   setAccessToken('original')
   refresh.mockResolvedValue(tokens())
   const router = setup('/app')
-  await screen.findByRole('heading', { name: 'Welcome to FoC' })
+  await screen.findByRole('heading', { name: 'What do you need?' })
   const adapter = vi.fn(async (config) => {
     throw new AxiosError('Unauthorized', undefined, config, undefined, {
       config,
@@ -269,7 +323,7 @@ it.each(['success', 'failure'])(
     expect(button).toBeEnabled()
     expect(button).toHaveTextContent('Log out')
     expect(
-      screen.getByRole('heading', { name: 'Welcome to FoC' }),
+      screen.getByRole('heading', { name: 'What do you need?' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app')
 
