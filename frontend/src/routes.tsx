@@ -3,6 +3,7 @@ import {
   createRoute,
   redirect,
   Outlet,
+  Link,
 } from '@tanstack/react-router'
 
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
@@ -16,6 +17,8 @@ import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/Su
 import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
+import { UserLayout } from '#/layouts/UserLayout'
+import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
   SessionRecoveryPending,
