@@ -7,9 +7,7 @@ export const orderKeys = {
   stats: () => [...orderKeys.all, 'stats'] as const,
 }
 
-// TEMPORARY: Order Service has no endpoints for these yet, so the hooks resolve
-// sample data. Swap each queryFn for an API call once it does; callers stay the same.
-
+// TODO link with API for order service afterwards, now show sample data
 export const useLiveOrders = () =>
   useQuery({
     queryKey: orderKeys.live(),

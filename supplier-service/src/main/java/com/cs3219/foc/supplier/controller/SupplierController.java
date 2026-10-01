@@ -69,7 +69,7 @@ public class SupplierController {
         return supplierService.setSupplierActive(id, true);
     }
 
-    /** Supplier image support jpeg and png */
+    // Supplier image support jpeg and png
     @PutMapping(path = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public SupplierDto uploadImage(@PathVariable UUID id, @RequestPart("file") MultipartFile file) {
         return supplierImageService.upload(id, file);

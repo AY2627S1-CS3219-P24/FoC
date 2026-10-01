@@ -10,7 +10,7 @@ import { useSuppliers } from '#/features/suppliers/hooks/useSuppliers'
 import styles from './SupplierSummaryPanel.module.scss'
 
 type SupplierSummaryPanelProps = {
-  /** How many suppliers to show before "View all". */
+  /** Num of suppliers to show at dashboard page */
   limit?: number
 }
 
@@ -18,7 +18,6 @@ type SupplierSummaryPanelProps = {
 export const SupplierSummaryPanel = ({
   limit = 5,
 }: SupplierSummaryPanelProps) => {
-  // Same query as the overview's supplier stats, so it is served from cache.
   const { data: suppliers, isPending, error } = useSuppliers({ inactive: true })
   const visible = (suppliers ?? [])
     .filter((supplier) => supplier.active)
