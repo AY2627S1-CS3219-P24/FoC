@@ -69,6 +69,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - supplier_images_prod:/data/supplier-images
     depends_on:
       postgres:
         condition: service_healthy
@@ -166,6 +168,7 @@ services:
 volumes:
   pg_data_prod:
   rabbitmq_data_prod:
+  supplier_images_prod:
 
 secrets:
   jwt_private_key:

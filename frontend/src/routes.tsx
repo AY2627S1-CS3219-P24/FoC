@@ -8,6 +8,12 @@ import {
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
+import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
+import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
+import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
+import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
+import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
@@ -30,7 +36,6 @@ const indexRoute = createRoute({
   },
 })
 
-// Share the auth layout without adding a URL prefix.
 const authLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'auth',
@@ -99,6 +104,39 @@ const courierRoute = createRoute({
   component: CourierHomePage,
 })
 
+// Below are admin routes
+// Admin pages require a signed-in session.
+const adminLayoutRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/admin',
+  component: AdminLayout,
+})
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/',
+  component: AdminOverviewPage,
+})
+
+const supplierListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers',
+  component: SupplierListPage,
+  validateSearch: parseSupplierListSearch,
+})
+
+const supplierCreateRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers/new',
+  component: SupplierCreatePage,
+})
+
+const supplierEditRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/suppliers/$supplierId/edit',
+  component: SupplierEditPage,
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -111,11 +149,19 @@ export const routeTree = rootRoute.addChildren([
     : []),
   indexRoute,
   protectedRoute.addChildren([
+    // Student pages share the top-header account layout.
     accountRoute.addChildren([
       appRoute,
       courierRoute,
       profileRoute,
       editProfileRoute,
+    ]),
+    // Admin pages have their own sidebar layout.
+    adminLayoutRoute.addChildren([
+      adminIndexRoute,
+      supplierListRoute,
+      supplierCreateRoute,
+      supplierEditRoute,
     ]),
   ]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
