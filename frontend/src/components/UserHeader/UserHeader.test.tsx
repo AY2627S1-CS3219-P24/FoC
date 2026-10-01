@@ -46,8 +46,38 @@ describe('UserHeader', () => {
     expect(notifications).toHaveBeenCalledOnce()
     await user.tab()
     await user.keyboard('{Enter}')
+    expect(account).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole('menuitem', { name: 'Profile' }))
     expect(account).toHaveBeenCalledOnce()
     expect(screen.getByText('Balance unavailable')).toBeInTheDocument()
+  })
+
+  it('opens the account menu with the keyboard, dismisses it, and logs out', async () => {
+    const user = userEvent.setup()
+    const logout = vi.fn()
+    render(
+      <UserHeader
+        name="Alex Tan"
+        navigation={null}
+        onAccountClick={vi.fn()}
+        onLogout={logout}
+      />,
+    )
+    const trigger = screen.getByRole('button', {
+      name: 'Open account for Alex Tan',
+    })
+    await user.tab()
+    await user.keyboard('{Enter}')
+    expect(
+      screen.getByRole('menuitem', { name: 'Profile' }),
+    ).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    await user.click(trigger)
+    await user.click(await screen.findByRole('menuitem', { name: 'Log out' }))
+    expect(logout).toHaveBeenCalledOnce()
   })
 
   it('falls back to initials for a failed avatar and tries a replacement URL', () => {

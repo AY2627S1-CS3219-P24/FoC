@@ -114,14 +114,26 @@ it('shows backend field errors without reporting success', async () => {
 it('does not submit incomplete password changes', async () => {
   const { user } = await setup()
   await user.type(screen.getByLabelText('New password'), 'NewPassword2')
-  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await user.click(screen.getByRole('button', { name: 'Change Password' }))
   expect(
     await screen.findByText('Enter your current password.'),
   ).toBeInTheDocument()
   expect(api.updateUserProfile).not.toHaveBeenCalled()
+  expect(api.changePassword).not.toHaveBeenCalled()
 })
 
-it('explains partial success when the current password is incorrect', async () => {
+it('saves profile details independently of incomplete password fields', async () => {
+  const { user } = await setup()
+  await user.type(screen.getByLabelText('New password'), 'short')
+  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await screen.findByText('Profile saved.')
+  expect(api.updateUserProfile).toHaveBeenCalledOnce()
+  expect(api.changePassword).not.toHaveBeenCalled()
+  expect(logoutUser).not.toHaveBeenCalled()
+  expect(screen.getByLabelText('New password')).toHaveValue('short')
+})
+
+it('shows password errors without saving profile changes', async () => {
   vi.mocked(api.changePassword).mockRejectedValue(
     new AxiosError('Bad request', undefined, undefined, undefined, {
       data: {
@@ -137,23 +149,30 @@ it('explains partial success when the current password is incorrect', async () =
   const { user } = await setup()
   await user.type(screen.getByLabelText('Current password'), 'WrongPassword1')
   await user.type(screen.getByLabelText('New password'), 'NewPassword2')
-  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Profile saved, but password was not changed.',
-  )
-  expect(screen.getByText('Current password is incorrect')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Change Password' }))
+  expect(
+    await screen.findByText('Current password is incorrect'),
+  ).toBeInTheDocument()
+  expect(api.updateUserProfile).not.toHaveBeenCalled()
+  expect(screen.queryByText('Profile saved.')).not.toBeInTheDocument()
   expect(logoutUser).not.toHaveBeenCalled()
 })
 
 it('ends the session and clears profile cache after changing the password', async () => {
   const { user, router, client } = await setup()
+  await user.clear(screen.getByLabelText(/Full Name/))
   await user.type(screen.getByLabelText('Current password'), 'CurrentPassword1')
   await user.type(screen.getByLabelText('New password'), 'NewPassword2')
-  await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await user.click(screen.getByRole('button', { name: 'Change Password' }))
   await screen.findByRole('heading', { name: 'Welcome Back' })
   expect(router.state.location.pathname).toBe('/login')
   expect(getAccessToken()).toBeNull()
   expect(client.getQueryData(['current-user', 'profile'])).toBeUndefined()
+  expect(api.updateUserProfile).not.toHaveBeenCalled()
+  expect(api.changePassword).toHaveBeenCalledWith(
+    { currentPassword: 'CurrentPassword1', newPassword: 'NewPassword2' },
+    expect.anything(),
+  )
 })
 
 it('loads protected avatar bytes, uploads a photo, and removes it', async () => {

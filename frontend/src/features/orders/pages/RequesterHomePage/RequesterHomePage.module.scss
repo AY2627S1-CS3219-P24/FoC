@@ -16,9 +16,9 @@
   }
 }
 .mode {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   border: 0;
   background: transparent;
   color: var(--color-text);
