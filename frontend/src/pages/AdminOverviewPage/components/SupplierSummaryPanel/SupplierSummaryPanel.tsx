@@ -1,29 +1,25 @@
 import { Link } from '@tanstack/react-router'
-import { Panel } from '#/components/Panel/Panel'
+import { Panel } from '../Panel/Panel'
 import {
   categoryLabels,
   formatLocation,
   getErrorMessage,
-} from '../../utils/supplierFormat'
-import { formatWeeklyHours } from '../../utils/openingHours'
-import type { Supplier } from '../../types/supplier.types'
-import ui from '../../styles/supplier.module.scss'
+} from '#/features/suppliers/utils/supplierFormat'
+import { formatWeeklyHours } from '#/features/suppliers/utils/openingHours'
+import { useSuppliers } from '#/features/suppliers/hooks/useSuppliers'
 import styles from './SupplierSummaryPanel.module.scss'
 
 type SupplierSummaryPanelProps = {
-  suppliers: Array<Supplier> | undefined
-  isPending: boolean
-  error: unknown
+  /** How many suppliers to show before "View all". */
   limit?: number
 }
 
 // only show 5 suppliers on dashboard page
 export const SupplierSummaryPanel = ({
-  suppliers,
-  isPending,
-  error,
   limit = 5,
 }: SupplierSummaryPanelProps) => {
+  // Same query as the overview's supplier stats, so it is served from cache.
+  const { data: suppliers, isPending, error } = useSuppliers({ inactive: true })
   const visible = (suppliers ?? [])
     .filter((supplier) => supplier.active)
     .slice(0, limit)
@@ -32,14 +28,17 @@ export const SupplierSummaryPanel = ({
     <Panel
       title="Suppliers"
       action={
-        <Link to="/admin/suppliers" className={`${ui.button} ${ui.small}`}>
+        <Link
+          to="/admin/suppliers"
+          className={`${styles.button} ${styles.small}`}
+        >
           View all
         </Link>
       }
     >
-      {isPending && <p className={ui.muted}>Loading suppliers…</p>}
+      {isPending && <p className={styles.muted}>Loading suppliers…</p>}
       {Boolean(error) && (
-        <p className={ui.alert} role="alert">
+        <p className={styles.alert} role="alert">
           {getErrorMessage(error)}
         </p>
       )}
@@ -74,7 +73,7 @@ export const SupplierSummaryPanel = ({
                     <Link
                       to="/admin/suppliers/$supplierId/edit"
                       params={{ supplierId: supplier.id }}
-                      className={`${ui.button} ${ui.small}`}
+                      className={`${styles.button} ${styles.small}`}
                     >
                       Edit
                     </Link>

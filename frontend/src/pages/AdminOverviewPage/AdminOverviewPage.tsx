@@ -1,12 +1,9 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
-import { StatCard } from '#/components/StatCard/StatCard'
-import { LiveOrdersPanel } from '#/features/orders/components/LiveOrdersPanel/LiveOrdersPanel'
-import {
-  sampleLiveOrders,
-  sampleOrderStats,
-} from '#/features/orders/mocks/adminOverview.mock'
-import { SupplierSummaryPanel } from '#/features/suppliers/components/SupplierSummaryPanel/SupplierSummaryPanel'
+import { useOrderStats } from '#/features/orders/hooks/useOrderOverview'
+import { LiveOrdersPanel } from './components/LiveOrdersPanel/LiveOrdersPanel'
+import { StatCard } from './components/StatCard/StatCard'
+import { SupplierSummaryPanel } from './components/SupplierSummaryPanel/SupplierSummaryPanel'
 import { useSuppliers } from '#/features/suppliers/hooks/useSuppliers'
 import { summarizeSuppliers } from '#/features/suppliers/utils/supplierFormat'
 import styles from './AdminOverviewPage.module.scss'
@@ -17,6 +14,7 @@ const sampleStudentStats = { registered: 7201, joinedThisWeek: 52 }
 export const AdminOverviewPage = () => {
   // include deactivated suppliers to summary
   const suppliers = useSuppliers({ inactive: true })
+  const { data: orderStats } = useOrderStats()
   const summary = useMemo(
     () =>
       suppliers.data ? summarizeSuppliers(suppliers.data, new Date()) : null,
@@ -57,8 +55,11 @@ export const AdminOverviewPage = () => {
         />
         <StatCard
           label="Open errands"
-          value={sampleOrderStats.openErrands}
-          hint={`+ ${sampleOrderStats.openErrandsSinceYesterday} since yesterday`}
+          value={orderStats?.openErrands ?? '—'}
+          hint={
+            orderStats &&
+            `+ ${orderStats.openErrandsSinceYesterday} since yesterday`
+          }
           tone="positive"
         />
         <StatCard
@@ -69,18 +70,14 @@ export const AdminOverviewPage = () => {
         />
         <StatCard
           label="Open disputes"
-          value={sampleOrderStats.openDisputes}
+          value={orderStats?.openDisputes ?? '—'}
           tone="danger"
         />
       </div>
 
-      <LiveOrdersPanel orders={sampleLiveOrders} />
+      <LiveOrdersPanel />
 
-      <SupplierSummaryPanel
-        suppliers={suppliers.data}
-        isPending={suppliers.isPending}
-        error={suppliers.error}
-      />
+      <SupplierSummaryPanel />
     </section>
   )
 }
