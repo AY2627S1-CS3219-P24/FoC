@@ -4,6 +4,7 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
+import type { ReactElement } from 'react'
 
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
@@ -14,7 +15,11 @@ import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
-import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
+import { SupplierCategoryPage } from '#/features/suppliers/pages/SupplierCategoryPage/SupplierCategoryPage'
+import {
+  parseSupplierListSearch,
+  toSupplierFilters,
+} from '#/features/suppliers/utils/supplierFilters'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
@@ -166,6 +171,28 @@ const homeRoute = createRoute({
   component: HomePage,
 })
 
+const supplierCategoryRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/locations',
+  component: (): ReactElement => {
+    const { category } = supplierCategoryRoute.useRouteContext()
+    return <SupplierCategoryPage category={category} />
+  },
+  validateSearch: parseSupplierListSearch,
+  beforeLoad: ({ search }) => {
+    const categories = toSupplierFilters(search).category
+    const category = categories?.[0]
+    if (categories?.length !== 1 || !category) {
+      throw redirect({
+        to: '/home',
+        search: { mode: 'requestor' },
+        replace: true,
+      })
+    }
+    return { category }
+  },
+})
+
 const createErrandRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/errands/new',
@@ -277,9 +304,9 @@ export const routeTree = rootRoute.addChildren([
     : []),
   indexRoute,
   authenticatedRoute.addChildren([
-    // Student pages share the top-header account layout.
     userRoute.addChildren([
       homeRoute,
+      supplierCategoryRoute,
       createErrandRoute,
       myErrandsRoute,
       orderDetailRoute,

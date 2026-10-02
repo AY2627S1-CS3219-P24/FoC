@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Button } from '@base-ui/react/button'
-import { Dialog } from '@base-ui/react/dialog'
-import { categories } from './requesterHome.data'
-import styles from './RequesterHomePage.module.scss'
 import { Link } from '@tanstack/react-router'
+import { Dialog } from '@base-ui/react/dialog'
+import { SUPPLIER_CATEGORIES } from '#/features/suppliers/types/supplier.types'
+import { categoryLabels } from '#/features/suppliers/utils/supplierFormat'
+import { categoryImages } from './requesterHome.data'
+import styles from './RequesterHomePage.module.scss'
 import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
@@ -19,41 +20,27 @@ export const RequesterHomePage = () => {
     title: string
     description: string
   } | null>(null)
+
   return (
     <div className={`${common.page} ${styles.page}`}>
       <RoleSwitcher activeMode="requestor" />
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
-        {categories.map((category) => (
+        {SUPPLIER_CATEGORIES.map((category) => (
           <li key={category}>
-            <Button
+            <Link
+              to="/locations"
+              search={{ category }}
               className={styles.category}
-              onClick={() =>
-                setPreview({
-                  title: category,
-                  description: `Browse ${category.toLowerCase()} here once the location listing is connected.`,
-                })
-              }
             >
-              <span className={styles.tile} aria-hidden="true" />
-              <span>{category}</span>
-            </Button>
+              <span className={styles.tile} aria-hidden="true">
+                <img src={categoryImages[category]} alt="" />
+              </span>
+              <span>{categoryLabels[category]}</span>
+            </Link>
           </li>
         ))}
       </ul>
-
-      <section className={styles.section} aria-labelledby="favourites-heading">
-        <h2 id="favourites-heading">Favourite locations</h2>
-        <ul className={styles.cards}>
-          <li>
-            <div className={styles.card} aria-disabled="true">
-              <span className={styles.cardTitle}>
-                Favourites not connected yet
-              </span>
-            </div>
-          </li>
-        </ul>
-      </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
@@ -79,6 +66,7 @@ export const RequesterHomePage = () => {
           </p>
         )}
       </section>
+
       <Link to="/errands/new" className={`${common.button} ${styles.create}`}>
         Create Errand
       </Link>

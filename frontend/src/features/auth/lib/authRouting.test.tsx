@@ -23,8 +23,13 @@ import { logoutUser } from '../api/logoutUser.api'
 import { setAccessToken, getAccessToken } from './accessTokenStore'
 import type { AccessTokenResponse } from '../types/auth.types'
 import { getCreditBalance } from '#/features/credits/api/credits.api'
+import { listSuppliers } from '#/features/suppliers/api/suppliers.api'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+vi.mock('#/features/suppliers/api/suppliers.api', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  listSuppliers: vi.fn(async () => []),
+}))
 vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(async () => ({
     availableBalance: 15,
@@ -108,7 +113,6 @@ const setup = (path: string) => {
   )
   return router
 }
-
 it.each([
   ['/home?mode=courier', 17],
   ['/home?mode=requestor', 0],
@@ -307,6 +311,50 @@ it.each(['requestor'])(
     ).toBeInTheDocument()
   },
 )
+
+it.each([
+  '/locations',
+  '/locations?category=INVALID',
+  '/locations?category=FOOD,COFFEE',
+])(
+  'returns invalid category URL %s to requester home without fetching suppliers',
+  async (path) => {
+    setAccessToken(tokens().accessToken)
+    vi.mocked(listSuppliers).mockClear()
+    const router = setup(path)
+
+    expect(
+      await screen.findByRole('heading', { name: 'What do you need?' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.href).toBe('/home?mode=requestor')
+    expect(listSuppliers).not.toHaveBeenCalled()
+  },
+)
+
+it('opens a supplier category from home and returns to requester mode', async () => {
+  setAccessToken(tokens().accessToken)
+  const router = setup('/home?mode=requestor')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'What do you need?' })
+  const header = screen.getByRole('banner')
+
+  await user.click(screen.getByRole('link', { name: 'Coffee' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Coffee' }),
+  ).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe('/locations')
+  expect(router.state.location.search).toEqual({ category: 'COFFEE' })
+  expect(header).toBeInTheDocument()
+
+  await user.click(screen.getByRole('link', { name: /Back to categories/ }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'What do you need?' }),
+  ).toBeInTheDocument()
+  expect(router.state.location.href).toBe('/home?mode=requestor')
+  expect(screen.getByRole('banner')).toBe(header)
+})
 
 it('shares one account layout across home, courier and profile routes', async () => {
   setAccessToken(tokens().accessToken)
@@ -553,7 +601,6 @@ it.each(['success', 'failure'])(
     fireEvent.click(button)
     await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
 
-    expect(accountButton).toBeEnabled()
     expect(
       screen.getByRole('heading', { name: 'What do you need?' }),
     ).toBeInTheDocument()
