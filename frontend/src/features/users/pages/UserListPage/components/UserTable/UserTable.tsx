@@ -7,6 +7,7 @@ import type { User, UserListParams } from '../../../../types/user.types'
 import { UserAvatar } from '../../../../components/UserAvatar/UserAvatar'
 import { formatUserDate } from '../../../../utils/formatUserDate'
 import type { UserListSearch } from '../../utils/userListSearch'
+import { OverflowText } from './OverflowText'
 import styles from './UserTable.module.scss'
 
 const EMPTY_USERS: User[] = []
@@ -50,7 +51,7 @@ export const UserTable = ({
         cell: (user) => (
           <span className={styles.userName}>
             <UserAvatar user={user} />
-            <span>{user.name}</span>
+            <OverflowText value={user.name} />
           </span>
         ),
         sortable: true,
@@ -60,6 +61,7 @@ export const UserTable = ({
         name: 'Email',
         minWidth: '220px',
         selector: (user) => user.email,
+        cell: (user) => <OverflowText value={user.email} />,
         sortable: true,
       },
       {
@@ -67,25 +69,28 @@ export const UserTable = ({
         name: 'Phone',
         minWidth: '150px',
         selector: (user) => user.phoneNumber || '-',
+        cell: (user) => <OverflowText value={user.phoneNumber || '-'} />,
       },
       {
         id: 'faculty',
         name: 'Faculty',
         minWidth: '160px',
         selector: (user) => user.faculty || '-',
+        cell: (user) => <OverflowText value={user.faculty || '-'} />,
       },
       {
         id: 'roles',
         name: 'Roles',
         minWidth: '100px',
         selector: (user) => user.roles.join(', '),
+        cell: (user) => <OverflowText value={user.roles.join(', ')} />,
       },
       {
         id: 'createdAt',
         name: 'Created at',
         minWidth: '205px',
         selector: (user) => user.createdAt,
-        cell: (user) => formatUserDate(user.createdAt),
+        cell: (user) => <OverflowText value={formatUserDate(user.createdAt)} />,
         sortable: true,
       },
       {
@@ -93,7 +98,7 @@ export const UserTable = ({
         name: 'Updated at',
         minWidth: '205px',
         selector: (user) => user.updatedAt,
-        cell: (user) => formatUserDate(user.updatedAt),
+        cell: (user) => <OverflowText value={formatUserDate(user.updatedAt)} />,
         sortable: true,
       },
       {

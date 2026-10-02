@@ -23,7 +23,44 @@
 }
 
 .userName {
-  min-width: 150px;
+  width: 100%;
+  min-width: 0;
+}
+
+.overflowText {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &[data-overflowing] {
+    cursor: help;
+  }
+
+  &:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.tooltipPositioner {
+  z-index: 10;
+}
+
+.tooltip {
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background-color: var(--color-text);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 18%);
+  color: var(--color-surface);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .actionLink {
