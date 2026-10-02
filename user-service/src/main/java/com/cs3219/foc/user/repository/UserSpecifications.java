@@ -14,8 +14,8 @@ public final class UserSpecifications {
     }
 
     public static Specification<User> hasRole(UserRole role) {
-        return (root, query, cb) -> cb.isNotNull(cb.function(
-                "array_position", Integer.class, root.get("roles"), cb.literal(role.name())));
+        return (root, query, cb) ->
+                cb.isNotNull(cb.function("array_position", Integer.class, root.get("roles"), cb.literal(role.name())));
     }
 
     public static Specification<User> hasFaculty(String faculty) {
