@@ -31,6 +31,15 @@ class RegisterUserRequestTest {
 
     @ParameterizedTest
     @NullAndEmptySource
+    void rejectsMissingEmails(String email) {
+        var request = new RegisterUserRequest(email, "Jamie", "password123");
+        assertTrue(validator.validate(request).stream()
+                .anyMatch(violation -> violation.getPropertyPath().toString().equals("email")
+                        && violation.getConstraintDescriptor().getAnnotation() instanceof NotBlank));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
     @ValueSource(strings = {"        ", "\t\t\t\t\t\t\t\t", "\n\n\n\n\n\n\n\n"})
     void rejectsBlankPasswords(String password) {
         var request = new RegisterUserRequest("jamie@example.com", "Jamie", password);

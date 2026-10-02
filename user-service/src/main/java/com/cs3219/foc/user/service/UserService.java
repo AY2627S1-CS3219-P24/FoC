@@ -1,6 +1,7 @@
 package com.cs3219.foc.user.service;
 
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
+import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.PageDto;
@@ -122,6 +123,10 @@ public class UserService {
         // Avoid saving a stale password hash if a password change happens concurrently.
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        if (!NusEmailPolicy.isAllowed(request.email())) {
+            throw new UnsupportedEmailDomainException();
+        }
+
         if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
             throw new EntityAlreadyExistsException("Email is already associated with another account");
         }
@@ -142,6 +147,10 @@ public class UserService {
     @Transactional
     public UserProfileDto registerUser(RegisterUserRequest request) {
         var email = request.email().strip().toLowerCase();
+        if (!NusEmailPolicy.isAllowed(email)) {
+            throw new UnsupportedEmailDomainException();
+        }
+
         if (userRepository.existsByEmail(email)) {
             throw new EntityAlreadyExistsException("User already exists with this email");
         }

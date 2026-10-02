@@ -12,6 +12,7 @@ import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.config.SecurityConfig;
 import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.GlobalExceptionHandler;
+import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
@@ -107,6 +108,19 @@ class UserControllerTests {
     void nonAdminCannotReadAnotherUserProfile() throws Exception {
         mvc.perform(get("/users/{id}", userId).with(jwt())).andExpect(status().isForbidden());
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void unsupportedEmailDomainReturnsBadRequest() throws Exception {
+        when(service.updateUserProfile(eq(userId), any())).thenThrow(new UnsupportedEmailDomainException());
+        mvc.perform(put("/users/me")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Jamie","email":"jamie@gmail.com"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Please use your NUS email address."));
     }
 
     @Test

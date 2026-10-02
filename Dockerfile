@@ -26,6 +26,11 @@ EXPOSE 8080
 
 FROM runtime AS supplier-service
 COPY --from=build /workspace/supplier-service/build/libs/*.jar /app/app.jar
+
+USER root
+RUN mkdir -p /data/supplier-images && chown app:app /data/supplier-images
+USER app
+ENV FOC_SUPPLIER_IMAGE_DIRECTORY=/data/supplier-images
 EXPOSE 8081
 
 FROM runtime AS order-service

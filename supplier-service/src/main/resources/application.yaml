@@ -9,6 +9,10 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   security:
     oauth2:
       resourceserver:
@@ -19,3 +23,6 @@ server:
   servlet:
     context-path: /api
   port: 8081
+supplier:
+  images:
+    directory: ${FOC_SUPPLIER_IMAGE_DIRECTORY:${user.home}/.foc/supplier-images}
