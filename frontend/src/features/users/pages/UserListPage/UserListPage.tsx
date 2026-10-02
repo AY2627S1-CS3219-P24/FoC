@@ -133,7 +133,7 @@ export const UserListPage = () => {
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <h1>Users</h1>
+        <h1 className={styles.title}>User Management</h1>
       </header>
 
       <UserFilters

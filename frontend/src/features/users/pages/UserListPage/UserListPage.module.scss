@@ -5,9 +5,18 @@
   gap: 20px;
 }
 
-.header h1 {
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
   margin: 0;
   font-size: 24px;
+  font-weight: 700;
 }
 
 .error {

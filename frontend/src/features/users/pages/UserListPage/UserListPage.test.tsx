@@ -95,6 +95,9 @@ test('keeps the table shape while the first page loads', async () => {
       }),
   )
 
+  expect(
+    await screen.findByRole('heading', { name: 'User Management' }),
+  ).toBeVisible()
   const table = await screen.findByRole('table')
   expect(table).toHaveAttribute('aria-busy', 'true')
   expect(screen.queryByText('Loading users…')).not.toBeInTheDocument()
@@ -139,7 +142,7 @@ test('paginates, sorts, and filters users through server parameters', async () =
     }),
   )
 
-  await userEvents.selectOptions(screen.getByLabelText('Role'), 'ADMIN')
+  await userEvents.click(screen.getByRole('button', { name: 'Admin' }))
   await waitFor(() =>
     expect(get).toHaveBeenCalledWith('/users', {
       params: expect.objectContaining({

@@ -1,8 +1,16 @@
-import { Input } from '@base-ui/react/input'
 import { Button } from '@base-ui/react/button'
+import { Input } from '@base-ui/react/input'
+import { Toggle } from '@base-ui/react/toggle'
+import { ToggleGroup } from '@base-ui/react/toggle-group'
 import { UNASSIGNED_FACULTY } from '#/constants/faculty'
 import type { UserRole } from '../../../../types/user.types'
 import styles from './UserFilters.module.scss'
+
+const roleOptions = [
+  { value: 'ALL', label: 'All' },
+  { value: 'USER', label: 'User' },
+  { value: 'ADMIN', label: 'Admin' },
+] as const
 
 type UserFiltersProps = {
   searchInput: string
@@ -27,8 +35,11 @@ export const UserFilters = ({
   onFacultyChange,
   onRetryFaculties,
 }: UserFiltersProps) => {
-  const handleRoleChange = (event: React.ChangeEvent<HTMLSelectElement>) =>
-    onRoleChange(event.target.value as UserRole | '')
+  const handleRoleChange = (values: string[]) => {
+    const nextRole = values[0]
+    if (!nextRole) return
+    onRoleChange(nextRole === 'ALL' ? '' : (nextRole as UserRole))
+  }
 
   return (
     <div className={styles.toolbar}>
@@ -40,37 +51,50 @@ export const UserFilters = ({
         value={searchInput}
         onValueChange={onSearchChange}
       />
-      <label className={styles.filterLabel}>
-        Role
-        <select
-          className={styles.roleFilter}
-          value={role}
-          onChange={handleRoleChange}
+      <div className={styles.filterGroup}>
+        <span className={styles.filterLabel}>Role</span>
+        <ToggleGroup
+          aria-label="Role"
+          className={styles.roleFilters}
+          value={[role || 'ALL']}
+          onValueChange={handleRoleChange}
         >
-          <option value="">All roles</option>
-          <option value="USER">User</option>
-          <option value="ADMIN">Admin</option>
-        </select>
-      </label>
-      <label className={styles.filterLabel}>
-        Faculty
-        <select
-          className={styles.roleFilter}
-          value={faculty}
-          onChange={(event) => onFacultyChange(event.target.value)}
-          disabled={facultyError || faculties.length === 0}
-        >
-          <option value="">All faculties</option>
-          <option value={UNASSIGNED_FACULTY}>No faculty</option>
-          {faculties.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
+          {roleOptions.map((option) => (
+            <Toggle
+              key={option.value}
+              value={option.value}
+              className={styles.roleChip}
+            >
+              {option.label}
+            </Toggle>
           ))}
-        </select>
+        </ToggleGroup>
+      </div>
+      <label className={`${styles.filterGroup} ${styles.facultyFilter}`}>
+        <span className={styles.filterLabel}>Faculty</span>
+        <span className={styles.selectWrapper}>
+          <select
+            className={styles.select}
+            value={faculty}
+            onChange={(event) => onFacultyChange(event.target.value)}
+            disabled={facultyError || faculties.length === 0}
+          >
+            <option value="">All faculties</option>
+            <option value={UNASSIGNED_FACULTY}>No faculty</option>
+            {faculties.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </span>
       </label>
       {facultyError && (
-        <Button type="button" onClick={onRetryFaculties}>
+        <Button
+          type="button"
+          className={styles.retryButton}
+          onClick={onRetryFaculties}
+        >
           Retry faculty choices
         </Button>
       )}
