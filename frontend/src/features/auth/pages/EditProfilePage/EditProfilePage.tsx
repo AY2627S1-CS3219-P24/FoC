@@ -276,7 +276,7 @@ const EditProfileForm = ({
                 aria-invalid={Boolean(errors.faculty)}
                 aria-describedby={errors.faculty ? 'faculty-error' : undefined}
               >
-                <option value="">No faculty</option>
+                <option value="">-</option>
                 {faculties.map((facultyName) => (
                   <option key={facultyName} value={facultyName}>
                     {facultyName}

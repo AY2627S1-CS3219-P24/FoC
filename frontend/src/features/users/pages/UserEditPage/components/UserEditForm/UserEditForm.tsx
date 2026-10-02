@@ -156,7 +156,7 @@ export const UserEditForm = ({
                   errors.faculty ? 'user-faculty-error' : undefined
                 }
               >
-                <option value="">No faculty</option>
+                <option value="">-</option>
                 {faculties.map((name) => (
                   <option key={name} value={name}>
                     {name}
