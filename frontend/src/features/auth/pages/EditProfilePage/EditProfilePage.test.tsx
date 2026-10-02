@@ -10,8 +10,10 @@ import { AuthProvider } from '../../providers/AuthProvider'
 import { getAccessToken, setAccessToken } from '../../lib/accessTokenStore'
 import { logoutUser } from '../../api/logoutUser.api'
 import * as api from '../../api/userProfile.api'
+import { getFaculties } from '#/api/getFaculties.api'
 
 vi.mock('../../api/userProfile.api')
+vi.mock('#/api/getFaculties.api')
 vi.mock('../../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 const profile = {
@@ -20,7 +22,7 @@ const profile = {
   email: 'alex@example.com',
   roles: ['USER'],
   phoneNumber: '+6591235436',
-  faculty: 'Computing',
+  faculty: 'School of Computing',
   avatarUrl: null,
 }
 const clients: QueryClient[] = []
@@ -30,6 +32,10 @@ beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   setAccessToken('token')
   vi.mocked(api.getUserProfile).mockResolvedValue(profile)
+  vi.mocked(getFaculties).mockResolvedValue([
+    'School of Computing',
+    'Faculty of Science',
+  ])
   vi.mocked(api.updateUserProfile).mockImplementation(async (request) => ({
     ...profile,
     ...request,
@@ -78,7 +84,7 @@ it('loads the profile and saves optional fields with the existing email, updatin
       name: 'Jamie Tan',
       email: profile.email,
       phoneNumber: '',
-      faculty: 'Computing',
+      faculty: 'School of Computing',
     },
     expect.anything(),
   )
@@ -175,21 +181,10 @@ it('ends the session and clears profile cache after changing the password', asyn
   )
 })
 
-it('loads protected avatar bytes, uploads a photo, and removes it', async () => {
-  const create = vi.fn().mockReturnValue('blob:avatar')
-  const revoke = vi.fn()
-  vi.stubGlobal(
-    'URL',
-    class extends URL {
-      static createObjectURL = create
-      static revokeObjectURL = revoke
-    },
-  )
-  const blob = new Blob(['photo'], { type: 'image/png' })
-  vi.mocked(api.getAvatar).mockResolvedValue(blob)
+it('renders the direct avatar URL, uploads a photo, and removes it', async () => {
   vi.mocked(api.uploadAvatar).mockResolvedValue({
     ...profile,
-    avatarUrl: '/users/me/avatar?v=new',
+    avatarUrl: '/api/users/1/avatar?v=new-key.png',
   })
   const { user } = await setup()
   const photo = new File(['photo'], 'avatar.png', { type: 'image/png' })
@@ -198,10 +193,9 @@ it('loads protected avatar bytes, uploads a photo, and removes it', async () => 
   await waitFor(() =>
     expect(screen.getByAltText('Alex Tan')).toHaveAttribute(
       'src',
-      'blob:avatar',
+      '/api/users/1/avatar?v=new-key.png',
     ),
   )
-  expect(api.getAvatar).toHaveBeenCalledWith(expect.any(AbortSignal))
   await user.click(screen.getByRole('button', { name: 'Remove' }))
   await screen.findByText('Photo removed.')
   expect(screen.queryByAltText('Alex Tan')).not.toBeInTheDocument()

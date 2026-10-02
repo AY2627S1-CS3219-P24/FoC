@@ -27,14 +27,6 @@ export const changePassword = async (request: {
   await axiosClient.put('/users/me/password', request)
 }
 
-export const getAvatar = async (signal?: AbortSignal) => {
-  const { data } = await axiosClient.get<Blob>('/users/me/avatar', {
-    responseType: 'blob',
-    signal,
-  })
-  return data
-}
-
 export const uploadAvatar = async (file: File) => {
   const body = new FormData()
   body.append('file', file)

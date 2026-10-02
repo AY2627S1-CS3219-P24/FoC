@@ -27,6 +27,10 @@ vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
+vi.mock('#/api/getFaculties.api', () => ({
+  getFaculties: vi.fn(async () => ['School of Computing']),
+}))
+
 vi.mock('../api/userProfile.api', () => ({
   updateUserProfile: vi.fn(),
   changePassword: vi.fn(),
