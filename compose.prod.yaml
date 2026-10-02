@@ -57,6 +57,27 @@ services:
       retries: 12
       start_period: 40s
 
+  admin-init:
+    restart: "no"
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-System Administrator}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+    volumes:
+      - ./docker/postgres/init-admin.sh:/scripts/init-admin.sh:ro
+    command: ["/bin/sh", "/scripts/init-admin.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+
   supplier-service:
     restart: unless-stopped
     build:
