@@ -2,6 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { UserLayout } from '#/layouts/UserLayout/UserLayout'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useAuth } from '../providers/AuthProvider'
+import { hasAdminRole } from '../utils/hasAdminRole'
 
 export const AccountLayout = () => {
   const { data } = useUserProfile()
@@ -22,6 +23,13 @@ export const AccountLayout = () => {
       onAccountClick={() => {
         void navigate({ to: '/profile' })
       }}
+      onAdminClick={
+        hasAdminRole()
+          ? () => {
+              void navigate({ to: '/admin' })
+            }
+          : undefined
+      }
       onLogout={() => {
         void auth.logout().then(() => navigate({ to: '/login', replace: true }))
       }}

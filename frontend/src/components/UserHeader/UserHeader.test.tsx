@@ -80,6 +80,31 @@ describe('UserHeader', () => {
     expect(logout).toHaveBeenCalledOnce()
   })
 
+  it('shows an admin action only when one is supplied', async () => {
+    const user = userEvent.setup()
+    const admin = vi.fn()
+    const { rerender } = render(
+      <UserHeader name="Alex Tan" navigation={null} onAccountClick={vi.fn()} />,
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Open account for Alex Tan' }),
+    )
+    expect(
+      screen.queryByRole('menuitem', { name: 'Admin' }),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <UserHeader
+        name="Alex Tan"
+        navigation={null}
+        onAccountClick={vi.fn()}
+        onAdminClick={admin}
+      />,
+    )
+    await user.click(await screen.findByRole('menuitem', { name: 'Admin' }))
+    expect(admin).toHaveBeenCalledOnce()
+  })
+
   it('falls back to initials for a failed avatar and tries a replacement URL', () => {
     const { container, rerender } = render(
       <UserHeader name="Alex Tan" navigation={null} avatarUrl="/first.png" />,

@@ -18,4 +18,7 @@ it('derives the admin role from the current token', () => {
 
   setAccessToken(null)
   expect(hasAdminRole()).toBe(false)
+
+  setAccessToken('token')
+  expect(hasAdminRole()).toBe(false)
 })

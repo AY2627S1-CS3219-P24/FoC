@@ -13,6 +13,7 @@ export type UserHeaderProps = {
   hasUnreadNotifications?: boolean
   onNotificationsClick?: () => void
   onAccountClick?: () => void
+  onAdminClick?: () => void
   onLogout?: () => void
 }
 
@@ -25,6 +26,7 @@ export const UserHeader = ({
   hasUnreadNotifications = false,
   onNotificationsClick,
   onAccountClick,
+  onAdminClick,
   onLogout,
 }: UserHeaderProps) => {
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
@@ -128,6 +130,14 @@ export const UserHeader = ({
                   >
                     Profile
                   </Menu.Item>
+                  {onAdminClick && (
+                    <Menu.Item
+                      className={styles.menuItem}
+                      onClick={onAdminClick}
+                    >
+                      Admin
+                    </Menu.Item>
+                  )}
                   {onLogout && (
                     <Menu.Item className={styles.logout} onClick={onLogout}>
                       Log out
