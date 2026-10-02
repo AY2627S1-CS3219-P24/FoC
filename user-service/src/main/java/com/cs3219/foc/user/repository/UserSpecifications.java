@@ -2,8 +2,6 @@ package com.cs3219.foc.user.repository;
 
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
-import java.util.List;
-import org.hibernate.query.criteria.HibernateCriteriaBuilder;
 import org.springframework.data.jpa.domain.Specification;
 
 public final class UserSpecifications {
@@ -16,8 +14,8 @@ public final class UserSpecifications {
     }
 
     public static Specification<User> hasRole(UserRole role) {
-        return (root, query, cb) ->
-                ((HibernateCriteriaBuilder) cb).collectionContains(root.<List<UserRole>>get("roles"), role);
+        return (root, query, cb) -> cb.isNotNull(cb.function(
+                "array_position", Integer.class, root.get("roles"), cb.literal(role.name())));
     }
 
     public static Specification<User> hasFaculty(String faculty) {
