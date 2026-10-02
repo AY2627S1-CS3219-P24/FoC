@@ -102,7 +102,9 @@ test('saving a user returns to the list and confirms the change', async () => {
     phoneNumber: '+6591235436',
     faculty: 'School of Computing',
   })
-  expect(await screen.findByRole('heading', { name: 'Users' })).toBeVisible()
+  expect(
+    await screen.findByRole('heading', { name: 'User Management' }),
+  ).toBeVisible()
   expect(await screen.findByText('Alex Lee was updated.')).toBeVisible()
 })
 
@@ -117,7 +119,9 @@ test('can discard edited fields when leaving the page', async () => {
     await screen.findByRole('button', { name: 'Discard changes' }),
   )
 
-  expect(await screen.findByRole('heading', { name: 'Users' })).toBeVisible()
+  expect(
+    await screen.findByRole('heading', { name: 'User Management' }),
+  ).toBeVisible()
   expect(patch).not.toHaveBeenCalled()
 })
 
