@@ -87,6 +87,13 @@ const setup = (path: string) => {
   return router
 }
 
+const openLogoutMenu = async () => {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Open account for Alex Tan' }),
+  )
+  return screen.findByRole('menuitem', { name: 'Log out' })
+}
+
 it('shares one account layout across home, courier and profile routes', async () => {
   setAccessToken('token')
   const router = setup('/app')
@@ -268,7 +275,7 @@ it.each(['success', 'timeout'])(
     )
     vi.mocked(logoutUser).mockResolvedValue()
     const router = setup('/app')
-    const button = await screen.findByRole('button', { name: 'Log out' })
+    const button = await openLogoutMenu()
     const adapter = vi.fn(async (config) => {
       throw new AxiosError('Unauthorized', undefined, config, undefined, {
         config,
@@ -319,7 +326,7 @@ it.each(['success', 'failure'])(
       }),
     )
     const router = setup('/app')
-    const button = await screen.findByRole('button', { name: 'Log out' })
+    const button = await openLogoutMenu()
     fireEvent.click(button)
     fireEvent.click(button)
     await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))

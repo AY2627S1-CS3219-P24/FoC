@@ -11,7 +11,11 @@ import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
-import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
+import { SupplierCategoryPage } from '#/features/suppliers/pages/SupplierCategoryPage/SupplierCategoryPage'
+import {
+  parseSupplierListSearch,
+  toSupplierFilters,
+} from '#/features/suppliers/utils/supplierFilters'
 import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
 import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
@@ -101,6 +105,18 @@ const appRoute = createRoute({
   component: AppHomePage,
 })
 
+const supplierCategoryRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/locations',
+  component: SupplierCategoryPage,
+  validateSearch: parseSupplierListSearch,
+  beforeLoad: ({ search }) => {
+    if (toSupplierFilters(search).category?.length !== 1) {
+      throw redirect({ to: '/app', replace: true })
+    }
+  },
+})
+
 const courierRoute = createRoute({
   getParentRoute: () => accountRoute,
   path: '/courier',
@@ -187,6 +203,7 @@ export const routeTree = rootRoute.addChildren([
     // Student pages share the top-header account layout.
     accountRoute.addChildren([
       appRoute,
+      supplierCategoryRoute,
       courierRoute,
       profileRoute,
       editProfileRoute,

@@ -1,20 +1,49 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { RequesterHomePage } from './RequesterHomePage'
 
+const renderHome = () => {
+  const rootRoute = createRootRoute()
+  const homeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/app',
+    component: RequesterHomePage,
+  })
+  const locationsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/locations',
+    validateSearch: (search: Record<string, unknown>) => ({
+      category:
+        typeof search.category === 'string' ? search.category : undefined,
+    }),
+    component: () => <h1>Locations</h1>,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([homeRoute, locationsRoute]),
+    history: createMemoryHistory({ initialEntries: ['/app'] }),
+  })
+  render(<RouterProvider router={router} />)
+  return router
+}
+
 describe('RequesterHomePage', () => {
-  it('shows the dashboard categories, favourite and recent errands', () => {
-    render(<RequesterHomePage />)
-    expect(
-      screen.getByRole('heading', { name: 'What do you need?' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('list', { name: 'Location categories' }).children,
-    ).toHaveLength(7)
-    expect(
-      screen.getByRole('button', { name: /CoffeeBean @ COM3 Open now/ }),
-    ).toBeInTheDocument()
+  it('shows pictured categories and the sample recent errands', async () => {
+    renderHome()
+
+    await screen.findByRole('heading', { name: 'What do you need?' })
+    const categories = screen.getByRole('list', {
+      name: 'Location categories',
+    })
+    expect(categories.children).toHaveLength(5)
+    expect(categories.querySelectorAll('img')).toHaveLength(5)
     expect(
       screen.getByRole('button', { name: /COM2 Ongoing/ }),
     ).toBeInTheDocument()
@@ -23,24 +52,14 @@ describe('RequesterHomePage', () => {
     ).toBeInTheDocument()
   })
 
-  it('opens a category preview and closes it with Escape', async () => {
+  it('navigates to locations with the selected category query', async () => {
     const user = userEvent.setup()
-    render(<RequesterHomePage />)
-    await user.click(screen.getByRole('button', { name: 'Drinks' }))
-    expect(screen.getByRole('dialog', { name: 'Drinks' })).toBeInTheDocument()
-    await user.keyboard('{Escape}')
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Drinks' })).toHaveFocus()
-  })
+    const router = renderHome()
+    await screen.findByRole('heading', { name: 'What do you need?' })
 
-  it('does not pretend to create an errand without the creation workflow', async () => {
-    const user = userEvent.setup()
-    render(<RequesterHomePage />)
-    await user.click(screen.getByRole('button', { name: 'Create Errand' }))
-    expect(
-      screen.getByRole('dialog', { name: 'Create Errand' }),
-    ).toHaveTextContent('No errand has been created.')
-    await user.click(screen.getByRole('button', { name: 'Close' }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'Coffee' }))
+    await screen.findByRole('heading', { name: 'Locations' })
+    expect(router.state.location.pathname).toBe('/locations')
+    expect(router.state.location.search).toEqual({ category: 'COFFEE' })
   })
 })

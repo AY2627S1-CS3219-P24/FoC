@@ -28,7 +28,7 @@
 }
 .categories {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 28px;
   list-style: none;
   padding: 0;
@@ -44,18 +44,31 @@
   color: #080808;
   font-size: 12px;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
 }
 .tile {
   display: block;
   width: 100%;
   aspect-ratio: 1;
+  overflow: hidden;
   background: var(--color-surface);
   border-radius: 16px;
   transition: box-shadow 0.15s;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s;
+  }
 }
 .category:hover .tile {
   box-shadow: 0 3px 12px #17203315;
+
+  img {
+    transform: scale(1.04);
+  }
 }
 .section {
   margin-top: 38px;
@@ -100,7 +113,7 @@
 }
 .status {
   display: block;
-  margin-top: 12px;
+  margin-top: 8px;
   font-size: 10px;
   color: #188348;
 }
@@ -125,11 +138,6 @@
     outline: 3px solid var(--color-primary);
     outline-offset: 4px;
   }
-}
-.sample {
-  color: var(--color-text-muted);
-  font-size: 11px;
-  margin: 16px 0 0;
 }
 .backdrop {
   position: fixed;

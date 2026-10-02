@@ -1,11 +1,10 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
-import {
-  categories,
-  favouriteLocations,
-  recentErrands,
-} from './requesterHome.data'
+import { SUPPLIER_CATEGORIES } from '#/features/suppliers/types/supplier.types'
+import { categoryLabels } from '#/features/suppliers/utils/supplierFormat'
+import { categoryImages, recentErrands } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
 
 export const RequesterHomePage = () => {
@@ -13,6 +12,7 @@ export const RequesterHomePage = () => {
     title: string
     description: string
   } | null>(null)
+
   return (
     <div className={styles.page}>
       <Button
@@ -42,50 +42,21 @@ export const RequesterHomePage = () => {
       </Button>
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
-        {categories.map((category) => (
+        {SUPPLIER_CATEGORIES.map((category) => (
           <li key={category}>
-            <Button
+            <Link
+              to="/locations"
+              search={{ category }}
               className={styles.category}
-              onClick={() =>
-                setPreview({
-                  title: category,
-                  description: `Browse ${category.toLowerCase()} here once the location listing is connected.`,
-                })
-              }
             >
-              <span className={styles.tile} aria-hidden="true" />
-              <span>{category}</span>
-            </Button>
+              <span className={styles.tile} aria-hidden="true">
+                <img src={categoryImages[category]} alt="" />
+              </span>
+              <span>{categoryLabels[category]}</span>
+            </Link>
           </li>
         ))}
       </ul>
-
-      <section className={styles.section} aria-labelledby="favourites-heading">
-        <h2 id="favourites-heading">Favourite locations</h2>
-        <ul className={styles.cards}>
-          {favouriteLocations.map((location) => (
-            <li key={location.id}>
-              <Button
-                className={styles.card}
-                onClick={() =>
-                  setPreview({
-                    title: location.name,
-                    description: `${location.hours}. This is a sample location; live hours and location details are not connected yet.`,
-                  })
-                }
-              >
-                <span>
-                  <span className={styles.cardTitle}>{location.name}</span>{' '}
-                  <span className={styles.status}>{location.hours}</span>
-                </span>
-                <span className={styles.arrow} aria-hidden="true">
-                  ›
-                </span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
@@ -115,20 +86,6 @@ export const RequesterHomePage = () => {
           ))}
         </ul>
       </section>
-
-      <Button
-        className={styles.create}
-        onClick={() =>
-          setPreview({
-            title: 'Create Errand',
-            description:
-              'The errand creation form is not connected yet. No errand has been created.',
-          })
-        }
-      >
-        Create Errand
-      </Button>
-      <p className={styles.sample}>Sample dashboard content</p>
 
       <Dialog.Root
         open={preview !== null}
