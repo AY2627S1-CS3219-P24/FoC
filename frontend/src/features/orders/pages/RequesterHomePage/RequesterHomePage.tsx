@@ -7,6 +7,7 @@ import {
   recentErrands,
 } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
+import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 
 export const RequesterHomePage = () => {
   const [preview, setPreview] = useState<{
@@ -15,31 +16,7 @@ export const RequesterHomePage = () => {
   } | null>(null)
   return (
     <div className={styles.page}>
-      <Button
-        className={styles.mode}
-        onClick={() =>
-          setPreview({
-            title: 'Choose your mode',
-            description:
-              'You are in Requester mode. Courier home will be available when the courier page is connected.',
-          })
-        }
-      >
-        Requester
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </Button>
+      <RoleSwitcher activeMode="requestor" />
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
         {categories.map((category) => (
