@@ -18,6 +18,7 @@ import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
+import com.cs3219.foc.user.model.dto.UserSearchCriteria;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
@@ -49,6 +50,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -147,7 +150,7 @@ class UserProfilePersistenceTests {
         var user = createPasswordUser("avatar@u.nus.edu");
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
         var first = avatars.upload(user.getId(), image("jpeg", 32, 32));
-        assertThat(first.avatarUrl()).startsWith("/users/me/avatar?v=");
+        assertThat(first.avatarUrl()).startsWith("/api/users/" + user.getId() + "/avatar?v=");
         var oldKey = repository.findById(user.getId()).orElseThrow().getAvatarKey();
         assertThat(avatars.read(user.getId())).isNotEmpty();
         var second = avatars.upload(user.getId(), image("png", 64, 64));
@@ -405,7 +408,8 @@ class UserProfilePersistenceTests {
                 barrier.await(10, TimeUnit.SECONDS);
                 return service.updateUserProfile(
                         user.getId(),
-                        new UpdateUserProfileRequest("Changed Name", "password@u.nus.edu", null, "Computing"));
+                        new UpdateUserProfileRequest(
+                                "Changed Name", "password@u.nus.edu", null, "School of Computing"));
             });
             var password = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
@@ -468,6 +472,92 @@ class UserProfilePersistenceTests {
     }
 
     @Test
+    void filtersUsersByAssignedAndMissingFacultyWithAccurateTotals() {
+        var computing = createUser("computing@u.nus.edu");
+        computing.setFaculty("School of Computing");
+        repository.saveAndFlush(computing);
+        var science = createUser("science@u.nus.edu");
+        science.setFaculty("Faculty of Science");
+        repository.saveAndFlush(science);
+        createUser("unassigned@u.nus.edu");
+
+        var pageable = PageRequest.of(0, 1, Sort.by("name"));
+        var filtered = service.listUsers(pageable, new UserSearchCriteria("", UserRole.USER, "School of Computing"));
+        assertThat(filtered.total()).isEqualTo(1);
+        assertThat(filtered.items()).extracting("email").containsExactly("computing@u.nus.edu");
+        var missing = service.listUsers(pageable, new UserSearchCriteria("", null, "UNASSIGNED"));
+        assertThat(missing.total()).isEqualTo(1);
+        assertThat(missing.items()).extracting("email").containsExactly("unassigned@u.nus.edu");
+        assertThat(service.listUsers(pageable, new UserSearchCriteria("science", UserRole.USER, "School of Computing"))
+                        .total())
+                .isZero();
+    }
+
+    @Test
+    void filtersUsersByMembershipInPostgresqlRoleArray() {
+        createUser("user-only@u.nus.edu");
+        var adminOnly = createUser("admin-only@u.nus.edu");
+        adminOnly.setRoles(List.of(UserRole.ADMIN));
+        repository.saveAndFlush(adminOnly);
+        var userAndAdmin = createUser("user-and-admin@u.nus.edu");
+        userAndAdmin.setRoles(List.of(UserRole.USER, UserRole.ADMIN));
+        repository.saveAndFlush(userAndAdmin);
+
+        var pageable = PageRequest.of(0, 10, Sort.by("email"));
+        var admins = service.listUsers(pageable, new UserSearchCriteria("", UserRole.ADMIN, null));
+        assertThat(admins.total()).isEqualTo(2);
+        assertThat(admins.items())
+                .extracting("email")
+                .containsExactly("admin-only@u.nus.edu", "user-and-admin@u.nus.edu");
+
+        var users = service.listUsers(pageable, new UserSearchCriteria("", UserRole.USER, null));
+        assertThat(users.total()).isEqualTo(2);
+        assertThat(users.items())
+                .extracting("email")
+                .containsExactly("user-and-admin@u.nus.edu", "user-only@u.nus.edu");
+    }
+
+    @Test
+    void facultyMigrationNormalizesKnownValuesAndClearsUnknownValues() throws Exception {
+        var schema = "faculty_test_" + UUID.randomUUID().toString().replace("-", "");
+        var source = new DriverManagerDataSource(
+                System.getenv("FOC_TEST_DATABASE_URL"),
+                System.getenv("FOC_TEST_DATABASE_USERNAME"),
+                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
+        try (var connection = source.getConnection();
+                var statement = connection.createStatement()) {
+            try {
+                var config = Flyway.configure()
+                        .dataSource(source)
+                        .schemas(schema)
+                        .defaultSchema(schema)
+                        .locations("classpath:db/migration");
+                config.target("3").load().migrate();
+                connection.setSchema(schema);
+                statement.execute("""
+                        INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at, faculty)
+                        VALUES
+                        ('00000000-0000-0000-0000-000000000001', 'computing@example.com', 'A', ARRAY['USER'], 'hash', now(), now(), ' Computing '),
+                        ('00000000-0000-0000-0000-000000000002', 'science@example.com', 'B', ARRAY['USER'], 'hash', now(), now(), 'Science'),
+                        ('00000000-0000-0000-0000-000000000003', 'unknown@example.com', 'C', ARRAY['USER'], 'hash', now(), now(), 'Unknown')
+                        """);
+                config.target("latest").load().migrate();
+                try (var rows = statement.executeQuery("SELECT faculty FROM users ORDER BY email")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isEqualTo("School of Computing");
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isEqualTo("Faculty of Science");
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isNull();
+                    assertThat(rows.next()).isFalse();
+                }
+            } finally {
+                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
     void migrationPreservesAnExistingAccount() throws Exception {
         var schema = "profile_test_" + UUID.randomUUID().toString().replace("-", "");
         var source = new DriverManagerDataSource(
@@ -515,7 +605,8 @@ class UserProfilePersistenceTests {
                 new UpdateUserProfileRequest("Alex Tan", "details@u.nus.edu", "+6591235436", "School of Computing"));
         assertThatThrownBy(() -> service.updateUserProfile(
                         user.getId(),
-                        new UpdateUserProfileRequest("Changed", "taken@u.nus.edu", "+6591239999", "Changed faculty")))
+                        new UpdateUserProfileRequest(
+                                "Changed", "taken@u.nus.edu", "+6591239999", "Faculty of Science")))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         var profile = service.getUserProfile(user.getId());
         assertThat(profile.phoneNumber()).isEqualTo("+6591235436");

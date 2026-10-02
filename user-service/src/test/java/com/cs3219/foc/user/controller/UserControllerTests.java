@@ -15,6 +15,7 @@ import com.cs3219.foc.user.exception.GlobalExceptionHandler;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
+import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.security.JsonAccessDeniedHandler;
 import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
@@ -23,6 +24,7 @@ import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.AvatarService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +42,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -96,17 +99,44 @@ class UserControllerTests {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
     void adminCanReadAnotherUserProfile() throws Exception {
-        when(service.getUserProfile(userId)).thenReturn(profile);
+        var adminUser = new UserDto(
+                userId.toString(),
+                profile.email(),
+                profile.name(),
+                profile.roles(),
+                profile.phoneNumber(),
+                profile.faculty(),
+                null,
+                OffsetDateTime.parse("2026-01-01T00:00:00Z"),
+                OffsetDateTime.parse("2026-01-02T00:00:00Z"));
+        when(service.getUserDto(userId)).thenReturn(adminUser);
         mvc.perform(get("/users/{id}", userId).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(userId.toString()));
-        verify(service).getUserProfile(userId);
+                .andExpect(jsonPath("$.id").value(userId.toString()))
+                .andExpect(jsonPath("$.phoneNumber").value("+6591235436"))
+                .andExpect(jsonPath("$.faculty").value("School of Computing"))
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.updatedAt").exists());
     }
 
     @Test
     void nonAdminCannotReadAnotherUserProfile() throws Exception {
         mvc.perform(get("/users/{id}", userId).with(jwt())).andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsInvalidAdminPhoneNumber() throws Exception {
+        mvc.perform(patch("/users/{id}", userId)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Alex","email":"alex@example.com","roles":["USER"],"phoneNumber":"91234567"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.phoneNumber").exists());
         verifyNoInteractions(service);
     }
 

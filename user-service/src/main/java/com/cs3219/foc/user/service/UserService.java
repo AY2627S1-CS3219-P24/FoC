@@ -8,18 +8,23 @@ import com.cs3219.foc.user.model.dto.PageDto;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
+import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
+import com.cs3219.foc.user.model.dto.UserSearchCriteria;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.repository.UserSpecifications;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
+import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,23 +39,55 @@ public class UserService {
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
 
-    private static final Set<String> SORTABLE_COLUMNS = Set.of("email", "name");
+    private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
+
+    private static final List<String> SORTABLE_PROPERTIES = List.of("name", "email", "createdAt", "updatedAt");
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
-    public PageDto<UserProfileDto> listUsers(Pageable pageable, String search, UserRole role) {
+    public PageDto<UserDto> listUsers(Pageable pageable, UserSearchCriteria criteria) {
         validatePageable(pageable);
         validateSort(pageable.getSort());
 
+        var faculty = criteria.faculty();
+        validateFacultyFilter(faculty);
+
         var pageRequest = buildPageRequest(pageable);
-        search = search.strip().toLowerCase();
+        var search = criteria.search().strip().toLowerCase(Locale.ROOT);
 
-        var roleName = role == null ? null : role.name();
+        var filters = new ArrayList<Specification<User>>();
+        if (!search.isEmpty()) {
+            filters.add(UserSpecifications.matchesText(search));
+        }
+        if (criteria.role() != null) {
+            filters.add(UserSpecifications.hasRole(criteria.role()));
+        }
+        if (UNASSIGNED_FACULTY.equals(faculty)) {
+            filters.add(UserSpecifications.hasNoFaculty());
+        } else if (faculty != null) {
+            filters.add(UserSpecifications.hasFaculty(faculty));
+        }
 
-        var matches = userRepository.findAllBySearchAndRolePaginated(search, roleName, pageRequest);
-        var items = matches.map(userMapper::toUserProfileDto).getContent();
+        var matches = userRepository.findAll(Specification.allOf(filters), pageRequest);
+        var items = matches.map(userMapper::toUserDto).getContent();
 
         return new PageDto<>(items, matches.getTotalElements(), pageable.getPageNumber(), pageable.getPageSize());
+    }
+
+    public List<String> getFaculties() {
+        return NusFacultyPolicy.getFaculties();
+    }
+
+    private void validateFacultyFilter(String faculty) {
+        if (!NusFacultyPolicy.isValidForFiltering(faculty)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid faculty filter.");
+        }
+    }
+
+    private void validateFaculty(String faculty) {
+        if (!NusFacultyPolicy.isValidForAssignment(faculty)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid faculty.");
+        }
     }
 
     private void validatePageable(Pageable pageable) {
@@ -69,21 +106,23 @@ public class UserService {
 
         var property = orders.getFirst().getProperty();
 
-        if (!SORTABLE_COLUMNS.contains(property)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sort must be name or email.");
+        if (!SORTABLE_PROPERTIES.contains(property)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Sort must be one of: " + String.join(", ", SORTABLE_PROPERTIES) + ".");
         }
     }
 
     private PageRequest buildPageRequest(Pageable pageable) {
-        return PageRequest.of(
-                pageable.getPageNumber(),
-                pageable.getPageSize(),
-                pageable.getSort().and(Sort.by("id")));
+        var order = pageable.getSort().iterator().next();
+        var sort = Sort.by(new Sort.Order(order.getDirection(), order.getProperty()))
+                .and(Sort.by("id")); // stable sort
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
     }
 
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public UserProfileDto updateUser(UUID id, UpdateUserRequest request) {
+    public UserDto updateUser(UUID id, UpdateUserRequest request) {
+        validateFaculty(request.faculty());
         var user = getUser(id);
 
         var name = request.name().strip();
@@ -99,7 +138,14 @@ public class UserService {
         user.setEmail(email);
         user.setRoles(request.roles());
 
-        return userMapper.toUserProfileDto(userRepository.saveAndFlush(user));
+        if (request.phoneNumber() != null) {
+            user.setPhoneNumber(request.phoneNumber().isEmpty() ? null : request.phoneNumber());
+        }
+        if (request.faculty() != null) {
+            user.setFaculty(request.faculty().isEmpty() ? null : request.faculty());
+        }
+
+        return userMapper.toUserDto(userRepository.saveAndFlush(user));
     }
 
     private void validateRoleChange(Collection<UserRole> currentRoles, Collection<UserRole> requestedRoles) {
@@ -118,8 +164,15 @@ public class UserService {
         return userMapper.toUserProfileDto(user);
     }
 
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasRole('ADMIN')")
+    public UserDto getUserDto(UUID userId) {
+        return userMapper.toUserDto(getUser(userId));
+    }
+
     @Transactional
     public UserProfileDto updateUserProfile(UUID userId, UpdateUserProfileRequest request) {
+        validateFaculty(request.faculty());
         // Avoid saving a stale password hash if a password change happens concurrently.
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
