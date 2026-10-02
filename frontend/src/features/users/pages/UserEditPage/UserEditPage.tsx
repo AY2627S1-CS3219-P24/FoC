@@ -1,5 +1,7 @@
 import { Toast } from '@base-ui/react/toast'
+import { Button } from '@base-ui/react/button'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
 import { useUpdateUserMutation } from '../../hooks/useUpdateUserMutation'
 import { useUserQuery } from '../../hooks/useUserQuery'
 import type { UserFormValues } from '../../schemas/user.schema'
@@ -15,8 +17,9 @@ export const UserEditPage = () => {
   const navigate = useNavigate()
   const toast = Toast.useToastManager()
   const { data: user, error: userError } = useUserQuery(userId)
+  const facultiesQuery = useFacultiesQuery()
   const {
-    mutateAsync: updateUserAsync,
+    mutateAsync: updateUser,
     isPending: isUpdatingUser,
     error: updateError,
   } = useUpdateUserMutation()
@@ -27,14 +30,15 @@ export const UserEditPage = () => {
   const updateErrorMessage = updateError
     ? getUserErrorMessage(updateError)
     : undefined
-  const isInitialLoading = !user && !userError
+  const isInitialLoading =
+    (!user || !facultiesQuery.data) && !userError && !facultiesQuery.isError
   const handleBackToList = () => {
     void navigate({ to: '/admin/users', search: listSearch })
   }
   const handleSubmitUser = async (values: UserFormValues) => {
     let updated: User
     try {
-      updated = await updateUserAsync({ id: userId, request: values })
+      updated = await updateUser({ id: userId, request: values })
     } catch {
       return
     }
@@ -56,10 +60,17 @@ export const UserEditPage = () => {
           {userErrorMessage}
         </p>
       )}
-      {user && (
+      {facultiesQuery.isError && (
+        <div className={styles.error} role="alert">
+          Could not load faculty choices.{' '}
+          <Button onClick={() => void facultiesQuery.refetch()}>Retry</Button>
+        </div>
+      )}
+      {user && facultiesQuery.data && (
         <UserEditForm
           key={user.id}
           user={user}
+          faculties={facultiesQuery.data}
           isSaving={isUpdatingUser}
           submitError={updateErrorMessage}
           onSubmit={handleSubmitUser}

@@ -5,6 +5,8 @@ export const getUserFormValues = (user: User): UserFormValues => ({
   name: user.name,
   email: user.email,
   roles: user.roles,
+  phoneNumber: user.phoneNumber ?? '',
+  faculty: user.faculty ?? '',
 })
 
 export const toggleUserRole = (

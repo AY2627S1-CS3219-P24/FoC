@@ -1,6 +1,6 @@
 .tableShell {
   position: relative;
-  overflow: hidden;
+  overflow-x: auto;
   min-height: 580px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -13,6 +13,17 @@
   --rdt-cell-padding-x: 16px;
   --rdt-font-size: 14px;
   --rdt-font-size-header: 12px;
+}
+
+.userName,
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.userName {
+  min-width: 150px;
 }
 
 .actionLink {

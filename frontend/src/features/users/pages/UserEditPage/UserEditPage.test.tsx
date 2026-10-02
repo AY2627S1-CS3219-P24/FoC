@@ -20,6 +20,11 @@ const user: User = {
   name: 'Alex Tan',
   email: 'alex@example.com',
   roles: ['USER'],
+  phoneNumber: '+6591235436',
+  faculty: 'School of Computing',
+  avatarUrl: null,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-02T00:00:00Z',
 }
 
 const adminToken = `header.${btoa(JSON.stringify({ roles: ['ADMIN'] }))}.signature`
@@ -33,6 +38,8 @@ const renderEditPage = (listUser: User = user) => {
   setAccessToken(adminToken)
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   const get = vi.spyOn(axiosClient, 'get').mockImplementation(async (url) => {
+    if (url === '/users/faculties')
+      return { data: ['School of Computing', 'Faculty of Science'] }
     if (url === '/users/user-1') return { data: user }
     if (url === '/users') {
       return { data: { items: [listUser], total: 1, page: 0, size: 20 } }
@@ -92,6 +99,8 @@ test('saving a user returns to the list and confirms the change', async () => {
     name: 'Alex Lee',
     email: 'alex@example.com',
     roles: ['USER'],
+    phoneNumber: '+6591235436',
+    faculty: 'School of Computing',
   })
   expect(await screen.findByRole('heading', { name: 'Users' })).toBeVisible()
   expect(await screen.findByText('Alex Lee was updated.')).toBeVisible()
@@ -127,7 +136,11 @@ test('keeps an unsaved draft mounted during a detail refetch', async () => {
   })
   void queryClient.refetchQueries({ queryKey: userQueryKeys.detail(user.id) })
 
-  await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  await waitFor(() =>
+    expect(
+      get.mock.calls.filter(([url]) => url === '/users/user-1'),
+    ).toHaveLength(2),
+  )
   expect(name).toHaveValue('Draft name')
   await act(async () => releaseRefresh?.())
   await waitFor(() =>
@@ -173,4 +186,27 @@ test('requires at least one role before saving', async () => {
 
   expect(await screen.findByText('Select at least one role.')).toBeVisible()
   expect(patch).not.toHaveBeenCalled()
+})
+
+test('saves normalized phone and clears faculty', async () => {
+  const { patch, userEvents } = renderEditPage()
+  const phone = await screen.findByRole('textbox', { name: 'Phone number' })
+  expect(screen.getByText('2026-01-01 08:00:00 SGT')).toBeVisible()
+  await userEvents.clear(phone)
+  await userEvents.type(phone, '+65 8123-4567')
+  await userEvents.selectOptions(
+    screen.getByRole('combobox', { name: 'Faculty' }),
+    '',
+  )
+  await userEvents.click(screen.getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() =>
+    expect(patch).toHaveBeenCalledWith('/users/user-1', {
+      name: 'Alex Tan',
+      email: 'alex@example.com',
+      roles: ['USER'],
+      phoneNumber: '+6581234567',
+      faculty: '',
+    }),
+  )
 })

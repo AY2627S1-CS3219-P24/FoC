@@ -12,5 +12,6 @@ export const useUpdateUserMutation = () => {
       queryClient.setQueryData(userQueryKeys.detail(updated.id), updated)
       void queryClient.invalidateQueries({ queryKey: userQueryKeys.lists })
     },
+    networkMode: 'always',
   })
 }

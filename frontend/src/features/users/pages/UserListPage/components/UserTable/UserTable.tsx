@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router'
 import DataTable from 'react-data-table-component'
 import type { TableColumn } from 'react-data-table-component'
 import type { User, UserListParams } from '../../../../types/user.types'
+import { UserAvatar } from '../../../../components/UserAvatar/UserAvatar'
+import { formatUserDate } from '../../../../utils/formatUserDate'
 import type { UserListSearch } from '../../utils/userListSearch'
 import styles from './UserTable.module.scss'
 
@@ -37,42 +39,90 @@ export const UserTable = ({
   onPageChange,
   onSortChange,
 }: UserTableProps) => {
-  const { q, role, sort: listSort, page: listPage } = listSearch
+  const { q, role, faculty, sort: listSort, page: listPage } = listSearch
   const columns = useMemo<TableColumn<User>[]>(
     () => [
       {
         id: 'name',
         name: 'Name',
+        minWidth: '180px',
         selector: (user) => user.name,
+        cell: (user) => (
+          <span className={styles.userName}>
+            <UserAvatar user={user} />
+            <span>{user.name}</span>
+          </span>
+        ),
         sortable: true,
       },
       {
         id: 'email',
         name: 'Email',
+        minWidth: '220px',
         selector: (user) => user.email,
         sortable: true,
       },
       {
+        id: 'phoneNumber',
+        name: 'Phone',
+        minWidth: '150px',
+        selector: (user) => user.phoneNumber || '-',
+      },
+      {
+        id: 'faculty',
+        name: 'Faculty',
+        minWidth: '160px',
+        selector: (user) => user.faculty || '-',
+      },
+      {
         id: 'roles',
         name: 'Roles',
+        minWidth: '100px',
         selector: (user) => user.roles.join(', '),
+      },
+      {
+        id: 'createdAt',
+        name: 'Created at',
+        minWidth: '205px',
+        selector: (user) => user.createdAt,
+        cell: (user) => formatUserDate(user.createdAt),
+        sortable: true,
+      },
+      {
+        id: 'updatedAt',
+        name: 'Updated at',
+        minWidth: '205px',
+        selector: (user) => user.updatedAt,
+        cell: (user) => formatUserDate(user.updatedAt),
+        sortable: true,
       },
       {
         id: 'actions',
         name: 'Actions',
+        minWidth: '160px',
         cell: (user) => (
-          <Link
-            to="/admin/users/$userId/edit"
-            params={{ userId: user.id }}
-            search={{ q, role, sort: listSort, page: listPage }}
-            className={styles.actionLink}
-          >
-            Edit
-          </Link>
+          <span className={styles.actions}>
+            <Link
+              to="/admin/users/$userId"
+              params={{ userId: user.id }}
+              search={{ q, role, faculty, sort: listSort, page: listPage }}
+              className={styles.actionLink}
+            >
+              View
+            </Link>
+            <Link
+              to="/admin/users/$userId/edit"
+              params={{ userId: user.id }}
+              search={{ q, role, faculty, sort: listSort, page: listPage }}
+              className={styles.actionLink}
+            >
+              Edit
+            </Link>
+          </span>
         ),
       },
     ],
-    [q, role, listSort, listPage],
+    [q, role, faculty, listSort, listPage],
   )
 
   return (
@@ -104,7 +154,7 @@ export const UserTable = ({
         sortServer
         onSort={(column, direction, _rows, sortColumns) => {
           const nextSort: UserListParams['sort'] = sortColumns.length
-            ? `${column.id === 'email' ? 'email' : 'name'},${direction}`
+            ? `${column.id as 'name' | 'email' | 'createdAt' | 'updatedAt'},${direction}`
             : 'name,asc'
           if (nextSort !== sort) onSortChange(nextSort)
         }}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
+import { UNASSIGNED_FACULTY } from '#/constants/faculty'
 import { useUsersQuery } from '../../hooks/useUsersQuery'
 import type { UserListParams, UserRole } from '../../types/user.types'
 import { getUserErrorMessage } from '../../utils/userErrors'
@@ -13,8 +15,9 @@ import styles from './UserListPage.module.scss'
 export const UserListPage = () => {
   const search = useSearch({ from: '/admin/users' })
   const navigate = useNavigate({ from: '/admin/users' })
-  const { q, role, sort, page } = search
+  const { q, role, faculty, sort, page } = search
   const [searchInput, setSearchInput] = useState(q ?? '')
+  const facultiesQuery = useFacultiesQuery()
   const params = getUserListParams(search)
   const {
     data: usersPage,
@@ -25,6 +28,20 @@ export const UserListPage = () => {
   } = useUsersQuery(params)
 
   useEffect(() => setSearchInput(q ?? ''), [q])
+
+  useEffect(() => {
+    if (!faculty || !facultiesQuery.data) return
+    if (faculty === UNASSIGNED_FACULTY || facultiesQuery.data.includes(faculty))
+      return
+    void navigate({
+      search: (previous) => ({
+        ...previous,
+        faculty: undefined,
+        page: undefined,
+      }),
+      replace: true,
+    })
+  }, [faculty, facultiesQuery.data, navigate])
 
   useEffect(() => {
     const nextSearch = searchInput.trim()
@@ -62,7 +79,7 @@ export const UserListPage = () => {
   const isInitialLoading = !usersPage && !usersError
   const isUpdating = isShowingPreviousResults && isUsersFetching
   const isRefreshing = isUsersFetching && !isInitialLoading && !isUpdating
-  const hasFilters = Boolean(q || role)
+  const hasFilters = Boolean(q || role || faculty)
   const handleRoleChange = (nextRole: UserRole | '') => {
     void navigate({
       search: (previous) => ({
@@ -77,6 +94,15 @@ export const UserListPage = () => {
       search: (previous) => ({
         ...previous,
         sort: nextSort === 'name,asc' ? undefined : nextSort,
+        page: undefined,
+      }),
+    })
+  }
+  const handleFacultyChange = (nextFaculty: string) => {
+    void navigate({
+      search: (previous) => ({
+        ...previous,
+        faculty: nextFaculty || undefined,
         page: undefined,
       }),
     })
@@ -97,6 +123,7 @@ export const UserListPage = () => {
         ...previous,
         q: undefined,
         role: undefined,
+        faculty: undefined,
         page: undefined,
       }),
     })
@@ -112,8 +139,13 @@ export const UserListPage = () => {
       <UserFilters
         searchInput={searchInput}
         role={role ?? ''}
+        faculty={faculty ?? ''}
+        faculties={facultiesQuery.data ?? []}
+        facultyError={facultiesQuery.isError}
         onSearchChange={setSearchInput}
         onRoleChange={handleRoleChange}
+        onFacultyChange={handleFacultyChange}
+        onRetryFaculties={() => void facultiesQuery.refetch()}
       />
 
       {usersErrorMessage && usersPage && (

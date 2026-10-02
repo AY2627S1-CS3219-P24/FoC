@@ -1,16 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useBlocker } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
-import { userSchema } from '../../../schemas/user.schema'
+import { createUserSchema } from '../../../schemas/user.schema'
 import type { UserFormValues } from '../../../schemas/user.schema'
 import type { User } from '../../../types/user.types'
 import { getUserFormValues } from '../UserEditPage.logic'
 
-export const useUserEditForm = (user: User) => {
+export const useUserEditForm = (user: User, faculties: string[]) => {
+  const schema = useMemo(() => createUserSchema(faculties), [faculties])
   const form = useForm<UserFormValues>({
     defaultValues: getUserFormValues(user),
-    resolver: zodResolver(userSchema),
+    resolver: zodResolver(schema),
   })
   const { isDirty, isSubmitting } = form.formState
   const { reset } = form

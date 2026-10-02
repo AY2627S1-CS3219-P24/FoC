@@ -22,6 +22,7 @@ import { LoadingPage } from '#/pages/LoadingPage'
 import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
 import { UserListPage } from '#/features/users/pages/UserListPage/UserListPage'
 import { UserEditPage } from '#/features/users/pages/UserEditPage/UserEditPage'
+import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
 import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
@@ -128,7 +129,7 @@ const adminLayoutRoute = createRoute({
 const adminIndexRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/',
-  component: AdminOverviewPage
+  component: AdminOverviewPage,
 })
 
 const supplierListRoute = createRoute({
@@ -164,6 +165,13 @@ const userEditRoute = createRoute({
   validateSearch: validateUserListSearch,
 })
 
+const userViewRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users/$userId',
+  component: UserViewPage,
+  validateSearch: validateUserListSearch,
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -189,8 +197,10 @@ export const routeTree = rootRoute.addChildren([
       supplierListRoute,
       supplierCreateRoute,
       supplierEditRoute,
+      userListRoute,
+      userViewRoute,
+      userEditRoute,
     ]),
   ]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),
-  adminLayoutRoute.addChildren([adminIndexRoute, userListRoute, userEditRoute]),
 ])
