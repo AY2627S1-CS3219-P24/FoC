@@ -1,14 +1,12 @@
 import {
   createRootRouteWithContext,
   createRoute,
-  redirect,
   Outlet,
+  redirect,
 } from '@tanstack/react-router'
 
-import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
-import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
 import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
@@ -19,12 +17,17 @@ import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
 import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
 import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
+import { ErrorPage } from '#/pages/ErrorPage'
+import { LoadingPage } from '#/pages/LoadingPage'
+import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
+import { UserListPage } from '#/features/users/pages/UserListPage/UserListPage'
+import { UserEditPage } from '#/features/users/pages/UserEditPage/UserEditPage'
+import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
+import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
+import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
-import {
-  SessionRecoveryPending,
-  SessionRecoveryError,
-} from '#/features/auth/components/SessionRecoveryFeedback/SessionRecoveryFeedback'
+import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -70,8 +73,8 @@ const protectedRoute = createRoute({
   },
   pendingMs: 500,
   pendingMinMs: 0,
-  pendingComponent: SessionRecoveryPending,
-  errorComponent: SessionRecoveryError,
+  pendingComponent: LoadingPage,
+  errorComponent: ErrorPage,
 })
 
 const accountRoute = createRoute({
@@ -105,11 +108,22 @@ const courierRoute = createRoute({
 })
 
 // Below are admin routes
-// Admin pages require a signed-in session.
 const adminLayoutRoute = createRoute({
-  getParentRoute: () => protectedRoute,
+  getParentRoute: () => rootRoute,
   path: '/admin',
   component: AdminLayout,
+  beforeLoad: async ({ context }) => {
+    if (!(await context.auth.ensureAuthenticated())) {
+      throw redirect({ to: '/login', replace: true })
+    }
+    if (!hasAdminRole()) {
+      throw redirect({ to: '/app', replace: true })
+    }
+  },
+  pendingMs: 500,
+  pendingMinMs: 0,
+  pendingComponent: LoadingPage,
+  errorComponent: ErrorPage,
 })
 
 const adminIndexRoute = createRoute({
@@ -137,6 +151,27 @@ const supplierEditRoute = createRoute({
   component: SupplierEditPage,
 })
 
+const userListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users',
+  component: UserListPage,
+  validateSearch: validateUserListSearch,
+})
+
+const userEditRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users/$userId/edit',
+  component: UserEditPage,
+  validateSearch: validateUserListSearch,
+})
+
+const userViewRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/users/$userId',
+  component: UserViewPage,
+  validateSearch: validateUserListSearch,
+})
+
 export const routeTree = rootRoute.addChildren([
   ...(import.meta.env.DEV
     ? [
@@ -162,6 +197,9 @@ export const routeTree = rootRoute.addChildren([
       supplierListRoute,
       supplierCreateRoute,
       supplierEditRoute,
+      userListRoute,
+      userViewRoute,
+      userEditRoute,
     ]),
   ]),
   authLayoutRoute.addChildren([loginRoute, registerRoute]),

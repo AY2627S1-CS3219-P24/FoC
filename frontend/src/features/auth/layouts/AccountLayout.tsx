@@ -1,17 +1,16 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { UserLayout } from '#/layouts/UserLayout'
-import { useProfileAvatar, useUserProfile } from '../hooks/useUserProfile'
+import { useUserProfile } from '../hooks/useUserProfile'
 import { useAuth } from '../providers/AuthProvider'
 
 export const AccountLayout = () => {
   const { data } = useUserProfile()
-  const avatarUrl = useProfileAvatar(data?.avatarUrl)
   const navigate = useNavigate()
   const auth = useAuth()
   return (
     <UserLayout
       name={data?.name ?? 'Your account'}
-      avatarUrl={avatarUrl}
+      avatarUrl={data?.avatarUrl}
       brand={<Link to="/app">FoC</Link>}
       navigation={
         <>
