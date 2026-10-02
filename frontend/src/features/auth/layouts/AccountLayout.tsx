@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { UserLayout } from '#/layouts/UserLayout'
+import { UserLayout } from '#/layouts/UserLayout/UserLayout'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useAuth } from '../providers/AuthProvider'
 
