@@ -18,8 +18,9 @@ import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserL
 import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
 import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
-import { AppHomePage } from '#/pages/AppHomePage/AppHomePage'
-import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
+import { HomePage } from '#/features/orders/pages/HomePage/HomePage'
+import { getHomeMode } from '#/features/orders/utils/homeMode'
+import type { HomeMode } from '#/features/orders/utils/homeMode'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import {
   SessionRecoveryPending,
@@ -32,7 +33,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/app', replace: true })
+    throw redirect({ to: '/home', replace: true })
   },
 })
 
@@ -59,9 +60,9 @@ const registerRoute = createRoute({
   path: '/register',
 })
 
-const protectedRoute = createRoute({
+const authenticatedRoute = createRoute({
   getParentRoute: () => rootRoute,
-  id: 'protected',
+  id: 'authenticated',
   component: Outlet,
   beforeLoad: async ({ context }) => {
     if (!(await context.auth.ensureAuthenticated())) {
@@ -74,40 +75,49 @@ const protectedRoute = createRoute({
   errorComponent: SessionRecoveryError,
 })
 
-const accountRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  id: 'account',
+const userRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  id: 'user',
   component: AccountLayout,
 })
 
 const profileRoute = createRoute({
-  getParentRoute: () => accountRoute,
+  getParentRoute: () => userRoute,
   path: '/profile',
   component: ProfilePage,
 })
 
 const editProfileRoute = createRoute({
-  getParentRoute: () => accountRoute,
+  getParentRoute: () => userRoute,
   path: '/profile/edit',
   component: EditProfilePage,
 })
 
-const appRoute = createRoute({
-  getParentRoute: () => accountRoute,
-  path: '/app',
-  component: AppHomePage,
-})
-
-const courierRoute = createRoute({
-  getParentRoute: () => accountRoute,
-  path: '/courier',
-  component: CourierHomePage,
+const homeRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/home',
+  validateSearch: (search: Record<string, unknown>): { mode?: HomeMode } => ({
+    mode:
+      search.mode === 'requestor' || search.mode === 'courier'
+        ? search.mode
+        : undefined,
+  }),
+  beforeLoad: ({ search }) => {
+    if (!search.mode) {
+      throw redirect({
+        to: '/home',
+        search: { mode: getHomeMode() },
+        replace: true,
+      })
+    }
+  },
+  component: HomePage,
 })
 
 // Below are admin routes
 // Admin pages require a signed-in session.
 const adminLayoutRoute = createRoute({
-  getParentRoute: () => protectedRoute,
+  getParentRoute: () => authenticatedRoute,
   path: '/admin',
   component: AdminLayout,
 })
@@ -148,14 +158,9 @@ export const routeTree = rootRoute.addChildren([
       ]
     : []),
   indexRoute,
-  protectedRoute.addChildren([
+  authenticatedRoute.addChildren([
     // Student pages share the top-header account layout.
-    accountRoute.addChildren([
-      appRoute,
-      courierRoute,
-      profileRoute,
-      editProfileRoute,
-    ]),
+    userRoute.addChildren([homeRoute, profileRoute, editProfileRoute]),
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,

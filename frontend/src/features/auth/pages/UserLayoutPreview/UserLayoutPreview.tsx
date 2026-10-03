@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { UserLayout } from '#/layouts/UserLayout'
+import { UserLayout } from '#/layouts/UserLayout/UserLayout'
 
 // Development-only sample data. Account and credit features will supply live props.
 export const UserLayoutPreview = () => {

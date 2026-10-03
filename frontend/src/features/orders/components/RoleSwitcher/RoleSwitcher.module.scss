@@ -1,0 +1,66 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1f2430;
+  font: inherit;
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-expanded='true'] {
+    background: #e9edf4;
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  &[aria-expanded='true'] svg {
+    transform: rotate(180deg);
+  }
+}
+
+.roleSwitcherLabel {
+  display: block;
+}
+
+.positioner {
+  z-index: 30;
+}
+
+.popup {
+  min-width: 170px;
+  padding: 6px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 28px #17203324;
+}
+
+.item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #1f2430;
+  font-size: 16px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover,
+  &[data-highlighted] {
+    background: #f3f5f9;
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
