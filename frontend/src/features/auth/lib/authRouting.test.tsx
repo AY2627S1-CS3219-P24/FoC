@@ -83,6 +83,29 @@ const setup = (path: string) => {
   return router
 }
 
+it('switches between requestor and courier modes through the menu', async () => {
+  setAccessToken('token')
+  const router = setup('/app')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'What do you need?' })
+
+  await user.click(screen.getByRole('button', { name: 'Request' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Deliver' }))
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(router.state.location.pathname).toBe('/courier')
+  expect(
+    screen.queryByRole('heading', { name: 'What do you need?' }),
+  ).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'Deliver' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Request' }))
+  await screen.findByRole('heading', { name: 'What do you need?' })
+  expect(router.state.location.pathname).toBe('/app')
+  expect(
+    screen.queryByRole('heading', { name: 'Find an errand' }),
+  ).not.toBeInTheDocument()
+})
+
 it('shares one account layout across home, courier and profile routes', async () => {
   setAccessToken('token')
   const router = setup('/app')
