@@ -2,8 +2,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 0;
+  padding: 6px 8px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   color: #1f2430;
   font: inherit;
@@ -11,6 +12,20 @@
   font-weight: 650;
   line-height: 1;
   cursor: pointer;
+
+  &:hover,
+  &[aria-expanded='true'] {
+    background: #e9edf4;
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  &[aria-expanded='true'] svg {
+    transform: rotate(180deg);
+  }
 }
 
 .roleSwitcherLabel {
@@ -45,7 +60,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid currentColor;
     outline-offset: 2px;
   }
 }

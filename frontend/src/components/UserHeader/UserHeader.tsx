@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Menu } from '@base-ui/react/menu'
 import type { ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 import styles from './UserHeader.module.scss'
 
 export type UserHeaderProps = {
@@ -58,18 +59,12 @@ export const UserHeader = ({
         </span>
       </span>
       {onAccountClick && (
-        <svg
+        <ChevronDown
           className={styles.chevron}
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
+          size={12}
+          strokeWidth={2}
           aria-hidden="true"
-        >
-          <path d="m7 10 5 5 5-5" />
-        </svg>
+        />
       )}
     </>
   )
