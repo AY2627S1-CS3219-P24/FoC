@@ -11,10 +11,15 @@ export const AccountLayout = () => {
     <UserLayout
       name={data?.name ?? 'Your account'}
       avatarUrl={data?.avatarUrl}
-      brand={<Link to="/app">FoC</Link>}
+      brand={<Link to="/home">FoC</Link>}
       navigation={
         <>
-          <Link to="/app">Home</Link>
+          <Link
+            to="/home"
+            activeOptions={{ exact: false, includeSearch: false }}
+          >
+            Home
+          </Link>
           <span aria-disabled="true">Locations</span>
           <span aria-disabled="true">My Errands</span>
         </>

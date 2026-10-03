@@ -26,8 +26,8 @@ export const RoleSwitcher = ({ activeMode }: RoleSwitcherProps) => {
   const currentLabel = activeMode === 'requestor' ? 'Request' : 'Deliver'
   const alternate =
     activeMode === 'requestor'
-      ? { label: 'Deliver', to: '/courier' as const }
-      : { label: 'Request', to: '/app' as const }
+      ? { label: 'Deliver', mode: 'courier' as const }
+      : { label: 'Request', mode: 'requestor' as const }
 
   return (
     <Menu.Root>
@@ -40,7 +40,7 @@ export const RoleSwitcher = ({ activeMode }: RoleSwitcherProps) => {
           <Menu.Popup className={styles.popup}>
             <Menu.Item
               className={styles.item}
-              render={<Link to={alternate.to} />}
+              render={<Link to="/home" search={{ mode: alternate.mode }} />}
             >
               {alternate.label}
             </Menu.Item>

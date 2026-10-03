@@ -12,7 +12,7 @@ import ui from '../../styles/supplier.module.scss'
 
 export const SupplierEditPage = () => {
   const { supplierId } = useParams({
-    from: '/protected/admin/suppliers/$supplierId/edit',
+    from: '/authenticated/admin/suppliers/$supplierId/edit',
   })
   const supplier = useSupplier(supplierId)
   const updateSupplier = useUpdateSupplier(supplierId)
