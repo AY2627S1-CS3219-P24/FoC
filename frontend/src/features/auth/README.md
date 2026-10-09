@@ -2,13 +2,14 @@
 
 This feature connects registration and login to User Service, restores login
 after a page reload, guards application routes, and handles authenticated
-business requests and logout. Registration returns to login; login opens `/app`.
+business requests and logout. Registration opens the email verification page;
+verified users can log in to `/app`.
 
 ## Structure and responsibilities
 
 ```text
 auth/
-├── api/          # Send registration, login, refresh, and logout requests
+├── api/          # Send auth, email verification, and account requests
 ├── assets/       # Authentication background
 ├── components/   # Session recovery loading and retry feedback
 ├── hooks/        # Login/register submission progress and errors
@@ -16,6 +17,7 @@ auth/
 ├── lib/          # Token storage, fetch requests, refresh, and Axios interceptors
 ├── pages/        # Each page owns its form, schema, styles, and tests
 ├── providers/    # React authentication operations and invalidation notifications
+├── schemas/      # NUS email validation shared by registration and resending
 ├── styles/       # Shared form and page styles
 ├── types/        # Backend request and response types
 └── utils/        # Login/register error messages
@@ -44,13 +46,16 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 
 ## What the API functions do
 
-| Function                                    | Request                                           | Caller uses the result to                                               |
-| ------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| [registerUser](api/registerUser.api.ts)     | `POST /auth/register` with name, email, password  | Confirm account creation and open login; registration does not sign in. |
-| [loginUser](api/loginUser.api.ts)           | `POST /auth/login` with email, password           | Pass the access token to Provider's `completeLogin` and open `/app`.    |
-| [refreshSession](api/refreshSession.api.ts) | `POST /auth/refresh`; browser supplies the cookie | Obtain a replacement access token through the shared refresh operation. |
-| [logoutUser](api/logoutUser.api.ts)         | `POST /auth/logout`; browser supplies the cookie  | Finish the logout attempt and return to login.                          |
+| Function                                           | Request                                            | Caller uses the result to                                               |
+| -------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| [registerUser](api/registerUser.api.ts)            | `POST /auth/register` with name, email, password   | Open `/verify-email` with the submitted address.                        |
+| [verifyEmail](api/emailVerification.api.ts)        | `POST /auth/email-verification/confirm` with token | Show confirmation and a login link.                                     |
+| [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email  | Ask the user to check their inbox and spam folder.                      |
+| [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/app`.    |
+| [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie  | Obtain a replacement access token through the shared refresh operation. |
+| [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie   | Finish the logout attempt and return to login.                          |
 
+Paths in this table are relative to `/api`; `authRequest` adds that prefix.
 Auth APIs use fetch and bypass Axios interceptors. The backend's `expiresAt`
 remains part of the response contract, but the frontend does not proactively
 check it. The browser processes the HttpOnly refresh cookie; JavaScript does
@@ -63,13 +68,24 @@ not read or delete its value.
 ```text
 Form → Page → useLogin/useRegister → fetch API → User Service
                          ↓ success
-Register: open /login with success notice
+Register: open /verify-email → open emailed link → automatic verification → log in
 Login: completeLogin(accessToken) → open /app
 ```
 
 Names and emails are trimmed, emails are lowercased, and passwords remain
 unchanged. Registration excludes `confirmPassword` from its request.
 Existing pending states and submission locks prevent duplicate form submissions.
+
+`VerifyEmailPage` uses the existing `AuthLayout` for check-email, verified, and
+unavailable-link feedback. `useEmailVerification` submits a link token once on
+arrival, including during React StrictMode effect replay. An unavailable link
+lets the user enter their email and resend on the same page. A temporary request
+failure offers a retry in that card.
+
+Correct credentials for an unverified account return **403** without either
+login token. Login shows verification feedback and a link to the same resend
+page. Resending too soon returns **429** with a short inline message; there is
+no countdown. Ordinary profile saves do not send or change the email address.
 
 ### Session recovery
 
@@ -169,8 +185,19 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
    - On registration, change either password field and check that the confirmation
      error updates. Check that whitespace-only passwords are rejected.
 2. **Registration**
-   - Register with an unused email. Expect `POST /auth/register` to return **201**,
-     followed by navigation to `/login` with a registration success notice.
+   - Configure the SMTP environment variables listed in the root `.env.example`
+     in the User Service run configuration.
+     Register with an unused NUS address you can access. Expect
+     `POST /api/auth/register` to return **201**, followed by `/verify-email`
+     showing the address and inbox/spam reminder.
+   - Before opening the email, try logging in with the correct password. Expect
+     **403**, no refresh cookie, and a resend link.
+   - Open the email link. Expect an automatic confirmation request, **204**, and
+     `Email verified`. Follow **Log in** and confirm normal login succeeds.
+   - With another unverified account, wait one minute and resend. The newest link
+     should work; the replaced or already-used link should show `Link unavailable`.
+     That card should accept an email and request a new link without leaving the page.
+   - A resend within one minute should show the inline wait message.
    - Try registering the same email again. Expect duplicate-email feedback and
      no navigation away from registration.
    - With a different unused email, stop User Service and submit. Check that an
@@ -209,7 +236,7 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
 ### Responsive layout checks
 
 Use the DevTools device toolbar in **Responsive** mode and enter these viewport
-widths and heights. Check login, registration, field/server errors, session
+widths and heights. Check login, registration, all email verification states, field/server errors, session
 recovery feedback, and the application logout button.
 
 | Viewport       | Check                                                                                                                                         |

@@ -66,7 +66,7 @@ const setup = async () => {
   return { router, client, user: userEvent.setup() }
 }
 
-it('loads the profile and saves optional fields with the existing email, updating the header', async () => {
+it('loads the profile and saves optional fields, updating the header', async () => {
   const { user } = await setup()
   await user.clear(screen.getByLabelText(/Full Name/))
   await user.type(screen.getByLabelText(/Full Name/), 'Jamie Tan')
@@ -76,7 +76,6 @@ it('loads the profile and saves optional fields with the existing email, updatin
   expect(api.updateUserProfile).toHaveBeenCalledWith(
     {
       name: 'Jamie Tan',
-      email: profile.email,
       phoneNumber: '',
       faculty: 'Computing',
     },

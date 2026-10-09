@@ -15,6 +15,11 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(EmailVerificationException.class)
+    ResponseEntity<ErrorResponse> handleEmailVerification(EmailVerificationException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(new ErrorResponse(exception.getMessage()));
+    }
+
     @ExceptionHandler(InvalidPasswordException.class)
     ResponseEntity<ValidationErrorResponse> handleInvalidPassword(InvalidPasswordException exception) {
         return ResponseEntity.badRequest()

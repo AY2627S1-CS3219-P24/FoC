@@ -73,7 +73,6 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
     try {
       const updated = await actions.update.mutateAsync({
         name,
-        email: profile.email,
         phoneNumber,
         faculty,
       })

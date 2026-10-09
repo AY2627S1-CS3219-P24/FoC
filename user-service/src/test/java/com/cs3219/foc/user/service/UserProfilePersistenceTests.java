@@ -5,25 +5,30 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.config.AccountMailProperties;
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.config.AvatarProperties;
 import com.cs3219.foc.user.exception.AvatarException;
-import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
+import com.cs3219.foc.user.exception.EmailVerificationException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
+import com.cs3219.foc.user.infrastructure.mail.AccountMailListener;
 import com.cs3219.foc.user.infrastructure.storage.AvatarStorage;
 import com.cs3219.foc.user.infrastructure.storage.LocalAvatarStorage;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
+import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
 import jakarta.persistence.EntityManagerFactory;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -44,14 +49,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.mapstruct.factory.Mappers;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.mail.MailSendException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
@@ -111,9 +120,18 @@ class UserProfilePersistenceTests {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private EmailVerificationService verification;
+
+    @Autowired
+    private EmailTokenRepository emailTokens;
+
+    @Autowired
+    private JavaMailSender mailSender;
+
     @BeforeEach
     void cleanUsers() throws Exception {
-        reset(avatarStorage);
+        reset(avatarStorage, mailSender);
         repository.deleteAll();
         try (var files = Files.list(avatarDirectory)) {
             for (var file : files.toList()) {
@@ -153,8 +171,7 @@ class UserProfilePersistenceTests {
         var second = avatars.upload(user.getId(), image("png", 64, 64));
         assertThat(second.avatarUrl()).isNotEqualTo(first.avatarUrl());
         assertThat(Files.exists(avatarDirectory.resolve(oldKey))).isFalse();
-        service.updateUserProfile(
-                user.getId(), new UpdateUserProfileRequest("New Name", "avatar@u.nus.edu", null, null));
+        service.updateUserProfile(user.getId(), new UpdateUserProfileRequest("New Name", null, null));
         passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
         assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(second.avatarUrl());
         avatars.remove(user.getId());
@@ -288,7 +305,58 @@ class UserProfilePersistenceTests {
     private User createPasswordUser(String email) {
         var user = createUser(email);
         user.setPasswordHash(passwordEncoder.encode("CurrentPassword1"));
+        user.setEmailVerified(true);
         return repository.saveAndFlush(user);
+    }
+
+    @Test
+    void registrationSendsACommittedSingleUseLinkAndRequiresVerificationBeforeLogin() {
+        service.registerUser(new RegisterUserRequest("jamie@u.nus.edu", "Jamie", "password123"));
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertThat(message.getValue().getTo()).containsExactly("jamie@u.nus.edu");
+        var link = message.getValue()
+                .getText()
+                .lines()
+                .filter(line -> line.startsWith("http://localhost:3000/verify-email?token="))
+                .findFirst()
+                .orElseThrow();
+        var token = URI.create(link).getQuery().substring("token=".length());
+        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getTokenHash())
+                .isNotEqualTo(token));
+        var credentials = new LoginRequest("jamie@u.nus.edu", "password123");
+        assertThatThrownBy(() -> authService.login(credentials))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThat(refreshTokens.count()).isZero();
+
+        verification.verifyEmail(token);
+
+        assertThat(repository.findByEmail("jamie@u.nus.edu").orElseThrow().isEmailVerified())
+                .isTrue();
+        assertThat(emailTokens.count()).isZero();
+        assertThat(authService.login(credentials).accessToken()).isNotBlank();
+        assertThatThrownBy(() -> verification.verifyEmail(token)).isInstanceOf(EmailVerificationException.class);
+    }
+
+    @Test
+    void registrationRollbackDoesNotSendMail() {
+        assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                    service.registerUser(new RegisterUserRequest("rollback@u.nus.edu", "Jamie", "password123"));
+                    throw new IllegalStateException("rollback");
+                }))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(repository.findByEmail("rollback@u.nus.edu")).isEmpty();
+        assertThat(emailTokens.count()).isZero();
+        verifyNoInteractions(mailSender);
+    }
+
+    @Test
+    void deliveryFailureDoesNotRollbackTheRegisteredAccount() {
+        doThrow(new MailSendException("SMTP unavailable")).when(mailSender).send(any(SimpleMailMessage.class));
+        service.registerUser(new RegisterUserRequest("delivery@u.nus.edu", "Jamie", "password123"));
+        assertThat(repository.findByEmail("delivery@u.nus.edu")).isPresent();
+        assertThat(emailTokens.count()).isEqualTo(1);
     }
 
     @Test
@@ -404,8 +472,7 @@ class UserProfilePersistenceTests {
             var profile = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
                 return service.updateUserProfile(
-                        user.getId(),
-                        new UpdateUserProfileRequest("Changed Name", "password@u.nus.edu", null, "Computing"));
+                        user.getId(), new UpdateUserProfileRequest("Changed Name", null, "Computing"));
             });
             var password = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
@@ -426,26 +493,12 @@ class UserProfilePersistenceTests {
     void persistsProfileAndAllowsUsersToShareARealName() {
         var first = createUser("first@u.nus.edu");
         createUser("second@u.nus.edu");
-        service.updateUserProfile(
-                first.getId(), new UpdateUserProfileRequest("Alex Tan", " NEW@U.NUS.EDU ", null, null));
+        service.updateUserProfile(first.getId(), new UpdateUserProfileRequest("Alex Tan", null, null));
         var reloaded = repository.findById(first.getId()).orElseThrow();
-        assertThat(reloaded.getEmail()).isEqualTo("new@u.nus.edu");
+        assertThat(reloaded.getEmail()).isEqualTo("first@u.nus.edu");
         assertThat(reloaded.getName()).isEqualTo("Alex Tan");
         assertThat(reloaded.getPasswordHash()).isEqualTo("unchanged-hash");
         assertThat(reloaded.getRoles()).containsExactly(UserRole.USER);
-        service.updateUserProfile(first.getId(), new UpdateUserProfileRequest("Alex Tan", "new@u.nus.edu", null, null));
-    }
-
-    @Test
-    void rejectedUpdateLeavesBothFieldsUnchanged() {
-        var first = createUser("first@u.nus.edu");
-        createUser("taken@u.nus.edu");
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        first.getId(), new UpdateUserProfileRequest("Changed Name", "taken@u.nus.edu", null, null)))
-                .isInstanceOf(EntityAlreadyExistsException.class);
-        var reloaded = repository.findById(first.getId()).orElseThrow();
-        assertThat(reloaded.getName()).isEqualTo("Alex Tan");
-        assertThat(reloaded.getEmail()).isEqualTo("first@u.nus.edu");
     }
 
     @Test
@@ -454,14 +507,11 @@ class UserProfilePersistenceTests {
         assertThat(service.getUserProfile(user.getId()).phoneNumber()).isNull();
         assertThat(service.getUserProfile(user.getId()).faculty()).isNull();
         service.updateUserProfile(
-                user.getId(),
-                new UpdateUserProfileRequest(
-                        "Alex Tan", "details@u.nus.edu", " +65 9123-5436 ", " School of Computing "));
+                user.getId(), new UpdateUserProfileRequest("Alex Tan", " +65 9123-5436 ", " School of Computing "));
         var profile = service.getUserProfile(user.getId());
         assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
         assertThat(profile.faculty()).isEqualTo("School of Computing");
-        service.updateUserProfile(
-                user.getId(), new UpdateUserProfileRequest("Alex Tan", "details@u.nus.edu", " ", " "));
+        service.updateUserProfile(user.getId(), new UpdateUserProfileRequest("Alex Tan", " ", " "));
         var reloaded = repository.findById(user.getId()).orElseThrow();
         assertThat(reloaded.getPhoneNumber()).isNull();
         assertThat(reloaded.getFaculty()).isNull();
@@ -506,58 +556,30 @@ class UserProfilePersistenceTests {
         }
     }
 
-    @Test
-    void duplicateEmailDoesNotChangeOptionalDetails() {
-        var user = createUser("details@u.nus.edu");
-        createUser("taken@u.nus.edu");
-        service.updateUserProfile(
-                user.getId(),
-                new UpdateUserProfileRequest("Alex Tan", "details@u.nus.edu", "+6591235436", "School of Computing"));
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        user.getId(),
-                        new UpdateUserProfileRequest("Changed", "taken@u.nus.edu", "+6591239999", "Changed faculty")))
-                .isInstanceOf(EntityAlreadyExistsException.class);
-        var profile = service.getUserProfile(user.getId());
-        assertThat(profile.phoneNumber()).isEqualTo("+6591235436");
-        assertThat(profile.faculty()).isEqualTo("School of Computing");
-    }
-
-    @Test
-    void concurrentClaimsForSameEmailHaveOnlyOneWinner() throws Exception {
-        var first = createUser("first@u.nus.edu");
-        var second = createUser("second@u.nus.edu");
-        var barrier = new CyclicBarrier(2);
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            var one = executor.submit(claimEmail(first.getId(), barrier));
-            var two = executor.submit(claimEmail(second.getId(), barrier));
-            assertThat(List.of(one.get(20, TimeUnit.SECONDS), two.get(20, TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(true, false);
-        }
-        assertThat(repository.findAll().stream().filter(user -> "shared@u.nus.edu".equals(user.getEmail())))
-                .hasSize(1);
-        var loser = repository.findAll().stream()
-                .filter(user -> !"shared@u.nus.edu".equals(user.getEmail()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(loser.getName()).isEqualTo("Alex Tan");
-    }
-
-    private Callable<Boolean> claimEmail(UUID id, CyclicBarrier barrier) {
-        return () -> {
-            barrier.await(10, TimeUnit.SECONDS);
-            try {
-                service.updateUserProfile(id, new UpdateUserProfileRequest("Changed", "shared@u.nus.edu", null, null));
-                return true;
-            } catch (EntityAlreadyExistsException | DataIntegrityViolationException exception) {
-                return false;
-            }
-        };
-    }
-
     @Configuration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
+    @Import({EmailVerificationService.class, EmailTokenService.class, AccountMailListener.class})
     static class TestConfig {
+        @Bean
+        AccountMailProperties accountMailProperties() {
+            return new AccountMailProperties(
+                    "test@example.com",
+                    URI.create("http://localhost:3000"),
+                    Duration.ofMinutes(30),
+                    Duration.ofSeconds(60));
+        }
+
+        @Bean
+        Clock clock() {
+            return Clock.systemUTC();
+        }
+
+        @Bean
+        JavaMailSender mailSender() {
+            return mock(JavaMailSender.class);
+        }
+
         @Bean
         AvatarStorage avatarStorage() {
             return spy(new LocalAvatarStorage(new AvatarProperties(avatarDirectory)));
@@ -640,8 +662,9 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        UserService userService(UserRepository repository) {
-            return new UserService(repository, new BCryptPasswordEncoder(), Mappers.getMapper(UserMapper.class));
+        UserService userService(UserRepository repository, EmailVerificationService verification) {
+            return new UserService(
+                    repository, new BCryptPasswordEncoder(), Mappers.getMapper(UserMapper.class), verification);
         }
     }
 }

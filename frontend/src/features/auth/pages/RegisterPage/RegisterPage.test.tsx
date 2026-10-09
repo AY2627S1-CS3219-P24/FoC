@@ -35,7 +35,8 @@ const profile: UserProfileDto = {
   roles: ['USER'],
 }
 
-const successMessage = 'Account created successfully. Please log in.'
+const successMessage =
+  'Check your inbox and spam folder for the verification email.'
 
 const clients: Array<QueryClient> = []
 let previousOnlineState = true
@@ -174,9 +175,9 @@ describe('RegisterPage', () => {
     })
 
     expect(await screen.findByText(successMessage)).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/login')
+    expect(router.state.location.pathname).toBe('/verify-email')
     expect(
-      screen.getByRole('heading', { name: 'Welcome Back' }),
+      screen.getByRole('heading', { name: 'Check your email' }),
     ).toBeInTheDocument()
   })
 

@@ -23,6 +23,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
+    private final EmailVerificationService emailVerification;
 
     @Transactional(readOnly = true)
     public UserProfileDto getUserProfile(UUID userId) {
@@ -35,16 +36,7 @@ public class UserService {
         // Avoid saving a stale password hash if a password change happens concurrently.
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        if (!NusEmailPolicy.isAllowed(request.email())) {
-            throw new UnsupportedEmailDomainException();
-        }
-
-        if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
-            throw new EntityAlreadyExistsException("Email is already associated with another account");
-        }
-
         user.setName(request.name());
-        user.setEmail(request.email());
         user.setPhoneNumber(request.phoneNumber());
         user.setFaculty(request.faculty());
         var savedUser = userRepository.saveAndFlush(user);
@@ -77,6 +69,7 @@ public class UserService {
                 .build();
 
         var savedUser = userRepository.save(user);
+        emailVerification.createRegistrationVerification(savedUser);
         return userMapper.toUserProfileDto(savedUser);
     }
 }

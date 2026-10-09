@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.mapper.UserMapper;
@@ -14,23 +13,21 @@ import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
+    private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final UserService service =
-            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class));
+            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), verification);
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -67,6 +64,7 @@ class UserServiceTests {
         var result = service.registerUser(new RegisterUserRequest(email, "Jamie", "password123"));
         assertThat(result.email()).isEqualTo(email);
         verify(repository).save(any(User.class));
+        verify(verification).createRegistrationVerification(argThat(saved -> !saved.isEmailVerified()));
     }
 
     @ParameterizedTest
@@ -78,22 +76,10 @@ class UserServiceTests {
     }
 
     @Test
-    void rejectsUnsupportedProfileEmailBeforeMutatingUser() {
-        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("New Name", "jamie@gmail.com", null, null)))
-                .isInstanceOf(UnsupportedEmailDomainException.class);
-        assertThat(user.getName()).isEqualTo("Alex Tan");
-        assertThat(user.getEmail()).isEqualTo("alex@u.nus.edu");
-        verify(repository, never()).saveAndFlush(any());
-    }
-
-    @Test
     void missingUserCannotBeReadOrUpdated() {
         when(repository.findById(userId)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getUserProfile(userId)).isInstanceOf(UserNotFoundException.class);
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("Alex", "alex@u.nus.edu", null, null)))
+        assertThatThrownBy(() -> service.updateUserProfile(userId, new UpdateUserProfileRequest("Alex", null, null)))
                 .isInstanceOf(UserNotFoundException.class);
         verify(repository, never()).saveAndFlush(any());
     }
@@ -103,49 +89,13 @@ class UserServiceTests {
         when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
         var result = service.updateUserProfile(
-                userId,
-                new UpdateUserProfileRequest("  Jamie Tan  ", "  JAMIE@U.NUS.EDU  ", "+65 9123 5436", " Computing "));
+                userId, new UpdateUserProfileRequest("  Jamie Tan  ", "+65 9123 5436", " Computing "));
         assertThat(result.name()).isEqualTo("Jamie Tan");
-        assertThat(result.email()).isEqualTo("jamie@u.nus.edu");
+        assertThat(result.email()).isEqualTo("alex@u.nus.edu");
         assertThat(result.phoneNumber()).isEqualTo("+6591235436");
         assertThat(result.faculty()).isEqualTo("Computing");
         assertThat(user.getId()).isEqualTo(userId);
         assertThat(user.getPasswordHash()).isEqualTo("stored-hash");
         assertThat(user.getRoles()).containsExactly(UserRole.USER);
-        verify(repository).existsByEmailAndIdNot("jamie@u.nus.edu", userId);
-    }
-
-    @Test
-    void unchangedEmailAndSharedRealNameAreAllowed() {
-        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
-        when(repository.saveAndFlush(user)).thenReturn(user);
-        var result = service.updateUserProfile(
-                userId, new UpdateUserProfileRequest("Alex Tan", "alex@u.nus.edu", null, null));
-        assertThat(result.name()).isEqualTo("Alex Tan");
-        verify(repository).existsByEmailAndIdNot("alex@u.nus.edu", userId);
-        verify(repository).saveAndFlush(user);
-    }
-
-    @Test
-    void rejectsDuplicateEmailBeforeMutatingUser() {
-        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
-        when(repository.existsByEmailAndIdNot("taken@u.nus.edu", userId)).thenReturn(true);
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("New Name", "taken@u.nus.edu", null, null)))
-                .isInstanceOf(EntityAlreadyExistsException.class);
-        assertThat(user.getName()).isEqualTo("Alex Tan");
-        assertThat(user.getEmail()).isEqualTo("alex@u.nus.edu");
-        verify(repository, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void doesNotMislabelOtherDatabaseFailuresAsDuplicateEmail() {
-        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
-        var cause = new ConstraintViolationException("other", new SQLException("other", "23505"), "other_key");
-        var failure = new DataIntegrityViolationException("other", cause);
-        when(repository.saveAndFlush(user)).thenThrow(failure);
-        assertThatThrownBy(() -> service.updateUserProfile(
-                        userId, new UpdateUserProfileRequest("Alex", "alex@u.nus.edu", null, null)))
-                .isSameAs(failure);
     }
 }
