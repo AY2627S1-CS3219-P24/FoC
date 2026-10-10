@@ -61,7 +61,8 @@ const verifyEmailRoute = createRoute({
   component: VerifyEmailPage,
   validateSearch: (
     search: Record<string, unknown>,
-  ): { token?: string; email?: string } => ({
+  ): { token?: string; email?: string; purpose?: 'email-change' } => ({
+    purpose: search.purpose === 'email-change' ? 'email-change' : undefined,
     token:
       typeof search.token === 'string' && search.token
         ? search.token

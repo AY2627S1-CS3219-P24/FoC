@@ -26,6 +26,10 @@ export const changePassword = async (request: {
   await axiosClient.put('/users/me/password', request)
 }
 
+export const requestEmailChange = async (email: string) => {
+  await axiosClient.post('/users/me/email-change', { email })
+}
+
 export const getAvatar = async (signal?: AbortSignal) => {
   const { data } = await axiosClient.get<Blob>('/users/me/avatar', {
     responseType: 'blob',

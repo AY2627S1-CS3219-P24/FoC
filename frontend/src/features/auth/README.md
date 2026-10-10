@@ -5,6 +5,10 @@ after a page reload, guards application routes, and handles authenticated
 business requests and logout. Registration opens the email verification page;
 verified users can log in to `/app`.
 
+Signed-in users can request a new NUS email address from **Edit Profile → Update
+Email**. The current address remains unchanged until the new one is verified;
+existing sessions stay signed in.
+
 ## Structure and responsibilities
 
 ```text
@@ -51,11 +55,14 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 | [registerUser](api/registerUser.api.ts)            | `POST /auth/register` with name, email, password   | Open `/verify-email` with the submitted address.                        |
 | [verifyEmail](api/emailVerification.api.ts)        | `POST /auth/email-verification/confirm` with token | Show confirmation and a login link.                                     |
 | [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email  | Ask the user to check their inbox and spam folder.                      |
+| [requestEmailChange](api/userProfile.api.ts)       | `POST /users/me/email-change` with email           | Show sending feedback and allow resending in Edit Profile.              |
+| [confirmEmailChange](api/emailVerification.api.ts) | `POST /auth/email-change/confirm` with token       | Show Email updated and return to the profile.                           |
 | [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/app`.    |
 | [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie  | Obtain a replacement access token through the shared refresh operation. |
 | [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie   | Finish the logout attempt and return to login.                          |
 
-Paths in this table are relative to `/api`; `authRequest` adds that prefix.
+Paths in this table are relative to `/api`. `requestEmailChange` uses the
+authenticated Axios client; the auth requests use `authRequest`, which adds the prefix.
 Auth APIs use fetch and bypass Axios interceptors. The backend's `expiresAt`
 remains part of the response contract, but the frontend does not proactively
 check it. The browser processes the HttpOnly refresh cookie; JavaScript does
@@ -86,6 +93,25 @@ Correct credentials for an unverified account return **403** without either
 login token. Login shows verification feedback and a link to the same resend
 page. Resending too soon returns **429** with a short inline message; there is
 no countdown. Ordinary profile saves do not send or change the email address.
+
+### Updating an email address
+
+The email form in `EditProfilePage` submits independently of the profile and password forms. Sending
+and resending use the same authenticated endpoint, with the existing 60-second
+interval. The target address is stored in an `EMAIL_CHANGE` token, not on the user
+record. The emailed link opens `/verify-email?purpose=email-change&token=...`.
+Confirmation updates the address and consumes the token in one transaction.
+
+The verification page reuses the auth layout and background. Success offers
+**Back to profile**; an unavailable link returns to **Edit Profile** to send again.
+Confirmation invalidates the current tab's profile cache. Other tabs retain the
+existing 60-second cache/focus behavior; a browser reload reads the new address.
+No access token or refresh session is revoked by an email change.
+
+To check the flow manually, request an unused NUS address you can access, confirm
+that the old address remains visible before verification, and open the emailed
+link. Return to the profile and check the new address without signing out. On the
+next login, use the new address. Also check resending and an occupied address.
 
 ### Session recovery
 

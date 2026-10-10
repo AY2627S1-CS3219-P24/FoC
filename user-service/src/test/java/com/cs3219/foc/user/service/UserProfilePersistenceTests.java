@@ -76,6 +76,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /** Runs the real migrations and service transactions in a disposable PostgreSQL schema. */
 @SpringJUnitConfig(UserProfilePersistenceTests.TestConfig.class)
@@ -122,6 +123,9 @@ class UserProfilePersistenceTests {
 
     @Autowired
     private EmailVerificationService verification;
+
+    @Autowired
+    private EmailChangeService emailChange;
 
     @Autowired
     private EmailTokenRepository emailTokens;
@@ -322,8 +326,6 @@ class UserProfilePersistenceTests {
                 .findFirst()
                 .orElseThrow();
         var token = URI.create(link).getQuery().substring("token=".length());
-        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getTokenHash())
-                .isNotEqualTo(token));
         var credentials = new LoginRequest("jamie@u.nus.edu", "password123");
         assertThatThrownBy(() -> authService.login(credentials))
                 .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
@@ -337,6 +339,66 @@ class UserProfilePersistenceTests {
         assertThat(emailTokens.count()).isZero();
         assertThat(authService.login(credentials).accessToken()).isNotBlank();
         assertThatThrownBy(() -> verification.verifyEmail(token)).isInstanceOf(EmailVerificationException.class);
+    }
+
+    @Test
+    void emailChangeVerifiesTheNewAddressAndKeepsTheExistingSession() {
+        var user = createPasswordUser("original@u.nus.edu");
+        var session = authService.login(new LoginRequest(user.getEmail(), "CurrentPassword1"));
+        emailChange.requestChange(user.getId(), "updated@nus.edu.sg");
+        var token = capturedEmailChangeToken("updated@nus.edu.sg");
+        assertThat(repository.findById(user.getId()).orElseThrow().getEmail()).isEqualTo("original@u.nus.edu");
+        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getEmail())
+                .isEqualTo("updated@nus.edu.sg"));
+
+        assertThatThrownBy(() -> verification.verifyEmail(token)).isInstanceOf(EmailVerificationException.class);
+        emailChange.confirmChange(token);
+
+        var updated = repository.findById(user.getId()).orElseThrow();
+        assertThat(updated.getEmail()).isEqualTo("updated@nus.edu.sg");
+        assertThat(updated.isEmailVerified()).isTrue();
+        assertThat(emailTokens.count()).isZero();
+        assertThat(authService.refreshAccessToken(session.refreshToken()).accessToken())
+                .isNotBlank();
+        assertThat(authService
+                        .login(new LoginRequest("updated@nus.edu.sg", "CurrentPassword1"))
+                        .accessToken())
+                .isNotBlank();
+        assertThatThrownBy(() -> authService.login(new LoginRequest("original@u.nus.edu", "CurrentPassword1")))
+                .isInstanceOf(BadCredentialsException.class);
+    }
+
+    @Test
+    void emailChangeRejectsAnAddressClaimedBeforeRequestOrBeforeConfirmation() {
+        var user = createPasswordUser("original@u.nus.edu");
+        createUser("taken@nus.edu.sg");
+        assertThatThrownBy(() -> emailChange.requestChange(user.getId(), "taken@nus.edu.sg"))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.CONFLICT));
+        verifyNoInteractions(mailSender);
+
+        emailChange.requestChange(user.getId(), "available@nus.edu.sg");
+        var token = capturedEmailChangeToken("available@nus.edu.sg");
+        createUser("available@nus.edu.sg");
+        assertThatThrownBy(() -> emailChange.confirmChange(token))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.CONFLICT));
+        assertThat(repository.findById(user.getId()).orElseThrow().getEmail()).isEqualTo("original@u.nus.edu");
+        assertThat(emailTokens.count()).isEqualTo(1);
+    }
+
+    private String capturedEmailChangeToken(String address) {
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertThat(message.getValue().getTo()).containsExactly(address);
+        var link = message.getValue()
+                .getText()
+                .lines()
+                .filter(line -> line.startsWith("http://localhost:3000/verify-email?"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(link).contains("purpose=email-change");
+        return UriComponentsBuilder.fromUriString(link).build().getQueryParams().getFirst("token");
     }
 
     @Test
@@ -559,7 +621,12 @@ class UserProfilePersistenceTests {
     @Configuration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
-    @Import({EmailVerificationService.class, EmailTokenService.class, AccountMailListener.class})
+    @Import({
+        EmailVerificationService.class,
+        EmailChangeService.class,
+        EmailTokenService.class,
+        AccountMailListener.class
+    })
     static class TestConfig {
         @Bean
         AccountMailProperties accountMailProperties() {

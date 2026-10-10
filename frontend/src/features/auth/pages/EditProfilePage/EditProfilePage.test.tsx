@@ -205,3 +205,72 @@ it('loads protected avatar bytes, uploads a photo, and removes it', async () => 
   await screen.findByText('Photo removed.')
   expect(screen.queryByAltText('Alex Tan')).not.toBeInTheDocument()
 })
+
+it('requests and resends an email change in place without saving the profile or ending the session', async () => {
+  vi.mocked(api.requestEmailChange).mockResolvedValue(undefined)
+  const { user, router } = await setup()
+  await user.type(
+    screen.getByLabelText('New email address'),
+    ' NEW@NUS.EDU.SG ',
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'Send verification email' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Check new@nus.edu.sg',
+  )
+  expect(screen.getByRole('status')).toHaveTextContent('inbox and spam')
+  expect(api.requestEmailChange).toHaveBeenCalledWith(
+    'new@nus.edu.sg',
+    expect.anything(),
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'Resend verification email' }),
+  )
+  await waitFor(() => expect(api.requestEmailChange).toHaveBeenCalledTimes(2))
+  await waitFor(() =>
+    expect(screen.getByLabelText('New email address')).not.toBeDisabled(),
+  )
+  await user.clear(screen.getByLabelText('New email address'))
+  await user.type(
+    screen.getByLabelText('New email address'),
+    'different@u.nus.edu',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Send verification email' }),
+  ).toBeInTheDocument()
+  expect(api.updateUserProfile).not.toHaveBeenCalled()
+  expect(api.changePassword).not.toHaveBeenCalled()
+  expect(logoutUser).not.toHaveBeenCalled()
+  expect(getAccessToken()).toBe('token')
+  expect(router.state.location.pathname).toBe('/profile/edit')
+})
+
+it('shows an email request error inline and allows another attempt', async () => {
+  vi.mocked(api.requestEmailChange)
+    .mockRejectedValueOnce(
+      new AxiosError('Conflict', undefined, undefined, undefined, {
+        data: { message: 'This email address is already in use.' },
+        status: 409,
+        statusText: 'Conflict',
+        headers: {},
+        config: {} as never,
+      }),
+    )
+    .mockResolvedValueOnce(undefined)
+  const { user } = await setup()
+  await user.type(screen.getByLabelText('New email address'), 'taken@u.nus.edu')
+  await user.click(
+    screen.getByRole('button', { name: 'Send verification email' }),
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent('already in use')
+  await user.clear(screen.getByLabelText('New email address'))
+  await user.type(screen.getByLabelText('New email address'), 'free@u.nus.edu')
+  await user.click(
+    screen.getByRole('button', { name: 'Send verification email' }),
+  )
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Check free@u.nus.edu',
+  )
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})

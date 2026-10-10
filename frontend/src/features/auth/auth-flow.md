@@ -195,6 +195,26 @@ logout left a valid Cookie.
 The obsolete-result marker belongs only to the pending refresh. It is not a
 global session version propagated through every business request.
 
+## 7. Updating an Email Address
+
+```mermaid
+flowchart TD
+    Form[Edit Profile: Update Email] --> Request[Authenticated request with new email]
+    Request --> Pending[Store target email in EMAIL_CHANGE token]
+    Pending --> Mail[Send verification link after commit]
+    Mail --> Open[Open link and automatically confirm]
+    Open --> Valid{Valid token and available address?}
+    Valid -->|Yes| Update[Update user email and consume token]
+    Update --> Profile[Show success and return to profile]
+    Valid -->|No| Error[Show error and return to Edit Profile]
+```
+
+Sending and resending share `POST /api/users/me/email-change`; confirmation uses
+`POST /api/auth/email-change/confirm`. Until confirmation, the old email remains
+the account's login address. Confirmation preserves existing sessions because
+tokens identify the account by user ID. The verification tab invalidates its
+profile cache; other tabs follow normal cache behavior without cross-tab messaging.
+
 ## Acknowledgments
 
 Use GPT-6-Astra to help generate and modify this auth-flow.md based on current implementation.

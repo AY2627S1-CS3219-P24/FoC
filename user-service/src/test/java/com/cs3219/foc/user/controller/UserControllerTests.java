@@ -20,6 +20,7 @@ import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
 import com.cs3219.foc.user.service.AuthCookieFactory;
 import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.AvatarService;
+import com.cs3219.foc.user.service.EmailChangeService;
 import com.cs3219.foc.user.service.EmailVerificationService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
@@ -58,6 +59,9 @@ class UserControllerTests {
     private EmailVerificationService verification;
 
     @Autowired
+    private EmailChangeService emailChange;
+
+    @Autowired
     private JwtDecoder decoder;
 
     private MockMvc mvc;
@@ -66,7 +70,7 @@ class UserControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder, verification);
+        reset(service, decoder, verification, emailChange);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -261,6 +265,27 @@ class UserControllerTests {
         verify(verification).resendRegistrationVerification("jamie@u.nus.edu");
     }
 
+    @Test
+    void emailChangeRequiresLoginButConfirmationOnlyRequiresTheLink() throws Exception {
+        var body = "{\"email\":\" NEW@NUS.EDU.SG \"}";
+        mvc.perform(post("/users/me/email-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(emailChange);
+        mvc.perform(post("/users/me/email-change")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNoContent());
+        verify(emailChange).requestChange(userId, "new@nus.edu.sg");
+        mvc.perform(post("/auth/email-change/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"change-token\"}"))
+                .andExpect(status().isNoContent());
+        verify(emailChange).confirmChange("change-token");
+    }
+
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
@@ -275,6 +300,11 @@ class UserControllerTests {
         JsonAccessDeniedHandler.class
     })
     static class TestConfig {
+        @Bean
+        EmailChangeService emailChangeService() {
+            return mock(EmailChangeService.class);
+        }
+
         @Bean
         EmailVerificationService emailVerificationService() {
             return mock(EmailVerificationService.class);

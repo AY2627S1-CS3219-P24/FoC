@@ -30,6 +30,7 @@ vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 vi.mock('../api/userProfile.api', () => ({
   updateUserProfile: vi.fn(),
   changePassword: vi.fn(),
+  requestEmailChange: vi.fn(),
   uploadAvatar: vi.fn(),
   removeAvatar: vi.fn(),
   getUserProfile: vi.fn(async () => ({

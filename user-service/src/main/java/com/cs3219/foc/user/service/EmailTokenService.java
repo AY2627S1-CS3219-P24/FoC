@@ -33,8 +33,8 @@ public class EmailTokenService {
     private final Clock clock;
     private final ApplicationEventPublisher events;
 
-    // The caller has either just created the user or locked it for resending.
-    public void issue(User user, EmailTokenPurpose purpose) {
+    // The caller has either just created the user or locked it before issuing a link.
+    public void issue(User user, String email, EmailTokenPurpose purpose) {
         var now = OffsetDateTime.now(clock);
         var stored = tokens.findByUserIdAndPurpose(user.getId(), purpose).orElseGet(EmailToken::new);
         if (stored.getIssuedAt() != null
@@ -47,13 +47,13 @@ public class EmailTokenService {
         RANDOM.nextBytes(bytes);
         var token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         stored.setUserId(user.getId());
-        stored.setEmail(user.getEmail());
+        stored.setEmail(email);
         stored.setPurpose(purpose);
         stored.setTokenHash(hash(token));
         stored.setIssuedAt(now);
         stored.setExpiresAt(now.plus(properties.tokenTtl()));
         tokens.save(stored);
-        events.publishEvent(new EmailTokenCreatedEvent(user.getId(), user.getEmail(), purpose, token));
+        events.publishEvent(new EmailTokenCreatedEvent(user.getId(), email, purpose, token));
     }
 
     public EmailToken consume(String token, EmailTokenPurpose purpose) {

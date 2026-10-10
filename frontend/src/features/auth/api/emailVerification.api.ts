@@ -5,3 +5,6 @@ export const verifyEmail = (token: string) =>
 
 export const resendVerification = (email: string) =>
   authRequest('/auth/email-verification/resend', { email })
+
+export const confirmEmailChange = (token: string) =>
+  authRequest('/auth/email-change/confirm', { token })
