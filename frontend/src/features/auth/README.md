@@ -125,6 +125,8 @@ next login, use the new address. Also check resending and an occupied address.
 `api/forgotPassword.api.ts` (`POST /api/auth/password-reset/request`). It shows
 generic inbox/spam feedback on the same page; unknown and unverified accounts
 receive the same response without an email. The existing resend interval applies.
+Requests during the 60-second interval also return the same successful response,
+but do not replace the current link or send another email.
 
 `ResetPasswordPage` opens `/reset-password?token=...`. It submits the token and
 new password to `POST /api/auth/password-reset/confirm` only after the user fills
@@ -138,6 +140,8 @@ password hashing/saving, and refresh-token deletion share one transaction in
 `PasswordService`. A link sent before an email change is rejected by comparing
 its saved address with the account's current email. Existing access tokens expire
 normally; the frontend does not coordinate other tabs or log in automatically.
+Both Profile password changes and password resets also revoke pending password
+reset and email-change links in that transaction.
 
 ### Session recovery
 
@@ -290,6 +294,8 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
      matching new passwords. Confirm that the new password logs in and the old
      password does not. Reusing the link should offer a new request.
    - Check resend feedback and a mismatched confirmation before submission.
+     Resending within one minute keeps the same inbox/spam feedback without a
+     second email; after the interval, a new link is sent.
 
 ### Responsive layout checks
 

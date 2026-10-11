@@ -53,15 +53,10 @@ it('opens from login, sends a normalized email and resends on the same page', as
     'jamie@u.nus.edu',
     expect.any(Object),
   )
-  vi.mocked(requestPasswordReset).mockRejectedValueOnce(
-    new AuthRequestError(429),
-  )
   await user.click(screen.getByRole('button', { name: 'Resend reset link' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Please wait a minute',
-  )
-  await user.click(screen.getByRole('button', { name: 'Resend reset link' }))
-  expect(requestPasswordReset).toHaveBeenCalledTimes(3)
+  expect(requestPasswordReset).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('status')).toHaveTextContent('inbox and spam')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
 it.each([undefined, 400])(

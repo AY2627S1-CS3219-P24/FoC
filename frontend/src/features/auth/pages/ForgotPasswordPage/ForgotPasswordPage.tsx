@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { useForgotPassword } from '../../hooks/useForgotPassword'
 import { nusEmailSchema } from '../../schemas/nusEmail.schema'
-import { AuthRequestError } from '../../lib/authRequest'
 import styles from '../../styles/authPage.module.scss'
 import formStyles from '../../styles/authForm.module.scss'
 
@@ -13,9 +12,7 @@ export const ForgotPasswordPage = () => {
   const [emailError, setEmailError] = useState<string>()
   const [sent, setSent] = useState(false)
   const requestError = request.error
-    ? request.error instanceof AuthRequestError && request.error.status === 429
-      ? 'Please wait a minute before requesting another email.'
-      : 'Unable to send the email. Please try again.'
+    ? 'Unable to send the email. Please try again.'
     : undefined
 
   return (

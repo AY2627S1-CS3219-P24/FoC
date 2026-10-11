@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../../providers/AuthProvider'
 import { getProfileError } from '../../utils/getProfileError'
 import { nusEmailSchema } from '../../schemas/nusEmail.schema'
+import { passwordSchema } from '../../schemas/password.schema'
 import type { UserProfileDto } from '../../types/auth.types'
 import styles from './EditProfilePage.module.scss'
 
@@ -126,10 +127,9 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
     const fields: Record<string, string> = {}
     if (!currentPassword.trim())
       fields.currentPassword = 'Enter your current password.'
-    if (newPassword.length < 8 || !newPassword.trim())
-      fields.newPassword = 'Use at least 8 characters.'
-    if (new TextEncoder().encode(newPassword).length > 72)
-      fields.newPassword = 'Password is too long (maximum 72 UTF-8 bytes).'
+    const passwordResult = passwordSchema.safeParse(newPassword)
+    if (!passwordResult.success)
+      fields.newPassword = passwordResult.error.issues[0].message
     if (new TextEncoder().encode(currentPassword).length > 72)
       fields.currentPassword = 'Current password is too long.'
     if (newPassword && currentPassword === newPassword)

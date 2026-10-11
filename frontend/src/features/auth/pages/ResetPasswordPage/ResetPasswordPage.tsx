@@ -3,6 +3,7 @@ import { Link, useSearch } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { useResetPassword } from '../../hooks/useForgotPassword'
 import { AuthRequestError } from '../../lib/authRequest'
+import { passwordSchema } from '../../schemas/password.schema'
 import styles from '../../styles/authPage.module.scss'
 import formStyles from '../../styles/authForm.module.scss'
 
@@ -59,14 +60,12 @@ export const ResetPasswordPage = () => {
         onSubmit={(event) => {
           event.preventDefault()
           if (reset.isPending) return
-          let error: string | undefined
-          if (!password.trim() || password.length < 8) {
-            error = 'Password must be at least 8 characters.'
-          } else if (new TextEncoder().encode(password).length > 72) {
-            error = 'Password must not exceed 72 UTF-8 bytes.'
-          } else if (password !== confirmation) {
-            error = 'Passwords do not match.'
-          }
+          const result = passwordSchema.safeParse(password)
+          const error = !result.success
+            ? result.error.issues[0].message
+            : password !== confirmation
+              ? 'Passwords do not match.'
+              : undefined
           setValidationError(error)
           if (!error)
             reset.mutate(

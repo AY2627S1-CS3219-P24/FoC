@@ -7,8 +7,10 @@ import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.entity.EmailToken;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.model.entity.User;
+import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,6 +25,7 @@ public class PasswordService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailTokenService emailTokens;
+    private final EmailTokenRepository emailTokenRepository;
 
     @Transactional
     public void requestPasswordReset(String email) {
@@ -68,5 +71,7 @@ public class PasswordService {
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.saveAndFlush(user);
         refreshTokenRepository.deleteAllByUserId(user.getId());
+        emailTokenRepository.deleteAllByUserIdAndPurposeIn(
+                user.getId(), List.of(EmailTokenPurpose.PASSWORD_RESET, EmailTokenPurpose.EMAIL_CHANGE));
     }
 }

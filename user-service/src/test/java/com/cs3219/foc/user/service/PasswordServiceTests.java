@@ -11,6 +11,7 @@ import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import java.util.List;
@@ -28,7 +29,9 @@ class PasswordServiceTests {
     private final RefreshTokenRepository tokens = mock(RefreshTokenRepository.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final EmailTokenService emailTokens = mock(EmailTokenService.class);
-    private final PasswordService service = new PasswordService(users, tokens, encoder, emailTokens);
+    private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
+    private final PasswordService service =
+            new PasswordService(users, tokens, encoder, emailTokens, emailTokenRepository);
     private final UUID userId = UUID.randomUUID();
     private User user;
     private String previousHash;
@@ -63,6 +66,9 @@ class PasswordServiceTests {
         verify(users).saveAndFlush(user);
         verify(tokens).deleteAllByUserId(userId);
         verifyNoMoreInteractions(tokens);
+        verify(emailTokenRepository)
+                .deleteAllByUserIdAndPurposeIn(
+                        userId, List.of(EmailTokenPurpose.PASSWORD_RESET, EmailTokenPurpose.EMAIL_CHANGE));
     }
 
     @Test
@@ -128,6 +134,6 @@ class PasswordServiceTests {
     private void assertUnchanged() {
         assertThat(user.getPasswordHash()).isEqualTo(previousHash);
         verify(users, never()).saveAndFlush(any());
-        verifyNoInteractions(tokens);
+        verifyNoInteractions(tokens, emailTokenRepository);
     }
 }

@@ -39,6 +39,10 @@ public class EmailTokenService {
         var stored = tokens.findByUserIdAndPurpose(user.getId(), purpose).orElseGet(EmailToken::new);
         if (stored.getIssuedAt() != null
                 && stored.getIssuedAt().plus(properties.resendInterval()).isAfter(now)) {
+            // Public reset requests keep the same response without issuing another link.
+            if (purpose == EmailTokenPurpose.PASSWORD_RESET) {
+                return;
+            }
             throw new EmailVerificationException(
                     HttpStatus.TOO_MANY_REQUESTS, "Please wait a minute before requesting another email.");
         }

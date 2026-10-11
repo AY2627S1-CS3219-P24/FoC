@@ -392,13 +392,26 @@ class UserProfilePersistenceTests {
         var user = createPasswordUser("reset@u.nus.edu");
         var session = authService.login(new LoginRequest(user.getEmail(), "CurrentPassword1"));
         passwordService.requestPasswordReset(user.getEmail());
+        var originalTokenHash = emailTokens.findAll().getFirst().getTokenHash();
+        passwordService.requestPasswordReset(user.getEmail());
+        passwordService.requestPasswordReset("missing@u.nus.edu");
+        createUser("unverified@u.nus.edu");
+        passwordService.requestPasswordReset("unverified@u.nus.edu");
+        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getTokenHash())
+                .isEqualTo(originalTokenHash));
+        // The repeated request succeeds without replacing the link or sending another email.
         var token = capturedPasswordResetToken(user.getEmail());
+        reset(mailSender);
+        emailChange.requestChange(user.getId(), "pending@nus.edu.sg");
+        var changeToken = capturedEmailChangeToken("pending@nus.edu.sg");
         assertThat(passwordEncoder.matches(
                         "CurrentPassword1",
                         repository.findById(user.getId()).orElseThrow().getPasswordHash()))
                 .isTrue();
 
         passwordService.resetPassword(token, " NewPassword2 ");
+
+        assertThatThrownBy(() -> emailChange.confirmChange(changeToken)).isInstanceOf(EmailVerificationException.class);
 
         assertThat(authService
                         .login(new LoginRequest(user.getEmail(), " NewPassword2 "))
@@ -431,6 +444,27 @@ class UserProfilePersistenceTests {
                 .isNotBlank();
         // A failed reset rolls back token consumption along with the password update.
         assertThat(emailTokens.count()).isEqualTo(1);
+    }
+
+    @Test
+    void profilePasswordChangeRevokesPendingResetAndEmailChangeLinks() {
+        var user = createPasswordUser("original@u.nus.edu");
+        passwordService.requestPasswordReset(user.getEmail());
+        var resetToken = capturedPasswordResetToken(user.getEmail());
+        reset(mailSender);
+        emailChange.requestChange(user.getId(), "pending@nus.edu.sg");
+        var changeToken = capturedEmailChangeToken("pending@nus.edu.sg");
+
+        passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+
+        assertThatThrownBy(() -> passwordService.resetPassword(resetToken, "AnotherPassword3"))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.GONE));
+        assertThatThrownBy(() -> emailChange.confirmChange(changeToken)).isInstanceOf(EmailVerificationException.class);
+        assertThat(authService
+                        .login(new LoginRequest(user.getEmail(), "NewPassword2"))
+                        .accessToken())
+                .isNotBlank();
     }
 
     private String capturedPasswordResetToken(String address) {
@@ -726,8 +760,9 @@ class UserProfilePersistenceTests {
                 UserRepository users,
                 RefreshTokenRepository tokens,
                 PasswordEncoder encoder,
-                EmailTokenService emailTokens) {
-            return new PasswordService(users, tokens, encoder, emailTokens);
+                EmailTokenService emailTokens,
+                EmailTokenRepository emailTokenRepository) {
+            return new PasswordService(users, tokens, encoder, emailTokens, emailTokenRepository);
         }
 
         @Bean
