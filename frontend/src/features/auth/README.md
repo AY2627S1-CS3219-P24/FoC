@@ -54,18 +54,18 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 
 ## What the API functions do
 
-| Function                                           | Request                                            | Caller uses the result to                                               |
-| -------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
-| [registerUser](api/registerUser.api.ts)            | `POST /auth/register` with name, email, password   | Open `/verify-email` with the submitted address.                        |
-| [verifyEmail](api/emailVerification.api.ts)        | `POST /auth/email-verification/confirm` with token | Show confirmation and a login link.                                     |
-| [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email  | Ask the user to check their inbox and spam folder.                      |
-| [requestEmailChange](api/userProfile.api.ts)       | `POST /users/me/email-change` with email           | Show sending feedback and allow resending in Edit Profile.              |
-| [confirmEmailChange](api/emailVerification.api.ts) | `POST /auth/email-change/confirm` with token       | Show Email updated and return to the profile.                           |
-| [requestPasswordReset](api/forgotPassword.api.ts) | `POST /auth/password-reset/request` with email | Show inbox/spam feedback and allow resending. |
-| [resetPassword](api/forgotPassword.api.ts) | `POST /auth/password-reset/confirm` with token and new password | Show success and offer login with the new password. |
-| [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/app`.    |
-| [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie  | Obtain a replacement access token through the shared refresh operation. |
-| [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie   | Finish the logout attempt and return to login.                          |
+| Function                                           | Request                                                         | Caller uses the result to                                               |
+| -------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [registerUser](api/registerUser.api.ts)            | `POST /auth/register` with name, email, password                | Open `/verify-email` with the submitted address.                        |
+| [verifyEmail](api/emailVerification.api.ts)        | `POST /auth/email-verification/confirm` with token              | Show confirmation and a login link.                                     |
+| [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email               | Ask the user to check their inbox and spam folder.                      |
+| [requestEmailChange](api/userProfile.api.ts)       | `POST /users/me/email-change` with email                        | Show sending feedback and allow resending in Edit Profile.              |
+| [confirmEmailChange](api/emailVerification.api.ts) | `POST /auth/email-change/confirm` with token                    | Show Email updated and return to the profile.                           |
+| [requestPasswordReset](api/forgotPassword.api.ts)  | `POST /auth/password-reset/request` with email                  | Show inbox/spam feedback and allow resending.                           |
+| [resetPassword](api/forgotPassword.api.ts)         | `POST /auth/password-reset/confirm` with token and new password | Show success and offer login with the new password.                     |
+| [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password                         | Pass the access token to Provider's `completeLogin` and open `/app`.    |
+| [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie               | Obtain a replacement access token through the shared refresh operation. |
+| [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie                | Finish the logout attempt and return to login.                          |
 
 Paths in this table are relative to `/api`. `requestEmailChange` uses the
 authenticated Axios client; the auth requests use `authRequest`, which adds the prefix.
