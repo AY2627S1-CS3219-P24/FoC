@@ -2,5 +2,6 @@ package com.cs3219.foc.user.model.entity;
 
 public enum EmailTokenPurpose {
     REGISTRATION,
-    EMAIL_CHANGE
+    EMAIL_CHANGE,
+    PASSWORD_RESET
 }

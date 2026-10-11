@@ -215,6 +215,32 @@ the account's login address. Confirmation preserves existing sessions because
 tokens identify the account by user ID. The verification tab invalidates its
 profile cache; other tabs follow normal cache behavior without cross-tab messaging.
 
+## 8. Forgot Password
+
+```mermaid
+flowchart TD
+    Login[Login: Forgot password?] --> Request[Enter account email and send link]
+    Request --> Feedback[Stay on page: check inbox and spam or resend]
+    Request --> Mail[Verified account: send reset link after commit]
+    Mail --> Form[Open link and enter a new password twice]
+    Form --> Submit[Submit token and new password]
+    Submit --> Check{Valid token and same account email?}
+    Check -->|Yes| Save[Consume token, save password, delete refresh tokens]
+    Save --> Done[Show success and link to login]
+    Check -->|No| Invalid[Show unavailable link and offer a new request]
+```
+
+Request and resend share `POST /api/auth/password-reset/request`. The response
+does not disclose whether an account exists or is verified. Links use the existing
+token lifetime and resend interval, with `PASSWORD_RESET` distinguishing their
+purpose from registration and email changes.
+
+`POST /api/auth/password-reset/confirm` consumes the token only on form submission.
+Password and token changes commit together. The saved email must still match the
+user's email. Password saving and refresh-token revocation reuse the Profile
+password-change implementation. Access tokens expire normally; success offers
+login with the new password without automatically creating a session.
+
 ## Acknowledgments
 
 Use GPT-6-Astra to help generate and modify this auth-flow.md based on current implementation.

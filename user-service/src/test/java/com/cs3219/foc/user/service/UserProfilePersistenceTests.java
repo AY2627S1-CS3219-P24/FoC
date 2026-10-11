@@ -387,6 +387,65 @@ class UserProfilePersistenceTests {
         assertThat(emailTokens.count()).isEqualTo(1);
     }
 
+    @Test
+    void passwordResetChangesCredentialsAndRevokesExistingRefreshSessions() {
+        var user = createPasswordUser("reset@u.nus.edu");
+        var session = authService.login(new LoginRequest(user.getEmail(), "CurrentPassword1"));
+        passwordService.requestPasswordReset(user.getEmail());
+        var token = capturedPasswordResetToken(user.getEmail());
+        assertThat(passwordEncoder.matches(
+                        "CurrentPassword1",
+                        repository.findById(user.getId()).orElseThrow().getPasswordHash()))
+                .isTrue();
+
+        passwordService.resetPassword(token, " NewPassword2 ");
+
+        assertThat(authService
+                        .login(new LoginRequest(user.getEmail(), " NewPassword2 "))
+                        .accessToken())
+                .isNotBlank();
+        assertThatThrownBy(() -> authService.login(new LoginRequest(user.getEmail(), "CurrentPassword1")))
+                .isInstanceOf(BadCredentialsException.class);
+        assertThatThrownBy(() -> authService.refreshAccessToken(session.refreshToken()))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+        assertThatThrownBy(() -> passwordService.resetPassword(token, "AnotherPassword3"))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.GONE));
+    }
+
+    @Test
+    void changingEmailInvalidatesAPasswordResetLinkSentToTheOldAddress() {
+        var user = createPasswordUser("original@u.nus.edu");
+        passwordService.requestPasswordReset(user.getEmail());
+        var resetToken = capturedPasswordResetToken(user.getEmail());
+        reset(mailSender);
+        emailChange.requestChange(user.getId(), "updated@nus.edu.sg");
+        emailChange.confirmChange(capturedEmailChangeToken("updated@nus.edu.sg"));
+
+        assertThatThrownBy(() -> passwordService.resetPassword(resetToken, "NewPassword2"))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.GONE));
+        assertThat(authService
+                        .login(new LoginRequest("updated@nus.edu.sg", "CurrentPassword1"))
+                        .accessToken())
+                .isNotBlank();
+        // A failed reset rolls back token consumption along with the password update.
+        assertThat(emailTokens.count()).isEqualTo(1);
+    }
+
+    private String capturedPasswordResetToken(String address) {
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(message.capture());
+        assertThat(message.getValue().getTo()).containsExactly(address);
+        var link = message.getValue()
+                .getText()
+                .lines()
+                .filter(line -> line.startsWith("http://localhost:3000/reset-password?token="))
+                .findFirst()
+                .orElseThrow();
+        return UriComponentsBuilder.fromUriString(link).build().getQueryParams().getFirst("token");
+    }
+
     private String capturedEmailChangeToken(String address) {
         var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(message.capture());
@@ -663,8 +722,12 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        PasswordService passwordService(UserRepository users, RefreshTokenRepository tokens, PasswordEncoder encoder) {
-            return new PasswordService(users, tokens, encoder);
+        PasswordService passwordService(
+                UserRepository users,
+                RefreshTokenRepository tokens,
+                PasswordEncoder encoder,
+                EmailTokenService emailTokens) {
+            return new PasswordService(users, tokens, encoder, emailTokens);
         }
 
         @Bean

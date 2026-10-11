@@ -5,6 +5,7 @@ import com.cs3219.foc.user.service.AuthCookieFactory;
 import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.EmailChangeService;
 import com.cs3219.foc.user.service.EmailVerificationService;
+import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,19 @@ public class AuthController {
     private final AuthCookieFactory authCookieFactory;
     private final EmailVerificationService emailVerification;
     private final EmailChangeService emailChange;
+    private final PasswordService passwords;
+
+    @PostMapping("/auth/password-reset/request")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void requestPasswordReset(@Valid @RequestBody RequestPasswordResetRequest request) {
+        passwords.requestPasswordReset(request.email());
+    }
+
+    @PostMapping("/auth/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwords.resetPassword(request.token(), request.newPassword());
+    }
 
     @PostMapping("/auth/email-change/confirm")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -44,6 +44,11 @@ export const LoginPage = () => {
         isSuccess={login.isSuccess}
         submitError={login.errorMessage}
       />
+      <p className={styles.footer}>
+        <Link className={styles.link} to="/forgot-password">
+          Forgot password?
+        </Link>
+      </p>
       {login.error instanceof AuthRequestError &&
         login.error.status === 403 && (
           <p className={styles.footer}>

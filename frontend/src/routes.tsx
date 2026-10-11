@@ -8,6 +8,8 @@ import {
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { ForgotPasswordPage } from '#/features/auth/pages/ForgotPasswordPage/ForgotPasswordPage'
+import { ResetPasswordPage } from '#/features/auth/pages/ResetPasswordPage/ResetPasswordPage'
 import { VerifyEmailPage } from '#/features/auth/pages/VerifyEmailPage/VerifyEmailPage'
 import { AdminLayout } from '#/layouts/AdminLayout/AdminLayout'
 import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
@@ -70,6 +72,24 @@ const verifyEmailRoute = createRoute({
     email:
       typeof search.email === 'string' && search.email
         ? search.email
+        : undefined,
+  }),
+})
+
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordPage,
+})
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: '/reset-password',
+  component: ResetPasswordPage,
+  validateSearch: (search: Record<string, unknown>): { token?: string } => ({
+    token:
+      typeof search.token === 'string' && search.token
+        ? search.token
         : undefined,
   }),
 })
@@ -179,5 +199,11 @@ export const routeTree = rootRoute.addChildren([
       supplierEditRoute,
     ]),
   ]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute, verifyEmailRoute]),
+  authLayoutRoute.addChildren([
+    loginRoute,
+    registerRoute,
+    verifyEmailRoute,
+    forgotPasswordRoute,
+    resetPasswordRoute,
+  ]),
 ])

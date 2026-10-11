@@ -9,6 +9,10 @@ Signed-in users can request a new NUS email address from **Edit Profile → Upda
 Email**. The current address remains unchanged until the new one is verified;
 existing sessions stay signed in.
 
+**Forgot password?** on the login page sends a reset link to a verified account's
+current email. The link opens a new-password form; after saving, the user returns
+to login with the new password.
+
 ## Structure and responsibilities
 
 ```text
@@ -57,6 +61,8 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 | [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email  | Ask the user to check their inbox and spam folder.                      |
 | [requestEmailChange](api/userProfile.api.ts)       | `POST /users/me/email-change` with email           | Show sending feedback and allow resending in Edit Profile.              |
 | [confirmEmailChange](api/emailVerification.api.ts) | `POST /auth/email-change/confirm` with token       | Show Email updated and return to the profile.                           |
+| [requestPasswordReset](api/forgotPassword.api.ts) | `POST /auth/password-reset/request` with email | Show inbox/spam feedback and allow resending. |
+| [resetPassword](api/forgotPassword.api.ts) | `POST /auth/password-reset/confirm` with token and new password | Show success and offer login with the new password. |
 | [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/app`.    |
 | [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie  | Obtain a replacement access token through the shared refresh operation. |
 | [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie   | Finish the logout attempt and return to login.                          |
@@ -112,6 +118,26 @@ To check the flow manually, request an unused NUS address you can access, confir
 that the old address remains visible before verification, and open the emailed
 link. Return to the profile and check the new address without signing out. On the
 next login, use the new address. Also check resending and an occupied address.
+
+### Forgot password
+
+`ForgotPasswordPage` sends and resends through `requestPasswordReset` in
+`api/forgotPassword.api.ts` (`POST /api/auth/password-reset/request`). It shows
+generic inbox/spam feedback on the same page; unknown and unverified accounts
+receive the same response without an email. The existing resend interval applies.
+
+`ResetPasswordPage` opens `/reset-password?token=...`. It submits the token and
+new password to `POST /api/auth/password-reset/confirm` only after the user fills
+both password fields and submits. Confirmation is checked locally and is not sent.
+An unavailable link offers a new request; a temporary request failure allows retry.
+The reset endpoint returns **410** for unavailable links and **400** for invalid
+input; the page uses the status rather than the error message to distinguish them.
+
+The backend reuses `EmailTokenService` with `PASSWORD_RESET`. Token consumption,
+password hashing/saving, and refresh-token deletion share one transaction in
+`PasswordService`. A link sent before an email change is rejected by comparing
+its saved address with the account's current email. Existing access tokens expire
+normally; the frontend does not coordinate other tabs or log in automatically.
 
 ### Session recovery
 
@@ -259,10 +285,16 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
      logout left a valid cookie, reloading the website may restore the earlier
      session; logging out again should clear it when the service is available.
 
+6. **Forgot password**
+   - Use a verified account: send the link, check inbox/spam, open it, and submit
+     matching new passwords. Confirm that the new password logs in and the old
+     password does not. Reusing the link should offer a new request.
+   - Check resend feedback and a mismatched confirmation before submission.
+
 ### Responsive layout checks
 
 Use the DevTools device toolbar in **Responsive** mode and enter these viewport
-widths and heights. Check login, registration, all email verification states, field/server errors, session
+widths and heights. Check login, registration, forgot/reset password, all email verification states, field/server errors, session
 recovery feedback, and the application logout button.
 
 | Viewport       | Check                                                                                                                                         |

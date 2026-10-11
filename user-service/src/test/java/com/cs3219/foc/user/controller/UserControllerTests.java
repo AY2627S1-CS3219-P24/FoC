@@ -62,6 +62,9 @@ class UserControllerTests {
     private EmailChangeService emailChange;
 
     @Autowired
+    private PasswordService passwords;
+
+    @Autowired
     private JwtDecoder decoder;
 
     private MockMvc mvc;
@@ -70,7 +73,7 @@ class UserControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder, verification, emailChange);
+        reset(service, decoder, verification, emailChange, passwords);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -82,6 +85,31 @@ class UserControllerTests {
                 "+6591235436",
                 "School of Computing",
                 null);
+    }
+
+    @Test
+    void passwordResetEndpointsArePublicAndValidateNewPasswords() throws Exception {
+        mvc.perform(post("/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"email":" JAMIE@U.NUS.EDU "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwords).requestPasswordReset("jamie@u.nus.edu");
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":"short"}
+                        """))
+                .andExpect(status().isBadRequest());
+        verify(passwords, never()).resetPassword(any(), any());
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":" NewPassword2 "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwords).resetPassword("reset-token", " NewPassword2 ");
     }
 
     @Test
