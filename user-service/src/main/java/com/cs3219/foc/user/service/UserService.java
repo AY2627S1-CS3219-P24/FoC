@@ -125,26 +125,13 @@ public class UserService {
         validateFaculty(request.faculty());
         var user = getUser(id);
 
-        var name = request.name().strip();
-        var email = request.email().strip().toLowerCase();
-
         validateRoleChange(user.getRoles(), request.roles());
 
-        if (!email.equals(user.getEmail()) && userRepository.existsByEmail(email)) {
+        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists with this email.");
         }
 
-        user.setName(name);
-        user.setEmail(email);
-        user.setRoles(request.roles());
-
-        if (request.phoneNumber() != null) {
-            user.setPhoneNumber(request.phoneNumber().isEmpty() ? null : request.phoneNumber());
-        }
-        if (request.faculty() != null) {
-            user.setFaculty(request.faculty().isEmpty() ? null : request.faculty());
-        }
-
+        userMapper.updateUser(request, user);
         return userMapper.toUserDto(userRepository.saveAndFlush(user));
     }
 
@@ -184,10 +171,7 @@ public class UserService {
             throw new EntityAlreadyExistsException("Email is already associated with another account");
         }
 
-        user.setName(request.name());
-        user.setEmail(request.email());
-        user.setPhoneNumber(request.phoneNumber());
-        user.setFaculty(request.faculty());
+        userMapper.updateUserProfile(request, user);
         var savedUser = userRepository.saveAndFlush(user);
         return userMapper.toUserProfileDto(savedUser);
     }
