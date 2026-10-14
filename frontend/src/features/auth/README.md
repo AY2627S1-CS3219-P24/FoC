@@ -31,7 +31,7 @@ auth/
 | [useLogin](hooks/useLogin.ts), [useRegister](hooks/useRegister.ts)                              | Track submission progress and turn request errors into page messages.                                                                                              |
 | [LoginPage](pages/LoginPage/LoginPage.tsx), [RegisterPage](pages/RegisterPage/RegisterPage.tsx) | Connect validated form values to hooks and navigate after success.                                                                                                 |
 | Page-local forms and schemas                                                                    | Use React Hook Form and Zod for field state, validation, password matching, and name/email normalization.                                                          |
-| [SessionRecoveryFeedback](components/SessionRecoveryFeedback/SessionRecoveryFeedback.tsx)       | Shows delayed loading or a safe recovery error with a retry button.                                                                                                |
+| [LoadingPage](../../pages/LoadingPage.tsx), [ErrorPage](../../pages/ErrorPage.tsx)              | Shared loading and error pages used by protected routes.                                                                                                           |
 
 [App.tsx](../../App.tsx) places the Router inside AuthProvider and passes its
 operations through Router context. [routes.tsx](../../routes.tsx) calls those
