@@ -265,6 +265,8 @@ class ProvisioningEndToEndTests {
                     "--credit.provisioning.interval=100",
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
+                    "--spring.cloud.function.definition=userCreated",
+                    "--credit.rewards.enabled=false",
                     "--spring.cloud.stream.bindings.userCreated-in-0.destination=" + destination,
                     "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-initial-interval=100",
                     "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-max-interval=200",
@@ -365,7 +367,7 @@ class ProvisioningEndToEndTests {
     }
 
     /** Drops real TCP connections to exercise recovery without controlling the shared CI broker/database. */
-    private static final class TcpSwitch implements AutoCloseable {
+    static final class TcpSwitch implements AutoCloseable {
         private final ServerSocket listener;
         private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
         private final Set<Socket> sockets = ConcurrentHashMap.newKeySet();
