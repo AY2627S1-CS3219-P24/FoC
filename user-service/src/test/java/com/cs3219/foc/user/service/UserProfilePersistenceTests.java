@@ -732,7 +732,11 @@ class UserProfilePersistenceTests {
 
         @Bean
         UserService userService(UserRepository repository) {
-            return new UserService(repository, new BCryptPasswordEncoder(), Mappers.getMapper(UserMapper.class));
+            return new UserService(
+                    repository,
+                    new BCryptPasswordEncoder(),
+                    Mappers.getMapper(UserMapper.class),
+                    mock(UserProvisioningService.class));
         }
     }
 }
