@@ -1,10 +1,40 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import { RequesterHomePage } from './RequesterHomePage'
 
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  Link: ({
+    to,
+    children,
+    className,
+  }: {
+    to: string
+    children: ReactNode
+    className?: string
+  }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+}))
+vi.mock('../../hooks/useOrders', () => ({
+  useOrders: () => ({
+    data: [],
+    user: { id: 'me', name: 'Alex' },
+    isPending: false,
+    error: null,
+    identityError: null,
+  }),
+  useOrderClock: () => 0,
+}))
+beforeEach(() => navigate.mockClear())
+
 describe('RequesterHomePage', () => {
-  it('shows the dashboard categories, favourite and recent errands', () => {
+  it('shows the existing dashboard sections and creation link', () => {
     render(<RequesterHomePage />)
     expect(
       screen.getByRole('heading', { name: 'What do you need?' }),
@@ -13,17 +43,17 @@ describe('RequesterHomePage', () => {
       screen.getByRole('list', { name: 'Location categories' }).children,
     ).toHaveLength(7)
     expect(
-      screen.getByRole('button', { name: /CoffeeBean @ COM3 Open now/ }),
+      screen.getByRole('heading', { name: 'Favourite locations' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /COM2 Ongoing/ }),
+      screen.getByRole('heading', { name: 'Recent errands' }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /COM2 Yesterday/ }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create Errand' })).toHaveAttribute(
+      'href',
+      '/errands/new',
+    )
   })
-
-  it('opens a category preview and closes it with Escape', async () => {
+  it('opens the category preview and returns focus after closing', async () => {
     const user = userEvent.setup()
     render(<RequesterHomePage />)
     await user.click(screen.getByRole('button', { name: 'Drinks' }))
@@ -32,15 +62,12 @@ describe('RequesterHomePage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Drinks' })).toHaveFocus()
   })
-
-  it('does not pretend to create an errand without the creation workflow', async () => {
+  it('requests a switch to courier view', async () => {
     const user = userEvent.setup()
     render(<RequesterHomePage />)
-    await user.click(screen.getByRole('button', { name: 'Create Errand' }))
-    expect(
-      screen.getByRole('dialog', { name: 'Create Errand' }),
-    ).toHaveTextContent('No errand has been created.')
-    await user.click(screen.getByRole('button', { name: 'Close' }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    screen.getByRole('button', { name: 'Switch view: Requester' }).focus()
+    await user.keyboard('{ArrowDown}')
+    await user.click(await screen.findByRole('menuitem', { name: 'Courier' }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/courier' })
   })
 })
