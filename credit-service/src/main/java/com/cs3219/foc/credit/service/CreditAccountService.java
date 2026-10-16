@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreditAccountService {
     private final CreditAccountRepository repository;
 
-    /** Returns true only when this call creates the account and its initial grant. */
+    /** Returns true only when this call creates the account with zero balances. */
     @Transactional
     public boolean initializeAccount(UUID userId) {
         return repository.initializeIfAbsent(Objects.requireNonNull(userId, "userId")) == 1;

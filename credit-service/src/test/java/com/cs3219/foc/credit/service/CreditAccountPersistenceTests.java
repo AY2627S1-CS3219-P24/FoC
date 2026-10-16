@@ -23,8 +23,8 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
@@ -76,10 +76,10 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void initializesOneGrantAndPreservesExistingBalancesAndTimestamps() {
+    void initializesAtZeroAndPreservesExistingBalancesAndTimestamps() {
         var owner = UUID.randomUUID();
         assertThat(service.initializeAccount(owner)).isTrue();
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
         var initial = repository.findById(owner).orElseThrow();
         assertThat(initial.getCreatedAt()).isNotNull();
         assertThat(initial.getUpdatedAt()).isNotNull();
@@ -94,7 +94,7 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void concurrentInitializationCreatesExactlyOneAccountAndGrant() throws Exception {
+    void concurrentInitializationCreatesExactlyOneZeroBalanceAccount() throws Exception {
         var owner = UUID.randomUUID();
         int workers = 8;
         var barrier = new CyclicBarrier(workers);
@@ -113,7 +113,7 @@ class CreditAccountPersistenceTests {
             assertThat(created).isEqualTo(1);
         }
         assertThat(repository.count()).isEqualTo(1);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
     }
 
     @Test
@@ -132,7 +132,7 @@ class CreditAccountPersistenceTests {
         jdbc.update(
                 "UPDATE credit_accounts SET available_balance = 20, reserved_balance = 80 WHERE user_id = ?", first);
         assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(20, 80));
-        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(0, 0));
     }
 
     @ParameterizedTest
@@ -145,7 +145,7 @@ class CreditAccountPersistenceTests {
         service.initializeAccount(owner);
         assertThatThrownBy(() -> jdbc.update("UPDATE credit_accounts SET " + column + " = -1 WHERE user_id = ?", owner))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
     }
 
     @Test
@@ -159,7 +159,7 @@ class CreditAccountPersistenceTests {
         assertThat(service.initializeAccount(owner)).isTrue();
     }
 
-    @Configuration
+    @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
     @Import(CreditAccountService.class)
@@ -175,7 +175,8 @@ class CreditAccountPersistenceTests {
                     .dataSource(source)
                     .schemas(SCHEMA)
                     .defaultSchema(SCHEMA)
-                    .locations("classpath:db/migration")
+                    .locations("filesystem:" + System.getProperty("foc.root")
+                            + "/credit-service/src/main/resources/db/migration")
                     .load()
                     .migrate();
             return source;

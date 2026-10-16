@@ -7,6 +7,7 @@ import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.rabbitmq.client.ConnectionFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -56,7 +57,16 @@ class UserCreatedRabbitIntegrationTests {
                     context.getBean(UserCreatedEventPublisher.class).publish(event);
                 }
                 // Publisher shutdown must not delete the durable queue or its message.
-                var declared = channel.queueDeclare(queue, true, false, false, null);
+                var declared = channel.queueDeclare(
+                        queue,
+                        true,
+                        false,
+                        false,
+                        Map.of(
+                                "x-dead-letter-exchange",
+                                destination + ".dlx",
+                                "x-dead-letter-routing-key",
+                                "credit-provisioning"));
                 assertThat(declared.getConsumerCount()).isZero();
                 assertThat(declared.getMessageCount()).isEqualTo(1);
                 channel.exchangeDeclare(destination, "topic", true, false, null);
@@ -89,6 +99,8 @@ class UserCreatedRabbitIntegrationTests {
             } finally {
                 channel.queueDelete(queue);
                 channel.exchangeDelete(destination);
+                channel.queueDelete(queue + ".retry");
+                channel.exchangeDelete(destination + ".dlx");
             }
         }
     }
