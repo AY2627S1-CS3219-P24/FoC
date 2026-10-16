@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
 public interface CreditReserveOperationRepository extends JpaRepository<CreditReserveOperation, UUID> {
+    Optional<CreditReserveOperation> findByErrandId(UUID errandId);
+
     @Modifying
     @Query(
             value =

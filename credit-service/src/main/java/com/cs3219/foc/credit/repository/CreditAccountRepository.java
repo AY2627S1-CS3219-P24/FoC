@@ -15,6 +15,27 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
     @Modifying
     @Query(
             value =
+                    "UPDATE credit_accounts SET reserved_balance = reserved_balance - :amount, available_balance = available_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
+            nativeQuery = true)
+    int refund(@Param("userId") UUID userId, @Param("amount") long amount);
+
+    @Modifying
+    @Query(
+            value =
+                    "UPDATE credit_accounts SET reserved_balance = reserved_balance - :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
+            nativeQuery = true)
+    int debitReserved(@Param("userId") UUID userId, @Param("amount") long amount);
+
+    @Modifying
+    @Query(
+            value =
+                    "UPDATE credit_accounts SET available_balance = available_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
+            nativeQuery = true)
+    int creditAvailable(@Param("userId") UUID userId, @Param("amount") long amount);
+
+    @Modifying
+    @Query(
+            value =
                     "UPDATE credit_accounts SET available_balance = available_balance - :amount, reserved_balance = reserved_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
             nativeQuery = true)
     int reserve(@Param("userId") UUID userId, @Param("amount") long amount);

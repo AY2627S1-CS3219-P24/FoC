@@ -1,6 +1,6 @@
 package com.cs3219.foc.credit.model.dto;
 
-import com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditResultEvent;
 import java.util.UUID;
 
-public record CreditResultDelivery(CreditReservationResultEvent event, UUID leaseToken, int attemptCount) {}
+public record CreditResultDelivery(CreditResultEvent event, UUID leaseToken, int attemptCount) {}

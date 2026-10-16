@@ -19,6 +19,15 @@ public class CreditResultOutbox {
     @Column(name = "operation_id")
     private UUID operationId;
 
+    @Column(name = "settlement_operation_id")
+    private UUID settlementOperationId;
+
+    @Column(name = "settlement_type")
+    private String settlementType;
+
+    @Column(name = "courier_id")
+    private UUID courierId;
+
     @Column(name = "errand_id")
     private UUID errandId;
 

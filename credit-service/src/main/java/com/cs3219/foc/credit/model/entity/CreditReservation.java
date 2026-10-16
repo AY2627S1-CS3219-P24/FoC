@@ -31,6 +31,9 @@ public class CreditReservation {
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 
+    @Column(name = "courier_id")
+    private UUID courierId;
+
     @Column(name = "settled_at")
     private OffsetDateTime settledAt;
 }

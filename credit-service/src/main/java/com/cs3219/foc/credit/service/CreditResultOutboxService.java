@@ -3,6 +3,9 @@ package com.cs3219.foc.credit.service;
 import com.cs3219.foc.credit.config.CreditRewardProperties;
 import com.cs3219.foc.credit.model.dto.CreditResultDelivery;
 import com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditResultEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
+import com.cs3219.foc.credit.model.entity.CreditResultOutbox;
 import com.cs3219.foc.credit.repository.CreditResultOutboxRepository;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,21 +26,37 @@ public class CreditResultOutboxService {
             var token = UUID.randomUUID();
             repository.acquireLease(
                     row.getEventId(), token, properties.leaseDuration().toMillis());
-            return new CreditResultDelivery(
-                    new CreditReservationResultEvent(
-                            row.getEventId(),
-                            "CreditReservationResultEvent",
-                            1,
-                            row.getOccurredAt(),
-                            new CreditReservationResultEvent.Payload(
-                                    row.getOperationId(),
-                                    row.getErrandId(),
-                                    row.getRequesterId(),
-                                    row.getAmount(),
-                                    row.getOutcome())),
-                    token,
-                    row.getAttemptCount() + 1);
+            return new CreditResultDelivery(resultEvent(row), token, row.getAttemptCount() + 1);
         });
+    }
+
+    private CreditResultEvent resultEvent(CreditResultOutbox row) {
+        if (row.getSettlementOperationId() != null) {
+            return new CreditSettlementResultEvent(
+                    row.getEventId(),
+                    "CreditSettlementResultEvent",
+                    1,
+                    row.getOccurredAt(),
+                    new CreditSettlementResultEvent.Payload(
+                            row.getSettlementOperationId(),
+                            row.getErrandId(),
+                            row.getRequesterId(),
+                            row.getAmount(),
+                            row.getOutcome(),
+                            row.getSettlementType(),
+                            row.getCourierId()));
+        }
+        return new CreditReservationResultEvent(
+                row.getEventId(),
+                "CreditReservationResultEvent",
+                1,
+                row.getOccurredAt(),
+                new CreditReservationResultEvent.Payload(
+                        row.getOperationId(),
+                        row.getErrandId(),
+                        row.getRequesterId(),
+                        row.getAmount(),
+                        row.getOutcome()));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

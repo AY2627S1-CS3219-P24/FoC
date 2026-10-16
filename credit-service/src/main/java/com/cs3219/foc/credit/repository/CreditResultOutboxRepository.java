@@ -10,6 +10,22 @@ import org.springframework.data.repository.query.Param;
 
 public interface CreditResultOutboxRepository extends JpaRepository<CreditResultOutbox, UUID> {
     @Modifying
+    @Query(value = """
+        INSERT INTO credit_result_outbox(event_id, settlement_operation_id, errand_id, requester_id, amount, outcome, courier_id, settlement_type)
+        SELECT :event, operation_id, errand_id, requester_id, amount, outcome, courier_id,
+            CASE WHEN event_type = 'ErrandCompletedEvent' THEN 'PAYOUT' ELSE 'REFUND' END
+        FROM credit_settlement_operations WHERE operation_id = :operation
+        """, nativeQuery = true)
+    int enqueueSettlement(@Param("event") UUID event, @Param("operation") UUID operation);
+
+    @Modifying
+    @Query(
+            value =
+                    "UPDATE credit_result_outbox SET published_at = NULL, next_attempt_at = CURRENT_TIMESTAMP WHERE settlement_operation_id = :operation AND published_at IS NOT NULL",
+            nativeQuery = true)
+    int replaySettlement(@Param("operation") UUID operation);
+
+    @Modifying
     @Query(
             value =
                     "INSERT INTO credit_result_outbox(event_id, operation_id, errand_id, requester_id, amount, outcome) SELECT :event, operation_id, errand_id, requester_id, amount, outcome FROM credit_reserve_operations WHERE operation_id = :operation",

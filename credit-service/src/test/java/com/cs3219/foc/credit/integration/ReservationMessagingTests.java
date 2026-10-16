@@ -160,7 +160,7 @@ class ReservationMessagingTests {
         }
     }
 
-    private ConfigurableApplicationContext startCredit(List<String> args, ThreadPoolExecutor rabbitExecutor) {
+    static ConfigurableApplicationContext startCredit(List<String> args, ThreadPoolExecutor rabbitExecutor) {
         return new SpringApplicationBuilder(CreditServiceApplication.class)
                 .initializers(context -> context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
                     @Override
