@@ -16,9 +16,14 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,7 +49,10 @@ class ReservationMessagingTests {
         rabbit.setUsername(System.getenv("FOC_TEST_RABBIT_USERNAME"));
         rabbit.setPassword(System.getenv("FOC_TEST_RABBIT_PASSWORD"));
         var root = Path.of(System.getProperty("foc.root"));
-        try (var broker = new ProvisioningEndToEndTests.TcpSwitch(rabbit.getHost(), rabbit.getPort());
+        // Keep callback threads alive across both contexts; channel-close callbacks can
+        // submit more work after Spring has started destroying a connection factory.
+        try (var rabbitExecutor = (ThreadPoolExecutor) Executors.newCachedThreadPool();
+                var broker = new ProvisioningEndToEndTests.TcpSwitch(rabbit.getHost(), rabbit.getPort());
                 var connection = rabbit.newConnection();
                 var channel = connection.createChannel()) {
             var args = new ArrayList<>(List.of(
@@ -83,8 +91,7 @@ class ReservationMessagingTests {
             try {
                 var paused = new ArrayList<>(args);
                 paused.add("--credit.rewards.enabled=false");
-                try (var context = new SpringApplicationBuilder(CreditServiceApplication.class)
-                        .run(paused.toArray(String[]::new))) {
+                try (var context = startCredit(paused, rabbitExecutor)) {
                     sql.update("INSERT INTO credit_accounts(user_id,available_balance) VALUES (?,100)", user);
                     channel.confirmSelect();
                     channel.basicPublish(
@@ -117,8 +124,7 @@ class ReservationMessagingTests {
                             .isEqualTo(80);
                 }
                 broker.online();
-                try (var context =
-                        new SpringApplicationBuilder(CreditServiceApplication.class).run(args.toArray(String[]::new))) {
+                try (var context = startCredit(args, rabbitExecutor)) {
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
                                     "SELECT published_at IS NOT NULL FROM credit_result_outbox", Boolean.class))
                             .isTrue());
@@ -138,6 +144,11 @@ class ReservationMessagingTests {
                             .isEqualTo(20);
                 }
             } finally {
+                // Both contexts are closed. Drain their channel-close and confirm callbacks
+                // before the test-owned executor is shut down; do not ignore background failures.
+                await().atMost(Duration.ofSeconds(10))
+                        .until(() -> rabbitExecutor.getActiveCount() == 0
+                                && rabbitExecutor.getQueue().isEmpty());
                 channel.queueDelete(input + ".credit-reservations");
                 channel.queueDelete(input + ".credit-reservations.retry");
                 channel.queueDelete(queue);
@@ -147,5 +158,19 @@ class ReservationMessagingTests {
                 sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
         }
+    }
+
+    private ConfigurableApplicationContext startCredit(List<String> args, ThreadPoolExecutor rabbitExecutor) {
+        return new SpringApplicationBuilder(CreditServiceApplication.class)
+                .initializers(context -> context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
+                    @Override
+                    public Object postProcessBeforeInitialization(Object bean, String beanName) {
+                        if (bean instanceof CachingConnectionFactory factory) {
+                            factory.setExecutor(rabbitExecutor);
+                        }
+                        return bean;
+                    }
+                }))
+                .run(args.toArray(String[]::new));
     }
 }
