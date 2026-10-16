@@ -55,7 +55,13 @@ class AvatarControllerTests {
     @Test
     void uploadUsesJwtIdentityAndReturnsProfile() throws Exception {
         var profile = new UserProfileDto(
-                userId.toString(), "alex@example.com", "Alex", List.of("USER"), null, null, "/users/me/avatar?v=test");
+                userId.toString(),
+                "alex@example.com",
+                "Alex",
+                List.of("USER"),
+                null,
+                null,
+                "/api/users/" + userId + "/avatar?v=test.png");
         when(avatars.upload(eq(userId), any())).thenReturn(profile);
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
@@ -68,16 +74,13 @@ class AvatarControllerTests {
     }
 
     @Test
-    void retrievesPrivateImageAndIgnoresClientIdentityAndVersion() throws Exception {
+    void retrievesPublicImageByUserId() throws Exception {
         when(avatars.read(userId)).thenReturn(new byte[] {1, 2});
-        mvc.perform(get("/users/me/avatar")
-                        .param("userId", UUID.randomUUID().toString())
-                        .param("v", "untrusted-key")
-                        .with(jwt().jwt(token -> token.subject(userId.toString()))))
+        mvc.perform(get("/users/{userId}/avatar", userId).param("v", "cache-version"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
                 .andExpect(content().bytes(new byte[] {1, 2}))
-                .andExpect(header().string("Cache-Control", Matchers.containsString("no-store")))
+                .andExpect(header().string("Cache-Control", Matchers.containsString("max-age=31536000")))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"));
         verify(avatars).read(userId);
     }
@@ -91,8 +94,7 @@ class AvatarControllerTests {
     }
 
     @Test
-    void allAvatarOperationsRequireAuthentication() throws Exception {
-        mvc.perform(get("/users/me/avatar")).andExpect(status().isUnauthorized());
+    void writeAndRemoveOperationsRequireAuthentication() throws Exception {
         mvc.perform(delete("/users/me/avatar")).andExpect(status().isUnauthorized());
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar").file(file)).andExpect(status().isUnauthorized());
         verifyNoInteractions(avatars);
@@ -101,7 +103,7 @@ class AvatarControllerTests {
     @Test
     void rejectsInvalidBearerToken() throws Exception {
         when(decoder.decode("invalid")).thenThrow(new BadJwtException("Invalid token"));
-        mvc.perform(get("/users/me/avatar").header("Authorization", "Bearer invalid"))
+        mvc.perform(delete("/users/me/avatar").header("Authorization", "Bearer invalid"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(avatars);
     }
@@ -138,7 +140,6 @@ class AvatarControllerTests {
     @Test
     void noAvatarReturnsNotFound() throws Exception {
         when(avatars.read(userId)).thenThrow(new AvatarException(HttpStatus.NOT_FOUND, "Avatar not found"));
-        mvc.perform(get("/users/me/avatar").with(jwt().jwt(token -> token.subject(userId.toString()))))
-                .andExpect(status().isNotFound());
+        mvc.perform(get("/users/{userId}/avatar", userId)).andExpect(status().isNotFound());
     }
 }

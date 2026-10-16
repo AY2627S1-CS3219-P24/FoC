@@ -27,6 +27,10 @@ vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
+vi.mock('#/api/getFaculties.api', () => ({
+  getFaculties: vi.fn(async () => ['School of Computing']),
+}))
+
 vi.mock('../api/userProfile.api', () => ({
   updateUserProfile: vi.fn(),
   changePassword: vi.fn(),
@@ -201,7 +205,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   const router = setup('/app')
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Unable to restore your session',
+    'Something went wrong. Please try again.',
   )
   expect(screen.queryByText('Private server details')).not.toBeInTheDocument()
   expect(
