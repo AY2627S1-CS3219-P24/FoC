@@ -152,9 +152,11 @@ class ReservationMessagingTests {
                 channel.queueDelete(input + ".credit-reservations");
                 channel.queueDelete(input + ".credit-reservations.retry");
                 channel.queueDelete(queue);
+                channel.queueDelete(queue + ".retry");
                 channel.exchangeDelete(input);
                 channel.exchangeDelete(input + ".dlx");
                 channel.exchangeDelete(output);
+                channel.exchangeDelete(output + ".dlx");
                 sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
         }

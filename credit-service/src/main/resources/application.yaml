@@ -121,6 +121,13 @@ spring:
               delivery-mode: PERSISTENT
               exchange-durable: true
               exchange-auto-delete: false
+              auto-bind-dlq: true
+              dead-letter-exchange: ${spring.cloud.stream.bindings.creditResult-out-0.destination}.dlx
+              dead-letter-routing-key: order-credit-results
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditResult-out-0.destination}.order-credit-results.retry
+              dlq-ttl: 30000
+              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.creditResult-out-0.destination}
+              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.creditResult-out-0.destination}
           errandSubmitted-in-0:
             consumer:
               acknowledge-mode: AUTO
