@@ -16,20 +16,3 @@ export const favouriteLocations = [
     hours: 'Open now · closes 8:00 PM',
   },
 ]
-
-export const recentErrands = [
-  {
-    id: 'ongoing-coffee',
-    pickup: 'CoffeeBean @ COM3',
-    destination: 'COM2',
-    label: 'Ongoing',
-    description: 'Ice latte, less sugar.',
-  },
-  {
-    id: 'previous-coffee',
-    pickup: 'CoffeeBean @ COM3',
-    destination: 'COM2',
-    label: 'Yesterday',
-    description: 'Collect a coffee from CoffeeBean.',
-  },
-]

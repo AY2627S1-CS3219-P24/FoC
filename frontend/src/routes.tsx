@@ -28,6 +28,10 @@ import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
+import { CreateErrandPage } from '#/features/orders/pages/CreateErrandPage/CreateErrandPage'
+import { MyErrandsPage } from '#/features/orders/pages/MyErrandsPage/MyErrandsPage'
+import { OrderDetailPage } from '#/features/orders/pages/OrderDetailPage/OrderDetailPage'
+import { parseOrderListSearch } from '#/features/orders/types/errand.types'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -105,6 +109,23 @@ const courierRoute = createRoute({
   getParentRoute: () => accountRoute,
   path: '/courier',
   component: CourierHomePage,
+})
+
+const createErrandRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/errands/new',
+  component: CreateErrandPage,
+})
+const myErrandsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/errands',
+  component: MyErrandsPage,
+  validateSearch: parseOrderListSearch,
+})
+const orderDetailRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: '/errands/$orderId',
+  component: OrderDetailPage,
 })
 
 // Below are admin routes
@@ -188,6 +209,9 @@ export const routeTree = rootRoute.addChildren([
     accountRoute.addChildren([
       appRoute,
       courierRoute,
+      createErrandRoute,
+      myErrandsRoute,
+      orderDetailRoute,
       profileRoute,
       editProfileRoute,
     ]),

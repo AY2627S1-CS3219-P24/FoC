@@ -1,0 +1,30 @@
+.trigger {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+.popup {
+  background: white;
+  padding: 6px;
+  border: 1px solid #e3e7ee;
+  border-radius: 8px;
+  min-width: 170px;
+  box-shadow: 0 4px 16px #17203314;
+  z-index: 50;
+}
+.item {
+  padding: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  &[data-highlighted] {
+    background: #e8eff8;
+  }
+}

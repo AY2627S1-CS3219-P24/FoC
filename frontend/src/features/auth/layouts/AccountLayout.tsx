@@ -16,7 +16,9 @@ export const AccountLayout = () => {
         <>
           <Link to="/app">Home</Link>
           <span aria-disabled="true">Locations</span>
-          <span aria-disabled="true">My Errands</span>
+          <Link to="/errands" search={{ tab: 'active', participation: 'all' }}>
+            My Errands
+          </Link>
         </>
       }
       onAccountClick={() => {

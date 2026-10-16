@@ -1,45 +1,37 @@
 import { useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
-import {
-  categories,
-  favouriteLocations,
-  recentErrands,
-} from './requesterHome.data'
+import { categories, favouriteLocations } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
+import { Link } from '@tanstack/react-router'
+import { OrderModeSwitcher } from '../../components/OrderModeSwitcher/OrderModeSwitcher'
+import { OrderCard } from '../../components/OrderCard/OrderCard'
+import {
+  OrderPreviewNotice,
+  OrderFeedback,
+} from '../../components/OrderFeedback/OrderFeedback'
+import { useOrders, useOrderClock } from '../../hooks/useOrders'
+import { ordersPreviewEnabled } from '../../api/orders.api'
+import common from '../../styles/order.module.scss'
 
 export const RequesterHomePage = () => {
+  const orders = useOrders()
+  const now = useOrderClock()
+  const recent = (orders.data ?? [])
+    .filter(
+      (order) =>
+        order.requester.id === orders.user?.id ||
+        order.courier?.id === orders.user?.id,
+    )
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, 3)
   const [preview, setPreview] = useState<{
     title: string
     description: string
   } | null>(null)
   return (
-    <div className={styles.page}>
-      <Button
-        className={styles.mode}
-        onClick={() =>
-          setPreview({
-            title: 'Choose your mode',
-            description:
-              'You are in Requester mode. Courier home will be available when the courier page is connected.',
-          })
-        }
-      >
-        Requester
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </Button>
+    <div className={`${common.page} ${styles.page}`}>
+      <OrderModeSwitcher mode="requester" />
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
         {categories.map((category) => (
@@ -62,73 +54,66 @@ export const RequesterHomePage = () => {
 
       <section className={styles.section} aria-labelledby="favourites-heading">
         <h2 id="favourites-heading">Favourite locations</h2>
-        <ul className={styles.cards}>
-          {favouriteLocations.map((location) => (
-            <li key={location.id}>
-              <Button
-                className={styles.card}
-                onClick={() =>
-                  setPreview({
-                    title: location.name,
-                    description: `${location.hours}. This is a sample location; live hours and location details are not connected yet.`,
-                  })
-                }
-              >
-                <span>
-                  <span className={styles.cardTitle}>{location.name}</span>{' '}
-                  <span className={styles.status}>{location.hours}</span>
-                </span>
-                <span className={styles.arrow} aria-hidden="true">
-                  ›
-                </span>
-              </Button>
-            </li>
-          ))}
-        </ul>
+        {!ordersPreviewEnabled && (
+          <p className={common.muted}>
+            Your favourite locations will appear here when favourites are
+            connected.
+          </p>
+        )}
+        {ordersPreviewEnabled && (
+          <ul className={styles.cards}>
+            {favouriteLocations.map((location) => (
+              <li key={location.id}>
+                <Button
+                  className={styles.card}
+                  onClick={() =>
+                    setPreview({
+                      title: location.name,
+                      description: `${location.hours}. This is a sample location; live hours and location details are not connected yet.`,
+                    })
+                  }
+                >
+                  <span>
+                    <span className={styles.cardTitle}>{location.name}</span>{' '}
+                    <span className={styles.status}>{location.hours}</span>
+                  </span>
+                  <span className={styles.arrow} aria-hidden="true">
+                    ›
+                  </span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
-        <ul className={styles.cards}>
-          {recentErrands.map((errand) => (
-            <li key={errand.id}>
-              <Button
-                className={styles.card}
-                onClick={() =>
-                  setPreview({
-                    title: `${errand.pickup} → ${errand.destination}`,
-                    description: `${errand.label}: ${errand.description} This is a sample errand.`,
-                  })
-                }
-              >
-                <span>
-                  <span className={styles.cardTitle}>
-                    {errand.pickup} → {errand.destination}
-                  </span>{' '}
-                  <span className={styles.status}>{errand.label}</span>
-                </span>
-                <span className={styles.arrow} aria-hidden="true">
-                  ›
-                </span>
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <OrderPreviewNotice />
+        <OrderFeedback
+          error={orders.error ?? orders.identityError}
+          loading={orders.isPending}
+          retry={() => void orders.refetch()}
+        />
+        {!orders.isPending && !orders.error && (
+          <ul className={common.list}>
+            {recent.map((order) => (
+              <li key={order.id}>
+                <OrderCard order={order} userId={orders.user!.id} now={now} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {!orders.isPending && !orders.error && recent.length === 0 && (
+          <p className={common.muted}>
+            No errands yet. Create your first request or switch to Courier to
+            help someone.
+          </p>
+        )}
       </section>
-
-      <Button
-        className={styles.create}
-        onClick={() =>
-          setPreview({
-            title: 'Create Errand',
-            description:
-              'The errand creation form is not connected yet. No errand has been created.',
-          })
-        }
-      >
+      <Link to="/errands/new" className={`${common.button} ${styles.create}`}>
         Create Errand
-      </Button>
-      <p className={styles.sample}>Sample dashboard content</p>
+      </Link>
 
       <Dialog.Root
         open={preview !== null}
