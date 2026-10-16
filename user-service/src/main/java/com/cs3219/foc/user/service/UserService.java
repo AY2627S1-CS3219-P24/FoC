@@ -38,6 +38,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
+    private final UserProvisioningService provisioning;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -203,6 +204,7 @@ public class UserService {
                 .build();
 
         var savedUser = userRepository.save(user);
+        provisioning.recordUser(savedUser.getId());
         return userMapper.toUserProfileDto(savedUser);
     }
 }

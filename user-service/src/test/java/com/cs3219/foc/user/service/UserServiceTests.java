@@ -40,8 +40,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
+    private final UserProvisioningService provisioning = mock(UserProvisioningService.class);
     private final UserService service =
-            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class));
+            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), provisioning);
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -200,6 +201,7 @@ class UserServiceTests {
         var result = service.registerUser(new RegisterUserRequest(email, "Jamie", "password123"));
         assertThat(result.email()).isEqualTo(email);
         verify(repository).save(any(User.class));
+        verify(provisioning).recordUser(userId);
     }
 
     @ParameterizedTest
