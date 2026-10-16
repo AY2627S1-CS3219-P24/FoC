@@ -28,7 +28,7 @@ const SEARCH_DEBOUNCE_MS = 300
 
 export const SupplierListPage = () => {
   // filters live in the URL, back or forward or shared links will keepp the filters
-  const filters = useSearch({ from: '/protected/admin/suppliers' })
+  const filters = useSearch({ from: '/admin/suppliers' })
   const selectedCategories = toSupplierFilters(filters).category ?? []
   const navigate = useNavigate({ from: '/admin/suppliers' })
   const updateFilters = (patch: SupplierListSearch) =>

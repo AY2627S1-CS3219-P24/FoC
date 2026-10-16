@@ -2,11 +2,8 @@ import { useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { Input } from '@base-ui/react/input'
-import {
-  useProfileActions,
-  useProfileAvatar,
-  useUserProfile,
-} from '../../hooks/useUserProfile'
+import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
+import { useProfileActions, useUserProfile } from '../../hooks/useUserProfile'
 import { useAuth } from '../../providers/AuthProvider'
 import { getProfileError } from '../../utils/getProfileError'
 import { nusEmailSchema } from '../../schemas/nusEmail.schema'
@@ -15,7 +12,9 @@ import styles from './EditProfilePage.module.scss'
 
 export const EditProfilePage = () => {
   const profile = useUserProfile()
-  if (profile.isPending) return <p role="status">Loading your profile...</p>
+  const faculties = useFacultiesQuery()
+  if (profile.isPending || faculties.isPending)
+    return <p role="status">Loading your profile...</p>
   if (!profile.data)
     return (
       <div role="alert">
@@ -29,10 +28,29 @@ export const EditProfilePage = () => {
         </Button>
       </div>
     )
-  return <EditProfileForm key={profile.data.id} profile={profile.data} />
+  if (!faculties.data)
+    return (
+      <div role="alert">
+        <p>Could not load faculty choices.</p>
+        <Button onClick={() => void faculties.refetch()}>Try again</Button>
+      </div>
+    )
+  return (
+    <EditProfileForm
+      key={profile.data.id}
+      profile={profile.data}
+      faculties={faculties.data}
+    />
+  )
 }
 
-const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
+const EditProfileForm = ({
+  profile,
+  faculties,
+}: {
+  profile: UserProfileDto
+  faculties: string[]
+}) => {
   const [name, setName] = useState(profile.name)
   const [phoneNumber, setPhoneNumber] = useState(profile.phoneNumber ?? '')
   const [faculty, setFaculty] = useState(profile.faculty ?? '')
@@ -61,7 +79,6 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
   const emailError = emailFieldError || emailRequestError?.fields.email
   const isResend =
     sentEmail === email.trim().toLowerCase() && Boolean(sentEmail)
-  const avatar = useProfileAvatar(profile.avatarUrl)
   const auth = useAuth()
   const navigate = useNavigate()
   const initials = profile.name
@@ -76,6 +93,8 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
     if (locked.current) return
     const fields: Record<string, string> = {}
     if (!name.trim()) fields.name = 'Enter your full name.'
+    if (faculty && !faculties.includes(faculty))
+      fields.faculty = 'Select a valid NUS faculty.'
     setErrors(fields)
     setError('')
     setMessage('')
@@ -195,8 +214,8 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
     <div className={styles.page}>
       <aside className={styles.summary} aria-label="Your profile">
         <div className={styles.avatar}>
-          {avatar ? (
-            <img src={avatar} alt={profile.name} />
+          {profile.avatarUrl ? (
+            <img src={profile.avatarUrl} alt={profile.name} />
           ) : (
             <span aria-label="Profile initials">{initials}</span>
           )}
@@ -280,15 +299,20 @@ const EditProfileForm = ({ profile }: { profile: UserProfileDto }) => {
             </div>
             <div className={styles.field}>
               <label htmlFor="profile-faculty">Faculty</label>
-              <Input
+              <select
                 id="profile-faculty"
                 value={faculty}
-                onValueChange={setFaculty}
-                maxLength={255}
-                placeholder="School of Computing"
+                onChange={(event) => setFaculty(event.target.value)}
                 aria-invalid={Boolean(errors.faculty)}
                 aria-describedby={errors.faculty ? 'faculty-error' : undefined}
-              />
+              >
+                <option value="">No faculty</option>
+                {faculties.map((facultyName) => (
+                  <option key={facultyName} value={facultyName}>
+                    {facultyName}
+                  </option>
+                ))}
+              </select>
               {fieldError('faculty')}
             </div>
           </fieldset>

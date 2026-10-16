@@ -30,14 +30,6 @@ export const requestEmailChange = async (email: string) => {
   await axiosClient.post('/users/me/email-change', { email })
 }
 
-export const getAvatar = async (signal?: AbortSignal) => {
-  const { data } = await axiosClient.get<Blob>('/users/me/avatar', {
-    responseType: 'blob',
-    signal,
-  })
-  return data
-}
-
 export const uploadAvatar = async (file: File) => {
   const body = new FormData()
   body.append('file', file)

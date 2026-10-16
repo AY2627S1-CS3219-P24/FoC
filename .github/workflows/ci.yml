@@ -8,6 +8,20 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: foc_test
+          POSTGRES_USER: foc
+          POSTGRES_PASSWORD: foc
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foc -d foc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,6 +34,9 @@ jobs:
         run: ./gradlew check --no-daemon
         env:
           CI: true
+          FOC_TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/foc_test
+          FOC_TEST_DATABASE_USERNAME: foc
+          FOC_TEST_DATABASE_PASSWORD: foc
 
   frontend:
     runs-on: ubuntu-latest
