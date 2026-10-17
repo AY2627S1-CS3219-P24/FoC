@@ -1,4 +1,18 @@
 spring:
+  cloud:
+    aws:
+      s3:
+        region: ${AWS_REGION:ap-southeast-2}
+        endpoint: ${FOC_S3_ENDPOINT:}
+        path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
+  modulith:
+    events:
+      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
   application:
     name: supplier-service
   jpa:
@@ -23,6 +37,9 @@ server:
   servlet:
     context-path: /api
   port: 8081
-supplier:
-  images:
-    directory: ${FOC_SUPPLIER_IMAGE_DIRECTORY:${user.home}/.foc/supplier-images}
+
+storage:
+  s3:
+    bucket: ${FOC_SUPPLIER_BUCKET:foc-dev-supplier}
+  supplier-images:
+    read-url-ttl: 10m

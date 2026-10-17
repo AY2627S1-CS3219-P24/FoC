@@ -23,7 +23,7 @@ class AvatarImageProcessorTests {
     void decodesContentsAndResizesToPng(String format) throws Exception {
         var original = image(format, 1024, 256);
         var misleadingName = new MockMultipartFile("file", "../../not-an-image.txt", "text/plain", original.getBytes());
-        var bytes = processor.process(misleadingName);
+        var bytes = processor.processAvatar(misleadingName);
         assertThat(Arrays.copyOf(bytes, 8))
                 .containsExactly(
                         (byte) 137, (byte) 80, (byte) 78, (byte) 71, (byte) 13, (byte) 10, (byte) 26, (byte) 10);
@@ -38,7 +38,7 @@ class AvatarImageProcessorTests {
         var output = new ByteArrayOutputStream();
         output.write(original);
         output.write("PRIVATE_SOURCE_CONTENT".getBytes(StandardCharsets.UTF_8));
-        var bytes = processor.process(new MockMultipartFile("file", output.toByteArray()));
+        var bytes = processor.processAvatar(new MockMultipartFile("file", output.toByteArray()));
         var decoded = ImageIO.read(new ByteArrayInputStream(bytes));
         assertThat(decoded.getWidth()).isEqualTo(20);
         assertThat(decoded.getHeight()).isEqualTo(10);
@@ -47,22 +47,22 @@ class AvatarImageProcessorTests {
 
     @Test
     void rejectsEmptyFile() {
-        assertThatThrownBy(() -> processor.process(new MockMultipartFile("file", new byte[0])))
+        assertThatThrownBy(() -> processor.processAvatar(new MockMultipartFile("file", new byte[0])))
                 .isInstanceOfSatisfying(
                         AvatarException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
     void rejectsOversizedFile() {
-        assertThatThrownBy(() -> processor.process(new MockMultipartFile("file", new byte[2 * 1024 * 1024 + 1])))
+        assertThatThrownBy(() -> processor.processAvatar(new MockMultipartFile("file", new byte[2 * 1024 * 1024 + 1])))
                 .isInstanceOfSatisfying(AvatarException.class, ex -> assertThat(ex.getStatus())
-                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE));
+                        .isEqualTo(HttpStatus.CONTENT_TOO_LARGE));
     }
 
     @Test
     void rejectsSvgRegardlessOfFilename() {
         var file = new MockMultipartFile("file", "image.png", "image/png", "<svg/>".getBytes(StandardCharsets.UTF_8));
-        assertThatThrownBy(() -> processor.process(file))
+        assertThatThrownBy(() -> processor.processAvatar(file))
                 .isInstanceOfSatisfying(AvatarException.class, ex -> assertThat(ex.getStatus())
                         .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
     }
@@ -70,7 +70,7 @@ class AvatarImageProcessorTests {
     @Test
     void rejectsGif() throws Exception {
         var file = image("gif", 20, 20);
-        assertThatThrownBy(() -> processor.process(file))
+        assertThatThrownBy(() -> processor.processAvatar(file))
                 .isInstanceOfSatisfying(AvatarException.class, ex -> assertThat(ex.getStatus())
                         .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
     }
@@ -79,7 +79,7 @@ class AvatarImageProcessorTests {
     void rejectsTruncatedPng() throws Exception {
         var file =
                 new MockMultipartFile("file", Arrays.copyOf(image("png", 20, 20).getBytes(), 24));
-        assertThatThrownBy(() -> processor.process(file))
+        assertThatThrownBy(() -> processor.processAvatar(file))
                 .isInstanceOfSatisfying(
                         AvatarException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
@@ -87,7 +87,7 @@ class AvatarImageProcessorTests {
     @Test
     void rejectsDimensionsBeforeDecoding() throws Exception {
         var file = image("png", 4097, 1);
-        assertThatThrownBy(() -> processor.process(file))
+        assertThatThrownBy(() -> processor.processAvatar(file))
                 .isInstanceOfSatisfying(
                         AvatarException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }

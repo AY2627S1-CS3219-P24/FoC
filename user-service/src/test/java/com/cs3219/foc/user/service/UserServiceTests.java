@@ -7,7 +7,6 @@ import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
-import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
@@ -15,6 +14,7 @@ import com.cs3219.foc.user.model.dto.UserSearchCriteria;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.support.TestMappers;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -23,9 +23,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -37,8 +37,14 @@ import org.springframework.web.server.ResponseStatusException;
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
-    private final UserService service =
-            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), verification);
+    private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
+    private final UserService service = new UserService(
+            repository,
+            mock(PasswordEncoder.class),
+            TestMappers.mapper(),
+            verification,
+            avatarStorageService,
+            mock(ApplicationEventPublisher.class));
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -51,6 +57,9 @@ class UserServiceTests {
                 .passwordHash("stored-hash")
                 .roles(List.of(UserRole.USER))
                 .build();
+        when(avatarStorageService.createPresignedUrl(any()))
+                .thenAnswer(
+                        call -> call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
     }
 
     @Test
@@ -75,7 +84,7 @@ class UserServiceTests {
 
         var result = service.getUserDto(userId);
 
-        assertThat(result.avatarUrl()).isEqualTo("/api/users/" + userId + "/avatar?v=avatar.png");
+        assertThat(result.avatarUrl()).isEqualTo("https://images.example/avatar.png");
         assertThat(result.createdAt()).isEqualTo(created);
         assertThat(result.updatedAt()).isEqualTo(updated);
         assertThat(result.email()).isEqualTo(user.getEmail());
@@ -143,7 +152,7 @@ class UserServiceTests {
 
     @Test
     void adminCanSetAListedFaculty() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
@@ -159,7 +168,7 @@ class UserServiceTests {
     void adminUpdateNormalizesAndClearsOptionalDetails() {
         user.setPhoneNumber("+6590000000");
         user.setFaculty("Science");
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
@@ -176,7 +185,7 @@ class UserServiceTests {
     void adminUpdateOmittingOptionalDetailsPreservesThem() {
         user.setPhoneNumber("+6591235436");
         user.setFaculty("School of Computing");
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
