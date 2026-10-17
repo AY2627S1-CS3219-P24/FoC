@@ -10,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.config.SecurityConfig;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
 import com.cs3219.foc.user.exception.GlobalExceptionHandler;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
@@ -66,6 +69,9 @@ class UserControllerTests {
     private EmailChangeService emailChange;
 
     @Autowired
+    private PasswordService passwords;
+
+    @Autowired
     private JwtDecoder decoder;
 
     private MockMvc mvc;
@@ -74,7 +80,7 @@ class UserControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder, verification, emailChange);
+        reset(service, decoder, verification, emailChange, passwords);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -86,6 +92,50 @@ class UserControllerTests {
                 "+6591235436",
                 "School of Computing",
                 null);
+    }
+
+    @Test
+    void passwordResetEndpointsArePublicAndValidateNewPasswords() throws Exception {
+        mvc.perform(post("/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"email":" JAMIE@U.NUS.EDU "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwords).requestPasswordReset("jamie@u.nus.edu");
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":"short"}
+                        """))
+                .andExpect(status().isBadRequest());
+        verify(passwords, never()).resetPassword(any(), any());
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":" NewPassword2 "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwords).resetPassword("reset-token", " NewPassword2 ");
+    }
+
+    @Test
+    void emailTokenFailuresKeepTheirHttpResponses() throws Exception {
+        doThrow(new EmailRateLimitException()).when(verification).resendRegistrationVerification("jamie@u.nus.edu");
+        mvc.perform(post("/auth/email-verification/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"jamie@u.nus.edu\"}"))
+                .andExpect(status().isTooManyRequests());
+        doThrow(new InvalidEmailTokenException()).when(emailChange).confirmChange("invalid");
+        mvc.perform(post("/users/email-change/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"invalid\"}"))
+                .andExpect(status().isBadRequest());
+        doThrow(new InvalidPasswordResetTokenException()).when(passwords).resetPassword("invalid", "NewPassword2");
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"invalid\",\"newPassword\":\"NewPassword2\"}"))
+                .andExpect(status().isGone());
     }
 
     @Test

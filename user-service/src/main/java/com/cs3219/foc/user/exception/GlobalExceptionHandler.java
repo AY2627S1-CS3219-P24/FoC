@@ -16,6 +16,21 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(EmailRateLimitException.class)
+    ResponseEntity<ErrorResponse> handleEmailRateLimit(EmailRateLimitException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidEmailTokenException.class)
+    ResponseEntity<ErrorResponse> handleInvalidEmailToken(InvalidEmailTokenException exception) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException exception) {
+        return ResponseEntity.status(HttpStatus.GONE).body(new ErrorResponse(exception.getMessage()));
+    }
+
     @ExceptionHandler(EmailVerificationException.class)
     ResponseEntity<ErrorResponse> handleEmailVerification(EmailVerificationException exception) {
         return ResponseEntity.status(exception.getStatus()).body(new ErrorResponse(exception.getMessage()));

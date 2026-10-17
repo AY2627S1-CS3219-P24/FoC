@@ -37,7 +37,6 @@ public class EmailChangeService {
 
     public void confirmChange(String token) {
         var stored = tokens.consume(token, EmailTokenPurpose.EMAIL_CHANGE);
-        requireAvailable(stored.getEmail());
         var user = users.findById(stored.getUserId()).orElseThrow();
         var oldEmail = user.getEmail();
         user.setEmail(stored.getEmail());
@@ -45,7 +44,7 @@ public class EmailChangeService {
         try {
             users.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
-            // Another account may claim the address after the availability check.
+            // The unique constraint also covers addresses claimed since the request was sent.
             if (exception.getCause() instanceof ConstraintViolationException constraint
                     && "users_email_key".equals(constraint.getConstraintName())) {
                 throw emailInUse();

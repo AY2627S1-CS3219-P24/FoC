@@ -6,6 +6,7 @@ import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
 import { useProfileActions, useUserProfile } from '../../hooks/useUserProfile'
 import { useAuth } from '../../providers/AuthProvider'
 import { getProfileError } from '../../utils/getProfileError'
+import { passwordSchema } from '../../schemas/password.schema'
 import { UpdateEmailForm } from './components/UpdateEmailForm/UpdateEmailForm'
 import type { UserProfileDto } from '../../types/auth.types'
 import styles from './EditProfilePage.module.scss'
@@ -115,10 +116,9 @@ const EditProfileForm = ({
     const fields: Record<string, string> = {}
     if (!currentPassword.trim())
       fields.currentPassword = 'Enter your current password.'
-    if (newPassword.length < 8 || !newPassword.trim())
-      fields.newPassword = 'Use at least 8 characters.'
-    if (new TextEncoder().encode(newPassword).length > 72)
-      fields.newPassword = 'Password is too long (maximum 72 UTF-8 bytes).'
+    const passwordResult = passwordSchema.safeParse(newPassword)
+    if (!passwordResult.success)
+      fields.newPassword = passwordResult.error.issues[0].message
     if (new TextEncoder().encode(currentPassword).length > 72)
       fields.currentPassword = 'Current password is too long.'
     if (newPassword && currentPassword === newPassword)

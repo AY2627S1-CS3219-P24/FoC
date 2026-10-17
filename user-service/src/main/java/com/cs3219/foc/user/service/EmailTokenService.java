@@ -1,7 +1,8 @@
 package com.cs3219.foc.user.service;
 
 import com.cs3219.foc.user.config.AccountMailProperties;
-import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.model.dto.event.EmailTokenCreatedEvent;
 import com.cs3219.foc.user.model.entity.EmailToken;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
@@ -17,7 +18,6 @@ import java.time.OffsetDateTime;
 import java.util.Base64;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,13 +34,13 @@ public class EmailTokenService {
     private final ApplicationEventPublisher events;
 
     // The caller has either just created the user or locked it before issuing a link.
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = EmailRateLimitException.class)
     public void issue(User user, String email, EmailTokenPurpose purpose) {
         var now = OffsetDateTime.now(clock);
         var stored = tokens.findByUserIdAndPurpose(user.getId(), purpose).orElseGet(EmailToken::new);
         if (stored.getIssuedAt() != null
                 && stored.getIssuedAt().plus(properties.resendInterval()).isAfter(now)) {
-            throw new EmailVerificationException(
-                    HttpStatus.TOO_MANY_REQUESTS, "Please wait a minute before requesting another email.");
+            throw new EmailRateLimitException();
         }
 
         byte[] bytes = new byte[32];
@@ -70,8 +70,8 @@ public class EmailTokenService {
         return stored;
     }
 
-    private static EmailVerificationException invalidLink() {
-        return new EmailVerificationException(HttpStatus.BAD_REQUEST, "This verification link is no longer valid.");
+    private static InvalidEmailTokenException invalidLink() {
+        return new InvalidEmailTokenException();
     }
 
     private static String hash(String token) {
