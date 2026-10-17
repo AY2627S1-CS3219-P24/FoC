@@ -25,7 +25,7 @@ export const LoginPage = () => {
     login.mutate(values, {
       onSuccess: (tokens) => {
         auth.completeLogin(tokens.accessToken)
-        void navigate({ to: '/app', replace: true })
+        void navigate({ to: '/home', replace: true })
       },
       onError: () => {
         submissionInProgress.current = false

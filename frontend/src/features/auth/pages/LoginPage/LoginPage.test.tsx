@@ -40,6 +40,7 @@ const httpError = (status: number) =>
   new AuthRequestError(status, 'Internal details')
 
 beforeEach(() => {
+  sessionStorage.clear()
   vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
   setAccessToken(null)
   loginMock.mockReset()
@@ -128,7 +129,7 @@ describe('LoginPage', () => {
       screen.queryByRole('button', { name: 'Log In' }),
     ).not.toBeInTheDocument()
     expect(loginMock).toHaveBeenCalledTimes(1)
-    expect(router.state.location.pathname).toBe('/app')
+    expect(router.state.location.pathname).toBe('/home')
     expect(screen.queryByText(tokens.accessToken)).not.toBeInTheDocument()
   })
 
