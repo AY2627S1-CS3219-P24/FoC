@@ -2,6 +2,8 @@
 
 Run these commands from the repository root with Docker Compose and OpenSSL installed.
 
+## Setup
+
 Create `.env.prod` from [`.env.prod.example`](../.env.prod.example) and set the
 required values. The commands below select it explicitly, leaving the local
 development `.env` separate.
@@ -24,16 +26,23 @@ chmod 444 secrets/jwt-private.pem secrets/jwt-public.pem
 Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
 `INITIAL_ADMIN_PASSWORD` in `.env.prod`.
 
-Build and start the stack:
+## First deployment
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml build
+docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --rm admin-init
+docker compose --env-file .env.prod -f compose.prod.yaml up -d
+```
+
+## Later deployments
 
 ```bash
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 ```
 
-The one-shot `admin-init` service starts after the user service has run its
-database migrations. It creates the configured account with `USER` and `ADMIN`
-roles. Restarting the stack leaves any account with the configured email and
-its password unchanged.
+`admin-init` runs only on first deployment.
+
+## Operate
 
 Open [https://localhost](https://localhost). The `api-gateway` serves the
 frontend and routes `/api` requests to the backend services. Its default
@@ -44,7 +53,6 @@ To check container status or inspect logs:
 ```bash
 docker compose --env-file .env.prod -f compose.prod.yaml ps
 docker compose --env-file .env.prod -f compose.prod.yaml logs -f
-docker compose --env-file .env.prod -f compose.prod.yaml logs admin-init
 ```
 
 Stop the stack with `docker compose --env-file .env.prod -f compose.prod.yaml down`.
