@@ -3,6 +3,7 @@ import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
 import { sampleErrands } from './courierHome.data'
 import styles from './CourierHomePage.module.scss'
+import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 
 export const CourierHomePage = () => {
   const [search, setSearch] = useState('')
@@ -18,26 +19,7 @@ export const CourierHomePage = () => {
 
   return (
     <section aria-labelledby="courier-heading" className={styles.page}>
-      <Button
-        className={styles.mode}
-        disabled
-        title="Mode switching is coming soon"
-      >
-        Courier
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </Button>
+      <RoleSwitcher activeMode={'courier'} />
       <div className={styles.heading}>
         <div>
           <h1 id="courier-heading">Find an errand</h1>
