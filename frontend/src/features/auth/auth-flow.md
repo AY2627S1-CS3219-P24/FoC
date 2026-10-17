@@ -47,14 +47,24 @@ and its error display belong to the route, not a global auth status enum.
 flowchart TD
     Submit[Submit registration] --> Validate{Valid input?}
     Validate -->|No| Fields[Show field errors]
-    Validate -->|Yes| Request[fetch POST /auth/register]
-    Request -->|Success| Login[Open /login with success notice]
+    Validate -->|Yes| Request[fetch POST /api/auth/register]
+    Request -->|Success| Check[Open check-email page]
     Request -->|Failure| Error[Stay on registration and show error]
+    Check --> Mail[Open link in verification email]
+    Mail --> Verify[Automatically POST verification token]
+    Verify -->|Success| Login[Show verified and link to login]
+    Verify -->|Invalid or expired| Unavailable[Explain link may have expired or been used]
+    Unavailable --> Return[Return to login]
 ```
 
 The form normalizes names and emails while preserving password characters.
 The API receives only name, email, and password. Registration creates an
-account, not an authenticated frontend session.
+unverified account, not an authenticated frontend session. The database stores
+the token hash. After commit, Spring Mail asynchronously sends the raw token in
+a link without blocking the registration response. Links expire after 30 minutes;
+resending after the 60-second interval replaces the old
+token. Confirmation checks that the token email matches the current account email,
+then consumes it and marks the email verified in one transaction.
 
 ### Login
 
@@ -62,6 +72,7 @@ account, not an authenticated frontend session.
 flowchart TD
     Submit[Submit login] --> Request[useLogin calls fetch POST /auth/login]
     Request -->|Failure| Error[Show error and allow retry]
+    Request -->|403 unverified| Verify[Offer email verification and resend]
     Request -->|Success| Complete[Provider.completeLogin]
     Complete --> Save[Invalidate old refresh result and save token]
     Save --> App[Open /app through route guard]

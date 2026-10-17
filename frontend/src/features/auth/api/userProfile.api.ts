@@ -3,7 +3,6 @@ import type { UserProfileDto } from '../types/auth.types'
 
 export type UpdateProfileRequest = {
   name: string
-  email: string
   phoneNumber: string | null
   faculty: string | null
 }

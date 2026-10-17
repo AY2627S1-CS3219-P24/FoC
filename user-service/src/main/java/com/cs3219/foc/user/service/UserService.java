@@ -38,6 +38,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
+    private final EmailVerificationService emailVerification;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -163,14 +164,6 @@ public class UserService {
         // Avoid saving a stale password hash if a password change happens concurrently.
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        if (!NusEmailPolicy.isAllowed(request.email())) {
-            throw new UnsupportedEmailDomainException();
-        }
-
-        if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
-            throw new EntityAlreadyExistsException("Email is already associated with another account");
-        }
-
         userMapper.updateUserProfile(request, user);
         var savedUser = userRepository.saveAndFlush(user);
         return userMapper.toUserProfileDto(savedUser);
@@ -203,6 +196,7 @@ public class UserService {
                 .build();
 
         var savedUser = userRepository.save(user);
+        emailVerification.createRegistrationVerification(savedUser);
         return userMapper.toUserProfileDto(savedUser);
     }
 }

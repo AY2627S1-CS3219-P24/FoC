@@ -7,6 +7,7 @@ import {
 
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { VerifyEmailPage } from '#/features/auth/pages/VerifyEmailPage/VerifyEmailPage'
 import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
@@ -50,17 +51,30 @@ const loginRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   component: LoginPage,
   path: '/login',
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { registered?: boolean } => ({
-    registered: search.registered === true ? true : undefined,
-  }),
 })
 
 const registerRoute = createRoute({
   getParentRoute: () => authLayoutRoute,
   component: RegisterPage,
   path: '/register',
+})
+
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: '/verify-email',
+  component: VerifyEmailPage,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { token?: string; email?: string } => ({
+    token:
+      typeof search.token === 'string' && search.token
+        ? search.token
+        : undefined,
+    email:
+      typeof search.email === 'string' && search.email
+        ? search.email
+        : undefined,
+  }),
 })
 
 const authenticatedRoute = createRoute({
@@ -207,5 +221,5 @@ export const routeTree = rootRoute.addChildren([
       userEditRoute,
     ]),
   ]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute]),
+  authLayoutRoute.addChildren([loginRoute, registerRoute, verifyEmailRoute]),
 ])
