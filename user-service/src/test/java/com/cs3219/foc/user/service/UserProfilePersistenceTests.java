@@ -21,6 +21,7 @@ import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
+import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
@@ -39,12 +40,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -67,6 +70,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.ProviderManager;
@@ -131,6 +136,15 @@ class UserProfilePersistenceTests {
 
     @Autowired
     private JavaMailSender mailSender;
+
+    @Autowired
+    private ThreadPoolTaskExecutor taskExecutor;
+
+    @AfterEach
+    void finishMailTasks() throws Exception {
+        // Drain the single test worker before the next test resets the mail mock.
+        taskExecutor.submit(() -> {}).get(10, TimeUnit.SECONDS);
+    }
 
     @BeforeEach
     void cleanUsers() throws Exception {
@@ -313,10 +327,31 @@ class UserProfilePersistenceTests {
     }
 
     @Test
-    void registrationSendsACommittedSingleUseLinkAndRequiresVerificationBeforeLogin() {
-        service.registerUser(new RegisterUserRequest("jamie@u.nus.edu", "Jamie", "password123"));
+    void registrationSendsACommittedSingleUseLinkAndRequiresVerificationBeforeLogin() throws Exception {
+        var sending = new CountDownLatch(1);
+        var releaseMail = new CountDownLatch(1);
+        doAnswer(invocation -> {
+                    sending.countDown();
+                    assertThat(releaseMail.await(10, TimeUnit.SECONDS)).isTrue();
+                    return null;
+                })
+                .when(mailSender)
+                .send(any(SimpleMailMessage.class));
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var registration = executor.submit(
+                    () -> service.registerUser(new RegisterUserRequest("jamie@u.nus.edu", "Jamie", "password123")));
+            try {
+                assertThat(sending.await(10, TimeUnit.SECONDS)).isTrue();
+                // Registration returns and the account is committed while SMTP is still waiting.
+                var registered = registration.get(5, TimeUnit.SECONDS);
+                assertThat(repository.findById(UUID.fromString(registered.id())))
+                        .isPresent();
+            } finally {
+                releaseMail.countDown();
+            }
+        }
         var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(message.capture());
+        verify(mailSender, timeout(5000)).send(message.capture());
         assertThat(message.getValue().getTo()).containsExactly("jamie@u.nus.edu");
         var link = message.getValue()
                 .getText()
@@ -343,6 +378,32 @@ class UserProfilePersistenceTests {
     }
 
     @Test
+    void registrationLinkCannotVerifyAnAddressChangedByAdmin() {
+        var registered = service.registerUser(new RegisterUserRequest("original@u.nus.edu", "Jamie", "password123"));
+        var message = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, timeout(5000)).send(message.capture());
+        var link = message.getValue()
+                .getText()
+                .lines()
+                .filter(line -> line.startsWith("http://localhost:3000/verify-email?token="))
+                .findFirst()
+                .orElseThrow();
+        var token = URI.create(link).getQuery().substring("token=".length());
+        service.updateUser(
+                UUID.fromString(registered.id()),
+                new UpdateUserRequest("Jamie", "changed@u.nus.edu", List.of(UserRole.USER), null, null));
+
+        assertThatThrownBy(() -> verification.verifyEmail(token))
+                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThat(repository
+                        .findById(UUID.fromString(registered.id()))
+                        .orElseThrow()
+                        .isEmailVerified())
+                .isFalse();
+    }
+
+    @Test
     void registrationRollbackDoesNotSendMail() {
         assertThatThrownBy(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                     service.registerUser(new RegisterUserRequest("rollback@u.nus.edu", "Jamie", "password123"));
@@ -358,6 +419,7 @@ class UserProfilePersistenceTests {
     void deliveryFailureDoesNotRollbackTheRegisteredAccount() {
         doThrow(new MailSendException("SMTP unavailable")).when(mailSender).send(any(SimpleMailMessage.class));
         service.registerUser(new RegisterUserRequest("delivery@u.nus.edu", "Jamie", "password123"));
+        verify(mailSender, timeout(5000)).send(any(SimpleMailMessage.class));
         assertThat(repository.findByEmail("delivery@u.nus.edu")).isPresent();
         assertThat(emailTokens.count()).isEqualTo(1);
     }
@@ -647,9 +709,18 @@ class UserProfilePersistenceTests {
 
     @Configuration
     @EnableTransactionManagement
+    @EnableAsync
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     @Import({EmailVerificationService.class, EmailTokenService.class, AccountMailListener.class})
     static class TestConfig {
+        @Bean
+        ThreadPoolTaskExecutor taskExecutor() {
+            var executor = new ThreadPoolTaskExecutor();
+            executor.setCorePoolSize(1);
+            executor.setMaxPoolSize(1);
+            return executor;
+        }
+
         @Bean
         AccountMailProperties accountMailProperties() {
             return new AccountMailProperties(

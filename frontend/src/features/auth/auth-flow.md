@@ -53,15 +53,18 @@ flowchart TD
     Check --> Mail[Open link in verification email]
     Mail --> Verify[Automatically POST verification token]
     Verify -->|Success| Login[Show verified and link to login]
-    Verify -->|Invalid or expired| Resend[Enter email and request a new link]
+    Verify -->|Invalid or expired| Unavailable[Explain link may have expired or been used]
+    Unavailable --> Return[Return to login]
 ```
 
 The form normalizes names and emails while preserving password characters.
 The API receives only name, email, and password. Registration creates an
 unverified account, not an authenticated frontend session. The database stores
-the token hash. After commit, Spring Mail sends the raw token in a link. Links
-expire after 30 minutes; resending after the 60-second interval replaces the old
-token. Confirmation consumes it and marks the email verified in one transaction.
+the token hash. After commit, Spring Mail asynchronously sends the raw token in
+a link without blocking the registration response. Links expire after 30 minutes;
+resending after the 60-second interval replaces the old
+token. Confirmation checks that the token email matches the current account email,
+then consumes it and marks the email verified in one transaction.
 
 ### Login
 

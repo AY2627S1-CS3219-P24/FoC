@@ -84,28 +84,21 @@ it('automatically confirms a link once in StrictMode and then offers login', asy
   expect(verifyEmail).toHaveBeenCalledTimes(1)
 })
 
-it('lets an unavailable link request a replacement on the same page', async () => {
+it('directs an unavailable link to login without offering resend', async () => {
   vi.mocked(verifyEmail).mockRejectedValue(new AuthRequestError(400))
-  vi.mocked(resendVerification).mockResolvedValue(undefined)
   const router = setup('/verify-email?token=expired-token')
   expect(
     await screen.findByRole('heading', { name: 'Link unavailable' }),
   ).toBeInTheDocument()
-  const user = userEvent.setup()
-  await user.type(screen.getByLabelText('Email'), ' JAMIE@U.NUS.EDU ')
-  await user.click(
-    screen.getByRole('button', { name: 'Resend verification email' }),
-  )
+  expect(screen.getByText(/expired or already been used/)).toBeInTheDocument()
+  expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
   expect(
-    await screen.findByRole('heading', { name: 'Check your email' }),
-  ).toBeInTheDocument()
-  expect(resendVerification).toHaveBeenCalledExactlyOnceWith(
-    'jamie@u.nus.edu',
-    expect.any(Object),
-  )
-  expect(screen.getByText('jamie@u.nus.edu')).toBeInTheDocument()
-  expect(screen.getByRole('status')).toHaveTextContent('inbox and spam')
-  expect(router.state.location.pathname).toBe('/verify-email')
+    screen.queryByRole('button', { name: 'Resend verification email' }),
+  ).not.toBeInTheDocument()
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('link', { name: 'Back to log in' }))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+  expect(resendVerification).not.toHaveBeenCalled()
 })
 
 it('shows the resend interval inline and lets the user retry', async () => {

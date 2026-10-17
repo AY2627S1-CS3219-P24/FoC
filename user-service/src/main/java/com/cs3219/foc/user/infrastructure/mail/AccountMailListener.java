@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -19,6 +20,7 @@ public class AccountMailListener {
     private final AccountMailProperties properties;
 
     @TransactionalEventListener
+    @Async
     public void sendVerification(EmailTokenCreatedEvent event) {
         var link = UriComponentsBuilder.fromUri(properties.frontendUrl())
                 .replacePath("/verify-email")
