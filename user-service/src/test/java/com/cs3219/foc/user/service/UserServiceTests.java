@@ -37,8 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
-    private final UserService service =
-            new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), verification);
+    private final EmailChangeService emailChange = mock(EmailChangeService.class);
+    private final UserService service = new UserService(
+            repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), verification, emailChange);
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -143,7 +144,7 @@ class UserServiceTests {
 
     @Test
     void adminCanSetAListedFaculty() {
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
@@ -159,7 +160,7 @@ class UserServiceTests {
     void adminUpdateNormalizesAndClearsOptionalDetails() {
         user.setPhoneNumber("+6590000000");
         user.setFaculty("Science");
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
@@ -176,7 +177,7 @@ class UserServiceTests {
     void adminUpdateOmittingOptionalDetailsPreservesThem() {
         user.setPhoneNumber("+6591235436");
         user.setFaculty("School of Computing");
-        when(repository.findById(userId)).thenReturn(Optional.of(user));
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
         when(repository.saveAndFlush(user)).thenReturn(user);
 
         var result = service.updateUser(
@@ -184,6 +185,17 @@ class UserServiceTests {
 
         assertThat(result.phoneNumber()).isEqualTo("+6591235436");
         assertThat(result.faculty()).isEqualTo("School of Computing");
+    }
+
+    @Test
+    void adminEmailUpdateRequestsVerificationWithoutChangingTheCurrentAddress() {
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
+        when(repository.saveAndFlush(user)).thenReturn(user);
+        var result = service.updateUser(
+                userId, new UpdateUserRequest("Updated name", "new@nus.edu.sg", List.of(UserRole.USER), null, null));
+        verify(emailChange).requestChange(userId, "new@nus.edu.sg");
+        assertThat(result.email()).isEqualTo("alex@u.nus.edu");
+        assertThat(result.name()).isEqualTo("Updated name");
     }
 
     @ParameterizedTest

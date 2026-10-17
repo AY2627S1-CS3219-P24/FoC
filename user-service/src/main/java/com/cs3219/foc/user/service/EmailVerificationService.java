@@ -17,7 +17,7 @@ public class EmailVerificationService {
     private final EmailTokenService tokens;
 
     public void createRegistrationVerification(User user) {
-        tokens.issue(user, EmailTokenPurpose.REGISTRATION);
+        tokens.issue(user, user.getEmail(), EmailTokenPurpose.REGISTRATION);
     }
 
     public void resendRegistrationVerification(String email) {

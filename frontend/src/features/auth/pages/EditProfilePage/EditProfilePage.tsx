@@ -6,6 +6,7 @@ import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
 import { useProfileActions, useUserProfile } from '../../hooks/useUserProfile'
 import { useAuth } from '../../providers/AuthProvider'
 import { getProfileError } from '../../utils/getProfileError'
+import { UpdateEmailForm } from './components/UpdateEmailForm/UpdateEmailForm'
 import type { UserProfileDto } from '../../types/auth.types'
 import styles from './EditProfilePage.module.scss'
 
@@ -301,6 +302,7 @@ const EditProfileForm = ({
             </Button>
           </div>
         </form>
+        <UpdateEmailForm busy={busy} />
         <form
           className={styles.form}
           noValidate

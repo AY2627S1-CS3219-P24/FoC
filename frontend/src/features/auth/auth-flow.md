@@ -75,7 +75,7 @@ flowchart TD
     Request -->|403 unverified| Verify[Offer email verification and resend]
     Request -->|Success| Complete[Provider.completeLogin]
     Complete --> Save[Invalidate old refresh result and save token]
-    Save --> App[Open /app through route guard]
+    Save --> App[Open /home through route guard]
 ```
 
 The browser processes the refresh cookie from the login response. Provider saves
@@ -89,7 +89,7 @@ which calls `POST /auth/refresh` without reloading the document.
 
 ```mermaid
 flowchart TD
-    Open[Open / or /app] --> Guard[beforeLoad]
+    Open[Open / or /home] --> Guard[beforeLoad]
     Guard --> Check[Provider.ensureAuthenticated]
     Check -->|Token present| App[Render protected page]
     Check -->|Explicitly ended| Login[Redirect to /login]
@@ -197,6 +197,26 @@ logout left a valid Cookie.
 
 The obsolete-result marker belongs only to the pending refresh. It is not a
 global session version propagated through every business request.
+
+## 7. Updating an Email Address
+
+```mermaid
+flowchart TD
+    Form[Edit Profile: Update Email] --> Request[Authenticated request with new email]
+    Request --> Pending[Store target email in EMAIL_CHANGE token]
+    Pending --> Mail[Send verification link after commit]
+    Mail --> Open[Open link and automatically confirm]
+    Open --> Valid{Valid token and available address?}
+    Valid -->|Yes| Update[Update user email and consume token]
+    Update --> Profile[Show success and return to profile]
+    Valid -->|No| Error[Show error and return to Edit Profile]
+```
+
+Sending and resending share `POST /api/users/me/email-change`; confirmation uses
+`POST /api/users/email-change/confirm`. Until confirmation, the old email remains
+the account's login address. Confirmation preserves existing sessions because
+tokens identify the account by user ID. The verification tab invalidates its
+profile cache; other tabs follow normal cache behavior without cross-tab messaging.
 
 ## Acknowledgments
 

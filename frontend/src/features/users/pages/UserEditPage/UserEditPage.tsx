@@ -42,7 +42,14 @@ export const UserEditPage = () => {
     } catch {
       return
     }
-    toast.add({ type: 'success', title: `${updated.name} was updated.` })
+    toast.add({
+      type: 'success',
+      title: `${updated.name} was updated.`,
+      description:
+        values.email !== updated.email
+          ? `A verification email has been requested for ${values.email}. The current email remains unchanged until verification.`
+          : undefined,
+    })
     await navigate({ to: '/admin/users', search: listSearch, replace: true })
   }
 
