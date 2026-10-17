@@ -52,11 +52,13 @@ export const useProfileActions = () => {
       )
     },
   })
-  const emailChange = useMutation({
+  return { update, password, upload, remove }
+}
+
+export const useEmailChange = () =>
+  useMutation({
     mutationFn: requestEmailChange,
     retry: false,
     networkMode: 'always',
     gcTime: 0,
   })
-  return { update, password, upload, remove, emailChange }
-}

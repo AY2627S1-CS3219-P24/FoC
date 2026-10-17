@@ -39,6 +39,7 @@ public class UserService {
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
     private final EmailVerificationService emailVerification;
+    private final EmailChangeService emailChange;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -124,12 +125,12 @@ public class UserService {
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto updateUser(UUID id, UpdateUserRequest request) {
         validateFaculty(request.faculty());
-        var user = getUser(id);
+        var user = userRepository.findForUpdateById(id).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         validateRoleChange(user.getRoles(), request.roles());
 
-        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists with this email.");
+        if (!request.email().equals(user.getEmail())) {
+            emailChange.requestChange(id, request.email());
         }
 
         userMapper.updateUser(request, user);

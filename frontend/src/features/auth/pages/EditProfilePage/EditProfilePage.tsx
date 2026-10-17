@@ -6,7 +6,7 @@ import { useFacultiesQuery } from '#/hooks/useFacultiesQuery'
 import { useProfileActions, useUserProfile } from '../../hooks/useUserProfile'
 import { useAuth } from '../../providers/AuthProvider'
 import { getProfileError } from '../../utils/getProfileError'
-import { nusEmailSchema } from '../../schemas/nusEmail.schema'
+import { UpdateEmailForm } from './components/UpdateEmailForm/UpdateEmailForm'
 import type { UserProfileDto } from '../../types/auth.types'
 import styles from './EditProfilePage.module.scss'
 
@@ -54,9 +54,6 @@ const EditProfileForm = ({
   const [name, setName] = useState(profile.name)
   const [phoneNumber, setPhoneNumber] = useState(profile.phoneNumber ?? '')
   const [faculty, setFaculty] = useState(profile.faculty ?? '')
-  const [email, setEmail] = useState('')
-  const [sentEmail, setSentEmail] = useState('')
-  const [emailFieldError, setEmailFieldError] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -69,16 +66,8 @@ const EditProfileForm = ({
   const [changingPassword, setChangingPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const locked = useRef(false)
-  const sendingEmail = useRef(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const actions = useProfileActions()
-  const { emailChange } = actions
-  const emailRequestError = emailChange.error
-    ? getProfileError(emailChange.error)
-    : null
-  const emailError = emailFieldError || emailRequestError?.fields.email
-  const isResend =
-    sentEmail === email.trim().toLowerCase() && Boolean(sentEmail)
   const auth = useAuth()
   const navigate = useNavigate()
   const initials = profile.name
@@ -118,25 +107,6 @@ const EditProfileForm = ({
     } finally {
       locked.current = false
       setBusy(false)
-    }
-  }
-
-  const sendVerificationEmail = async () => {
-    if (sendingEmail.current) return
-    emailChange.reset()
-    const result = nusEmailSchema.safeParse(email)
-    setEmailFieldError(result.success ? '' : result.error.issues[0].message)
-    if (!result.success) return
-
-    sendingEmail.current = true
-    try {
-      await emailChange.mutateAsync(result.data)
-      setEmail(result.data)
-      setSentEmail(result.data)
-    } catch {
-      // The mutation error is displayed below the email form.
-    } finally {
-      sendingEmail.current = false
     }
   }
 
@@ -332,76 +302,7 @@ const EditProfileForm = ({
             </Button>
           </div>
         </form>
-        <form
-          className={styles.form}
-          noValidate
-          aria-label="Update email"
-          aria-busy={emailChange.isPending}
-          onSubmit={(event) => {
-            event.preventDefault()
-            void sendVerificationEmail()
-          }}
-        >
-          <fieldset
-            className={styles.card}
-            disabled={busy || emailChange.isPending}
-          >
-            <legend className={styles.srOnly}>Update your email</legend>
-            <h2>Update Email</h2>
-            <p className={styles.hint}>
-              Your email will change after you verify the new address.
-            </p>
-            <div className={styles.field}>
-              <label htmlFor="new-email">New email address</label>
-              <Input
-                id="new-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onValueChange={(value) => {
-                  setEmail(value)
-                  setEmailFieldError('')
-                  emailChange.reset()
-                }}
-                aria-invalid={Boolean(emailError)}
-                aria-describedby={emailError ? 'new-email-error' : undefined}
-              />
-              {emailError && (
-                <p className={styles.fieldError} id="new-email-error">
-                  {emailError}
-                </p>
-              )}
-            </div>
-          </fieldset>
-          {emailRequestError && (
-            <p className={styles.error} role="alert">
-              {emailRequestError.message}
-            </p>
-          )}
-          {isResend && (
-            <div className={styles.success} role="status">
-              <p>Check {sentEmail} for a verification email.</p>
-              <p>Please check your inbox and spam folder.</p>
-              <p>
-                Your current email will remain unchanged until verification is
-                complete.
-              </p>
-            </div>
-          )}
-          <div className={styles.footer}>
-            <Button
-              className={styles.save}
-              type="submit"
-              disabled={busy || emailChange.isPending}
-            >
-              {emailChange.isPending
-                ? 'Requesting email…'
-                : isResend
-                  ? 'Resend verification email'
-                  : 'Send verification email'}
-            </Button>
-          </div>
-        </form>
+        <UpdateEmailForm busy={busy} />
         <form
           className={styles.form}
           noValidate

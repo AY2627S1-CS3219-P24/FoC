@@ -1,6 +1,7 @@
 package com.cs3219.foc.user.infrastructure.mail;
 
 import com.cs3219.foc.user.config.AccountMailProperties;
+import com.cs3219.foc.user.model.dto.event.EmailChangedEvent;
 import com.cs3219.foc.user.model.dto.event.EmailTokenCreatedEvent;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -20,6 +22,25 @@ public class AccountMailListener {
     private final AccountMailProperties properties;
 
     @TransactionalEventListener
+    @Async
+    public void notifyEmailChanged(EmailChangedEvent event) {
+        var message = new SimpleMailMessage();
+        message.setFrom(properties.from());
+        message.setTo(event.oldEmail());
+        message.setSubject("Your FoC email address has changed");
+        message.setText("Your FoC email address has been changed to %s.".formatted(event.newEmail()));
+        try {
+            sender.send(message);
+        } catch (MailException exception) {
+            log.warn(
+                    "Email change notification failed for user {} ({})",
+                    event.userId(),
+                    exception.getClass().getSimpleName());
+        }
+    }
+
+    @TransactionalEventListener
+    @Async
     public void sendVerification(EmailTokenCreatedEvent event) {
         var changingEmail = event.purpose() == EmailTokenPurpose.EMAIL_CHANGE;
         var linkBuilder = UriComponentsBuilder.fromUri(properties.frontendUrl())

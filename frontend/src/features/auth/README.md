@@ -83,10 +83,15 @@ Names and emails are trimmed, emails are lowercased, and passwords remain
 unchanged. Registration excludes `confirmPassword` from its request.
 Existing pending states and submission locks prevent duplicate form submissions.
 
+Verification emails are sent asynchronously after the registration transaction
+commits; the response does not wait for SMTP delivery. A link only verifies the
+email address it was issued for.
+
 `VerifyEmailPage` uses the existing `AuthLayout` for check-email, verified, and
 unavailable-link feedback. `useEmailVerification` submits a link token once on
 arrival, including during React StrictMode effect replay. An unavailable link
-lets the user enter their email and resend on the same page. A temporary request
+explains that it may have expired or already been used and directs the user to
+login. Unverified users can access resending from login. A temporary request
 failure offers a retry in that card.
 
 Correct credentials for an unverified account return **403** without either
@@ -222,7 +227,8 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
      `Email verified`. Follow **Log in** and confirm normal login succeeds.
    - With another unverified account, wait one minute and resend. The newest link
      should work; the replaced or already-used link should show `Link unavailable`.
-     That card should accept an email and request a new link without leaving the page.
+     That card should offer a login link without a resend form. Login offers
+     resending if the account still needs verification.
    - A resend within one minute should show the inline wait message.
    - Try registering the same email again. Expect duplicate-email feedback and
      no navigation away from registration.

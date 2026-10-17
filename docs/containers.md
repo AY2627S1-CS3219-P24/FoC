@@ -2,6 +2,8 @@
 
 Run these commands from the repository root with Docker Compose and OpenSSL installed.
 
+## Setup
+
 Create `.env.prod` from [`.env.prod.example`](../.env.prod.example) and set the
 required values. The commands below select it explicitly, leaving the local
 development `.env` separate.
@@ -21,11 +23,26 @@ openssl pkey -in secrets/jwt-private.pem -pubout -out secrets/jwt-public.pem
 chmod 444 secrets/jwt-private.pem secrets/jwt-public.pem
 ```
 
-Build and start the stack:
+Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
+`INITIAL_ADMIN_PASSWORD` in `.env.prod`.
+
+## First deployment
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml build
+docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --rm admin-init
+docker compose --env-file .env.prod -f compose.prod.yaml up -d
+```
+
+## Later deployments
 
 ```bash
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 ```
+
+`admin-init` runs only on first deployment.
+
+## Operate
 
 Open [https://localhost](https://localhost). The `api-gateway` serves the
 frontend and routes `/api` requests to the backend services. Its default

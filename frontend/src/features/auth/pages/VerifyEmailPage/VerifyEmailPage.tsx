@@ -33,7 +33,7 @@ export const VerifyEmailPage = () => {
     verification.error.status === 400
   const checking =
     Boolean(token) && (verification.isIdle || verification.isPending)
-  const needsAddress = !requestedEmail && (linkUnavailable || !initialEmail)
+  const needsAddress = !requestedEmail && !initialEmail
   const title = checking
     ? 'Verifying your email…'
     : verification.isSuccess
@@ -85,7 +85,12 @@ export const VerifyEmailPage = () => {
             Log in
           </Link>
         </>
-      ) : verification.isError && !linkUnavailable ? (
+      ) : linkUnavailable ? (
+        <p>
+          This link may have expired or already been used. Please return to log
+          in.
+        </p>
+      ) : verification.isError ? (
         <>
           <p role="alert">Unable to verify your email. Please try again.</p>
           <Button
@@ -97,22 +102,11 @@ export const VerifyEmailPage = () => {
         </>
       ) : (
         <>
-          {linkUnavailable && !requestedEmail ? (
-            <p>
-              This link is no longer valid. Enter your email to request a new
-              one.
-            </p>
-          ) : (
-            <>
-              <p>Verify your email to finish creating your account.</p>
-              {(requestedEmail || initialEmail) && (
-                <p className={styles.email}>{requestedEmail || initialEmail}</p>
-              )}
-              <p>
-                Check your inbox and spam folder for the verification email.
-              </p>
-            </>
+          <p>Verify your email to finish creating your account.</p>
+          {(requestedEmail || initialEmail) && (
+            <p className={styles.email}>{requestedEmail || initialEmail}</p>
           )}
+          <p>Check your inbox and spam folder for the verification email.</p>
           <form
             className={styles.resend}
             onSubmit={(event) => void resendEmail(event)}

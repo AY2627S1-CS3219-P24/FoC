@@ -23,7 +23,6 @@ public interface UserMapper {
 
     @BeanMapping(ignoreByDefault = true)
     @Mapping(target = "name", source = "name")
-    @Mapping(target = "email", source = "email")
     @Mapping(target = "roles", source = "roles")
     @Mapping(
             target = "phoneNumber",
