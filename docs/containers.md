@@ -31,6 +31,7 @@ Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
 ```bash
 docker compose --env-file .env.prod -f compose.prod.yaml build
 docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --rm admin-init
+docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --rm supplier-seed
 docker compose --env-file .env.prod -f compose.prod.yaml up -d
 ```
 
@@ -40,7 +41,7 @@ docker compose --env-file .env.prod -f compose.prod.yaml up -d
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 ```
 
-`admin-init` runs only on first deployment.
+`admin-init` runs only on first deployment. Rerun `supplier-seed` to add new suppliers from the CSV files.
 
 ## Operate
 
