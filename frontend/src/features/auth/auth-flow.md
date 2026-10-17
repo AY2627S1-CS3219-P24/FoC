@@ -53,15 +53,18 @@ flowchart TD
     Check --> Mail[Open link in verification email]
     Mail --> Verify[Automatically POST verification token]
     Verify -->|Success| Login[Show verified and link to login]
-    Verify -->|Invalid or expired| Resend[Enter email and request a new link]
+    Verify -->|Invalid or expired| Unavailable[Explain link may have expired or been used]
+    Unavailable --> Return[Return to login]
 ```
 
 The form normalizes names and emails while preserving password characters.
 The API receives only name, email, and password. Registration creates an
 unverified account, not an authenticated frontend session. The database stores
-the token hash. After commit, Spring Mail sends the raw token in a link. Links
-expire after 30 minutes; resending after the 60-second interval replaces the old
-token. Confirmation consumes it and marks the email verified in one transaction.
+the token hash. After commit, Spring Mail asynchronously sends the raw token in
+a link without blocking the registration response. Links expire after 30 minutes;
+resending after the 60-second interval replaces the old
+token. Confirmation checks that the token email matches the current account email,
+then consumes it and marks the email verified in one transaction.
 
 ### Login
 
@@ -72,7 +75,7 @@ flowchart TD
     Request -->|403 unverified| Verify[Offer email verification and resend]
     Request -->|Success| Complete[Provider.completeLogin]
     Complete --> Save[Invalidate old refresh result and save token]
-    Save --> App[Open /app through route guard]
+    Save --> App[Open /home through route guard]
 ```
 
 The browser processes the refresh cookie from the login response. Provider saves
@@ -86,7 +89,7 @@ which calls `POST /auth/refresh` without reloading the document.
 
 ```mermaid
 flowchart TD
-    Open[Open / or /app] --> Guard[beforeLoad]
+    Open[Open / or /home] --> Guard[beforeLoad]
     Guard --> Check[Provider.ensureAuthenticated]
     Check -->|Token present| App[Render protected page]
     Check -->|Explicitly ended| Login[Redirect to /login]
@@ -210,7 +213,7 @@ flowchart TD
 ```
 
 Sending and resending share `POST /api/users/me/email-change`; confirmation uses
-`POST /api/auth/email-change/confirm`. Until confirmation, the old email remains
+`POST /api/users/email-change/confirm`. Until confirmation, the old email remains
 the account's login address. Confirmation preserves existing sessions because
 tokens identify the account by user ID. The verification tab invalidates its
 profile cache; other tabs follow normal cache behavior without cross-tab messaging.
@@ -221,24 +224,26 @@ profile cache; other tabs follow normal cache behavior without cross-tab messagi
 flowchart TD
     Login[Login: Forgot password?] --> Request[Enter account email and send link]
     Request --> Feedback[Stay on page: check inbox and spam or resend]
-    Request --> Mail[Verified account: send reset link after commit]
+    Request --> Mail[Existing account: send reset link after commit]
     Mail --> Form[Open link and enter a new password twice]
     Form --> Submit[Submit token and new password]
     Submit --> Check{Valid token and same account email?}
-    Check -->|Yes| Save[Consume token, save password, delete refresh tokens]
+    Check -->|Yes| Save[Consume token, verify email, save password, delete refresh tokens]
     Save --> Done[Show success and link to login]
+    Save --> Notice[After commit: email reset completion notification]
     Check -->|No| Invalid[Show unavailable link and offer a new request]
 ```
 
 Request and resend share `POST /api/auth/password-reset/request`. The response
 does not disclose whether an account exists or is verified. Links use the existing
 token lifetime and resend interval, with `PASSWORD_RESET` distinguishing their
-purpose from registration and email changes.
+purpose from registration and email changes. Unverified accounts can also request
+a link; a successful reset verifies their current email.
 Within the resend interval, reset requests return the same success response
 without replacing the token or sending another email.
 
 `POST /api/auth/password-reset/confirm` consumes the token only on form submission.
-Password and token changes commit together. The saved email must still match the
+Password, email verification, and token changes commit together. The saved email must still match the
 user's email. Password saving and refresh-token revocation reuse the Profile
 password-change implementation. Access tokens expire normally; success offers
 login with the new password without automatically creating a session.

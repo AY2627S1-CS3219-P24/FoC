@@ -4,6 +4,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { TanStackDevtools } from '@tanstack/react-devtools'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
 
 import { queryClient } from '#/lib/queryClient'
@@ -39,12 +41,24 @@ declare module '@tanstack/react-router' {
   }
 }
 
+const isDevMode = import.meta.env.DEV
+
 export const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
           <AuthRouterProvider router={router} />
+          {isDevMode && (
+            <TanStackDevtools
+              plugins={[
+                {
+                  name: 'TanStack Router',
+                  render: <TanStackRouterDevtoolsPanel router={router} />,
+                },
+              ]}
+            />
+          )}
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

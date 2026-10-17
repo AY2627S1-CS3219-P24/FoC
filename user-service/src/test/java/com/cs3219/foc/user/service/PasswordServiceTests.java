@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
-import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
@@ -21,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class PasswordServiceTests {
@@ -30,8 +32,8 @@ class PasswordServiceTests {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final EmailTokenService emailTokens = mock(EmailTokenService.class);
     private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
-    private final PasswordService service =
-            new PasswordService(users, tokens, encoder, emailTokens, emailTokenRepository);
+    private final PasswordService service = new PasswordService(
+            users, tokens, encoder, emailTokens, emailTokenRepository, mock(ApplicationEventPublisher.class));
     private final UUID userId = UUID.randomUUID();
     private User user;
     private String previousHash;
@@ -72,21 +74,32 @@ class PasswordServiceTests {
     }
 
     @Test
-    void resetRequestsForUnknownOrUnverifiedAccountsDoNotIssueLinks() {
+    void resetRequestsAllowUnverifiedAccountsButIgnoreUnknownAccounts() {
         when(users.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
         service.requestPasswordReset("missing@u.nus.edu");
         service.requestPasswordReset(user.getEmail());
-        verifyNoInteractions(emailTokens, tokens);
+        verify(emailTokens).issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        verifyNoMoreInteractions(emailTokens);
+        verifyNoInteractions(tokens);
         verify(users, never()).saveAndFlush(any());
     }
 
     @Test
-    void unavailableResetLinkReturnsGoneWithoutChangingCredentials() {
+    void unavailableResetLinkThrowsExplicitExceptionWithoutChangingCredentials() {
         when(emailTokens.consume("invalid-token", EmailTokenPurpose.PASSWORD_RESET))
-                .thenThrow(new EmailVerificationException(HttpStatus.BAD_REQUEST, "Any token error message"));
+                .thenThrow(new InvalidEmailTokenException());
         assertThatThrownBy(() -> service.resetPassword("invalid-token", "NewPassword2"))
-                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
-                        .isEqualTo(HttpStatus.GONE));
+                .isInstanceOf(InvalidPasswordResetTokenException.class);
+        assertUnchanged();
+    }
+
+    @Test
+    void resetRequestKeepsGenericResponseDuringCooldown() {
+        when(users.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        doThrow(new EmailRateLimitException())
+                .when(emailTokens)
+                .issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        service.requestPasswordReset(user.getEmail());
         assertUnchanged();
     }
 

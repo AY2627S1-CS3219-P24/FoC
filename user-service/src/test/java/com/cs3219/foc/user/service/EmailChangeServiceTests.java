@@ -14,6 +14,7 @@ import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
@@ -35,7 +36,8 @@ class EmailChangeServiceTests {
                         "Constraint violation", new SQLException("Constraint violation", "23505"), constraint));
         when(users.saveAndFlush(user)).thenThrow(failure);
 
-        var thrown = catchThrowable(() -> new EmailChangeService(users, tokens).confirmChange("token"));
+        var thrown = catchThrowable(() ->
+                new EmailChangeService(users, tokens, mock(ApplicationEventPublisher.class)).confirmChange("token"));
 
         if (constraint.equals("users_email_key")) {
             assertThat(thrown)

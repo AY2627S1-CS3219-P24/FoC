@@ -7,4 +7,4 @@ export const resendVerification = (email: string) =>
   authRequest('/auth/email-verification/resend', { email })
 
 export const confirmEmailChange = (token: string) =>
-  authRequest('/auth/email-change/confirm', { token })
+  authRequest('/users/email-change/confirm', { token })

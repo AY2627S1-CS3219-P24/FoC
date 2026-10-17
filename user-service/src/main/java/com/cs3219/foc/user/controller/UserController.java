@@ -7,6 +7,7 @@ import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
+import com.cs3219.foc.user.model.dto.VerifyEmailRequest;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.service.EmailChangeService;
 import com.cs3219.foc.user.service.UserService;
@@ -37,6 +38,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
     private final UserService userService;
     private final EmailChangeService emailChange;
+
+    @PostMapping("/email-change/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmEmailChange(@Valid @RequestBody VerifyEmailRequest request) {
+        emailChange.confirmChange(request.token());
+    }
 
     @PostMapping("/me/email-change")
     @ResponseStatus(HttpStatus.NO_CONTENT)

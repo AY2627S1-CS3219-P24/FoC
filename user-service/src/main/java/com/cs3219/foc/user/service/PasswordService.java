@@ -1,9 +1,12 @@
 package com.cs3219.foc.user.service;
 
-import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
+import com.cs3219.foc.user.model.dto.event.PasswordResetCompletedEvent;
 import com.cs3219.foc.user.model.entity.EmailToken;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.model.entity.User;
@@ -13,7 +16,7 @@ import com.cs3219.foc.user.repository.UserRepository;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,13 +29,17 @@ public class PasswordService {
     private final PasswordEncoder passwordEncoder;
     private final EmailTokenService emailTokens;
     private final EmailTokenRepository emailTokenRepository;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public void requestPasswordReset(String email) {
-        userRepository
-                .findForUpdateByEmail(email)
-                .filter(User::isEmailVerified)
-                .ifPresent(user -> emailTokens.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET));
+        userRepository.findForUpdateByEmail(email).ifPresent(user -> {
+            try {
+                emailTokens.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+            } catch (EmailRateLimitException exception) {
+                // Keep the public response generic without issuing or sending another link.
+            }
+        });
     }
 
     @Transactional
@@ -41,17 +48,16 @@ public class PasswordService {
         EmailToken stored;
         try {
             stored = emailTokens.consume(token, EmailTokenPurpose.PASSWORD_RESET);
-        } catch (EmailVerificationException exception) {
-            if (exception.getStatus() != HttpStatus.BAD_REQUEST) {
-                throw exception;
-            }
-            throw new EmailVerificationException(HttpStatus.GONE, "This password reset link is no longer valid.");
+        } catch (InvalidEmailTokenException exception) {
+            throw new InvalidPasswordResetTokenException();
         }
         var user = userRepository.findById(stored.getUserId()).orElseThrow();
         if (!stored.getEmail().equals(user.getEmail())) {
-            throw new EmailVerificationException(HttpStatus.GONE, "This password reset link is no longer valid.");
+            throw new InvalidPasswordResetTokenException();
         }
+        user.setEmailVerified(true);
         savePassword(user, newPassword);
+        events.publishEvent(new PasswordResetCompletedEvent(user.getId(), user.getEmail()));
     }
 
     @Transactional
