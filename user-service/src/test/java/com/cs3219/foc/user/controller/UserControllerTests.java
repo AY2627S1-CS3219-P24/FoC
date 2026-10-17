@@ -325,7 +325,7 @@ class UserControllerTests {
                         .content(body))
                 .andExpect(status().isNoContent());
         verify(emailChange).requestChange(userId, "new@nus.edu.sg");
-        mvc.perform(post("/auth/email-change/confirm")
+        mvc.perform(post("/users/email-change/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"change-token\"}"))
                 .andExpect(status().isNoContent());

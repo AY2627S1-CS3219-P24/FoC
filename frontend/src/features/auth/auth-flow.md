@@ -75,7 +75,7 @@ flowchart TD
     Request -->|403 unverified| Verify[Offer email verification and resend]
     Request -->|Success| Complete[Provider.completeLogin]
     Complete --> Save[Invalidate old refresh result and save token]
-    Save --> App[Open /app through route guard]
+    Save --> App[Open /home through route guard]
 ```
 
 The browser processes the refresh cookie from the login response. Provider saves
@@ -89,7 +89,7 @@ which calls `POST /auth/refresh` without reloading the document.
 
 ```mermaid
 flowchart TD
-    Open[Open / or /app] --> Guard[beforeLoad]
+    Open[Open / or /home] --> Guard[beforeLoad]
     Guard --> Check[Provider.ensureAuthenticated]
     Check -->|Token present| App[Render protected page]
     Check -->|Explicitly ended| Login[Redirect to /login]
@@ -213,7 +213,7 @@ flowchart TD
 ```
 
 Sending and resending share `POST /api/users/me/email-change`; confirmation uses
-`POST /api/auth/email-change/confirm`. Until confirmation, the old email remains
+`POST /api/users/email-change/confirm`. Until confirmation, the old email remains
 the account's login address. Confirmation preserves existing sessions because
 tokens identify the account by user ID. The verification tab invalidates its
 profile cache; other tabs follow normal cache behavior without cross-tab messaging.

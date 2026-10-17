@@ -3,7 +3,7 @@
 This feature connects registration and login to User Service, restores login
 after a page reload, guards application routes, and handles authenticated
 business requests and logout. Registration opens the email verification page;
-verified users can log in to `/app`.
+verified users can log in to `/home`.
 
 Signed-in users can request a new NUS email address from **Edit Profile → Update
 Email**. The current address remains unchanged until the new one is verified;
@@ -56,8 +56,8 @@ a second `isLoggedIn` or token copy, and it does not start recovery on mount.
 | [verifyEmail](api/emailVerification.api.ts)        | `POST /auth/email-verification/confirm` with token | Show confirmation and a login link.                                     |
 | [resendVerification](api/emailVerification.api.ts) | `POST /auth/email-verification/resend` with email  | Ask the user to check their inbox and spam folder.                      |
 | [requestEmailChange](api/userProfile.api.ts)       | `POST /users/me/email-change` with email           | Show sending feedback and allow resending in Edit Profile.              |
-| [confirmEmailChange](api/emailVerification.api.ts) | `POST /auth/email-change/confirm` with token       | Show Email updated and return to the profile.                           |
-| [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/app`.    |
+| [confirmEmailChange](api/emailVerification.api.ts) | `POST /users/email-change/confirm` with token      | Show Email updated and return to the profile.                           |
+| [loginUser](api/loginUser.api.ts)                  | `POST /auth/login` with email, password            | Pass the access token to Provider's `completeLogin` and open `/home`.   |
 | [refreshSession](api/refreshSession.api.ts)        | `POST /auth/refresh`; browser supplies the cookie  | Obtain a replacement access token through the shared refresh operation. |
 | [logoutUser](api/logoutUser.api.ts)                | `POST /auth/logout`; browser supplies the cookie   | Finish the logout attempt and return to login.                          |
 
@@ -76,7 +76,7 @@ not read or delete its value.
 Form → Page → useLogin/useRegister → fetch API → User Service
                          ↓ success
 Register: open /verify-email → open emailed link → automatic verification → log in
-Login: completeLogin(accessToken) → open /app
+Login: completeLogin(accessToken) → open /home
 ```
 
 Names and emails are trimmed, emails are lowercased, and passwords remain
@@ -121,7 +121,7 @@ next login, use the new address. Also check resending and an occupied address.
 ### Session recovery
 
 ```text
-/ → /app → beforeLoad → auth.ensureAuthenticated()
+/ → /home → beforeLoad → auth.ensureAuthenticated()
                          ├── token present → allow access
                          ├── authentication explicitly ended → login
                          └── shared refresh → allow access, login, or error
@@ -239,26 +239,26 @@ requests and **Application → Cookies** to inspect the refresh cookie. Enable
    - Submit an incorrect password for an existing account. Expect **401** and
      `Incorrect email or password.` on the page.
    - Correct the password and submit again. Expect **200** and navigation to
-     `/app`. Check that the backend has set an HttpOnly refresh cookie.
+     `/home`. Check that the backend has set an HttpOnly refresh cookie.
    - While a submission is pending, verify that inputs and the submit button
      are disabled and repeated clicks do not create additional requests.
 4. **Session recovery and access control**
-   - While signed in, reload `/app`. Expect a successful `/auth/refresh` request
+   - While signed in, reload `/home`. Expect a successful `/auth/refresh` request
      and the signed-in page to reappear. Check that the refresh cookie is updated.
-   - Open `/`; it should lead to `/app` and run the session check.
+   - Open `/`; it should lead to `/home` and run the session check.
    - Fast recovery should not flash a loading message. With Network throttling,
      a check taking longer than 500ms should show `Loading…`; protected content
      should appear only after recovery succeeds.
-   - Stop User Service and reload `/app`. Protected content should stay hidden
+   - Stop User Service and reload `/home`. Protected content should stay hidden
      while recovery fails. Restart the service and click **Try again**; the
      session check should run again and the page should recover.
-   - In a private browser window without a refresh cookie, open `/app`. Expect
+   - In a private browser window without a refresh cookie, open `/home`. Expect
      navigation to `/login` rather than access to the signed-in page.
 5. **Logout**
    - Click **Log out**. The page and button should remain unchanged while the
      request runs. Repeated clicks must not produce duplicate logout requests.
    - After a successful `/auth/logout` response, expect `/login` and removal of
-     the refresh cookie. Opening `/app` again should return to login.
+     the refresh cookie. Opening `/home` again should return to login.
    - Log in again, stop User Service or switch offline, and attempt logout.
      After failure or timeout, expect `/login` without a logout error or retry UI.
    - Restore the connection and verify that logging in again works. If failed
