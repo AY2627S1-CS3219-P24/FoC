@@ -11,6 +11,7 @@ import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
+import com.cs3219.foc.user.model.dto.event.AvatarDeletionRequestedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -39,6 +41,8 @@ public class UserService {
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
     private final EmailVerificationService emailVerification;
+    private final AvatarStorageService avatarStorageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -70,7 +74,7 @@ public class UserService {
         }
 
         var matches = userRepository.findAll(Specification.allOf(filters), pageRequest);
-        var items = matches.map(userMapper::toUserDto).getContent();
+        var items = matches.map(this::buildUserDto).getContent();
 
         return new PageDto<>(items, matches.getTotalElements(), pageable.getPageNumber(), pageable.getPageSize());
     }
@@ -124,7 +128,7 @@ public class UserService {
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto updateUser(UUID id, UpdateUserRequest request) {
         validateFaculty(request.faculty());
-        var user = getUser(id);
+        var user = userRepository.findForUpdateById(id).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         validateRoleChange(user.getRoles(), request.roles());
 
@@ -133,7 +137,7 @@ public class UserService {
         }
 
         userMapper.updateUser(request, user);
-        return userMapper.toUserDto(userRepository.saveAndFlush(user));
+        return buildUserDto(userRepository.saveAndFlush(user));
     }
 
     private void validateRoleChange(Collection<UserRole> currentRoles, Collection<UserRole> requestedRoles) {
@@ -148,14 +152,13 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserProfileDto getUserProfile(UUID userId) {
-        var user = getUser(userId);
-        return userMapper.toUserProfileDto(user);
+        return buildUserProfileDto(getUser(userId));
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto getUserDto(UUID userId) {
-        return userMapper.toUserDto(getUser(userId));
+        return buildUserDto(getUser(userId));
     }
 
     @Transactional
@@ -165,8 +168,29 @@ public class UserService {
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
         userMapper.updateUserProfile(request, user);
-        var savedUser = userRepository.saveAndFlush(user);
-        return userMapper.toUserProfileDto(savedUser);
+        return buildUserProfileDto(userRepository.saveAndFlush(user));
+    }
+
+    @Transactional
+    public UserProfileDto updateAvatarKey(UUID userId, String avatarKey) {
+        var user =
+                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        var previousKey = user.getAvatarKey();
+        user.setAvatarKey(avatarKey);
+        userRepository.flush();
+        if (previousKey != null && !previousKey.equals(avatarKey))
+            eventPublisher.publishEvent(new AvatarDeletionRequestedEvent(previousKey));
+        return buildUserProfileDto(user);
+    }
+
+    @Transactional
+    public void clearAvatarKey(UUID userId) {
+        var user =
+                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        var previousKey = user.getAvatarKey();
+        user.setAvatarKey(null);
+        userRepository.flush();
+        if (previousKey != null) eventPublisher.publishEvent(new AvatarDeletionRequestedEvent(previousKey));
     }
 
     @Transactional(readOnly = true)
@@ -197,6 +221,16 @@ public class UserService {
 
         var savedUser = userRepository.save(user);
         emailVerification.createRegistrationVerification(savedUser);
-        return userMapper.toUserProfileDto(savedUser);
+        return buildUserProfileDto(savedUser);
+    }
+
+    private UserProfileDto buildUserProfileDto(User user) {
+        var avatarUrl = avatarStorageService.createPresignedUrl(user.getAvatarKey());
+        return userMapper.toUserProfileDto(user, avatarUrl);
+    }
+
+    private UserDto buildUserDto(User user) {
+        var avatarUrl = avatarStorageService.createPresignedUrl(user.getAvatarKey());
+        return userMapper.toUserDto(user, avatarUrl);
     }
 }

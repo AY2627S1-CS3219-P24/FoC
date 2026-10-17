@@ -3,6 +3,7 @@ package com.cs3219.foc.supplier.exception;
 import com.cs3219.foc.supplier.model.dto.ErrorResponse;
 import java.util.Arrays;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ResolvableType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +14,15 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(StorageException.class)
+    ResponseEntity<ErrorResponse> handleStorage(StorageException exception) {
+        log.error("Object storage operation failed", exception);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("Object storage operation failed"));
+    }
 
     @ExceptionHandler(SupplierImageException.class)
     ResponseEntity<ErrorResponse> handleSupplierImage(SupplierImageException ex) {
@@ -22,7 +31,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(new ErrorResponse("Image must not exceed 5 MB"));
     }
 

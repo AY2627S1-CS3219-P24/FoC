@@ -26,6 +26,9 @@ chmod 444 secrets/jwt-private.pem secrets/jwt-public.pem
 Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
 `INITIAL_ADMIN_PASSWORD` in `.env.prod`.
 
+Before starting the services, [provision S3 storage](../infra/terraform/README.md)
+and set `AWS_REGION`, `FOC_USER_BUCKET`, and `FOC_SUPPLIER_BUCKET` in `.env.prod`.
+
 ## First deployment
 
 ```bash

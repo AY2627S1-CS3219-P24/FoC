@@ -15,11 +15,11 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 
 @Mapper(collectionMappingStrategy = CollectionMappingStrategy.TARGET_IMMUTABLE)
 public interface UserMapper {
-    @Mapping(target = "avatarUrl", source = ".", qualifiedByName = "avatarUrl")
-    UserProfileDto toUserProfileDto(User user);
+    @Mapping(target = "avatarUrl", source = "avatarUrl")
+    UserProfileDto toUserProfileDto(User user, String avatarUrl);
 
-    @Mapping(target = "avatarUrl", source = ".", qualifiedByName = "avatarUrl")
-    UserDto toUserDto(User user);
+    @Mapping(target = "avatarUrl", source = "avatarUrl")
+    UserDto toUserDto(User user, String avatarUrl);
 
     @BeanMapping(ignoreByDefault = true)
     @Mapping(target = "name", source = "name")
@@ -42,14 +42,6 @@ public interface UserMapper {
     @Mapping(target = "phoneNumber", source = "phoneNumber")
     @Mapping(target = "faculty", source = "faculty")
     void updateUserProfile(UpdateUserProfileRequest request, @MappingTarget User user);
-
-    @Named("avatarUrl")
-    default String avatarUrl(User user) {
-        if (user == null || user.getAvatarKey() == null) {
-            return null;
-        }
-        return "/api/users/" + user.getId() + "/avatar?v=" + user.getAvatarKey();
-    }
 
     @Named("emptyToNull")
     default String emptyToNull(String value) {
