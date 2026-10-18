@@ -45,7 +45,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -647,19 +646,13 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        UserService userService(
-                UserRepository repository, EmailVerificationService verification, ApplicationEventPublisher events) {
+        UserService userService(UserRepository repository, EmailVerificationService verification) {
             var avatarStorageService = mock(AvatarStorageService.class);
             when(avatarStorageService.createPresignedUrl(any()))
                     .thenAnswer(call ->
                             call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
             return new UserService(
-                    repository,
-                    new BCryptPasswordEncoder(),
-                    TestMappers.mapper(),
-                    verification,
-                    avatarStorageService,
-                    events);
+                    repository, new BCryptPasswordEncoder(), TestMappers.mapper(), verification, avatarStorageService);
         }
     }
 }

@@ -17,9 +17,11 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.*;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import javax.imageio.ImageIO;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
@@ -39,7 +41,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.*;
@@ -61,12 +65,12 @@ class ImageStorageIntegrationTests {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
+    static final String BUCKET = "foc-supplier-integration";
+
     @Container
-    static final GenericContainer<?> FLOCI = new GenericContainer<>(DockerImageName.parse("floci/floci:2.3.0"))
+    static final GenericContainer<?> FLOCI = new GenericContainer<>(DockerImageName.parse("floci/floci:2.3.0-compat"))
             .withExposedPorts(4566)
             .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true");
-
-    static final String BUCKET = "foc-supplier-integration";
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -114,7 +118,6 @@ class ImageStorageIntegrationTests {
         SupplierImageStorageService.class,
         SupplierMapperImpl.class,
         TimeConfig.class,
-        SupplierService.class,
         SupplierImageService.class,
         SupplierImageProcessor.class
     })
@@ -136,13 +139,13 @@ class ImageStorageIntegrationTests {
     JdbcTemplate jdbc;
 
     @Autowired
-    SupplierService supplierService;
-
-    @Autowired
     PlatformTransactionManager transactionManager;
 
     @MockitoSpyBean
     ObjectStorage objectStorage;
+
+    @MockitoSpyBean
+    DataSource dataSource;
 
     @Autowired
     IncompleteEventPublications publications;
@@ -215,6 +218,81 @@ class ImageStorageIntegrationTests {
     }
 
     @Test
+    void lostPutResponseDeletesUploadedObjectOutsideTransaction() throws Exception {
+        var owner = owner();
+        var failure = new StorageException(new RuntimeException("PUT response lost"));
+        doAnswer(invocation -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    invocation.callRealMethod();
+                    throw failure;
+                })
+                .when(objectStorage)
+                .putObject(startsWith("supplier-images/" + owner.getId()), any(), anyString());
+        doAnswer(invocation -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    return invocation.callRealMethod();
+                })
+                .when(objectStorage)
+                .deleteObject(startsWith("supplier-images/" + owner.getId()));
+        try {
+            assertThatThrownBy(() -> supplierImageService.uploadSupplierImage(owner.getId(), photo()))
+                    .isSameAs(failure);
+            assertThat(storedKeys(owner.getId())).isEmpty();
+            assertThat(key(owner.getId())).isNull();
+        } finally {
+            reset(objectStorage);
+        }
+    }
+
+    @Test
+    void connectionFailureAfterPutDeletesObjectWithoutDatabaseAccess() throws Exception {
+        var owner = owner();
+        var connectionFailure = new SQLException("PostgreSQL unavailable");
+        doAnswer(invocation -> {
+                    invocation.callRealMethod();
+                    doThrow(connectionFailure).when(dataSource).getConnection();
+                    return null;
+                })
+                .when(objectStorage)
+                .putObject(startsWith("supplier-images/" + owner.getId()), any(), anyString());
+        doAnswer(invocation -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    return invocation.callRealMethod();
+                })
+                .when(objectStorage)
+                .deleteObject(startsWith("supplier-images/" + owner.getId()));
+        try {
+            assertThatThrownBy(() -> supplierImageService.uploadSupplierImage(owner.getId(), photo()))
+                    .isInstanceOf(CannotCreateTransactionException.class)
+                    .hasRootCause(connectionFailure);
+            assertThat(storedKeys(owner.getId())).isEmpty();
+            verify(objectStorage).deleteObject(startsWith("supplier-images/" + owner.getId()));
+        } finally {
+            doCallRealMethod().when(dataSource).getConnection();
+            reset(objectStorage);
+        }
+        assertThat(key(owner.getId())).isNull();
+    }
+
+    @Test
+    void enclosingRollbackPreservesOldImageAndDeletesNewUpload() throws Exception {
+        var owner = owner();
+        supplierImageService.uploadSupplierImage(owner.getId(), photo());
+        var previousKey = key(owner.getId());
+        var file = photo();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            supplierImageService.uploadSupplierImage(owner.getId(), file);
+            assertThat(storedKeys(owner.getId())).hasSize(2);
+            status.setRollbackOnly();
+        });
+        assertThat(storedKeys(owner.getId())).containsExactly(previousKey);
+        assertThat(key(owner.getId())).isEqualTo(previousKey);
+    }
+
+    @Test
     void invalidImagePreservesActiveImage() throws Exception {
         var owner = owner();
         supplierImageService.uploadSupplierImage(owner.getId(), photo());
@@ -250,11 +328,13 @@ class ImageStorageIntegrationTests {
         var owner = owner();
         supplierImageService.uploadSupplierImage(owner.getId(), photo());
         var previousKey = key(owner.getId());
-        var newKey = storage.storeSupplierImage(owner.getId(), photo().getBytes());
+        var file = photo();
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            supplierService.updateImageKey(owner.getId(), newKey);
-            assertThat(storedKeys(owner.getId())).containsExactlyInAnyOrder(previousKey, newKey);
+            supplierImageService.uploadSupplierImage(owner.getId(), file);
+            assertThat(storedKeys(owner.getId())).hasSize(2).contains(previousKey);
         });
+        var newKey = key(owner.getId());
+        assertThat(newKey).isNotEqualTo(previousKey);
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> assertThat(storedKeys(owner.getId())).containsExactly(newKey));
     }

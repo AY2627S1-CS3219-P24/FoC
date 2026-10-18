@@ -11,7 +11,6 @@ import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
-import com.cs3219.foc.user.model.dto.event.AvatarDeletionRequestedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
@@ -22,7 +21,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -42,7 +40,6 @@ public class UserService {
     private final UserMapper userMapper;
     private final EmailVerificationService emailVerification;
     private final AvatarStorageService avatarStorageService;
-    private final ApplicationEventPublisher eventPublisher;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -171,28 +168,6 @@ public class UserService {
         return buildUserProfileDto(userRepository.saveAndFlush(user));
     }
 
-    @Transactional
-    public UserProfileDto updateAvatarKey(UUID userId, String avatarKey) {
-        var user =
-                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        var previousKey = user.getAvatarKey();
-        user.setAvatarKey(avatarKey);
-        userRepository.flush();
-        if (previousKey != null && !previousKey.equals(avatarKey))
-            eventPublisher.publishEvent(new AvatarDeletionRequestedEvent(previousKey));
-        return buildUserProfileDto(user);
-    }
-
-    @Transactional
-    public void clearAvatarKey(UUID userId) {
-        var user =
-                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        var previousKey = user.getAvatarKey();
-        user.setAvatarKey(null);
-        userRepository.flush();
-        if (previousKey != null) eventPublisher.publishEvent(new AvatarDeletionRequestedEvent(previousKey));
-    }
-
     @Transactional(readOnly = true)
     public User getUser(UUID userId) {
         return userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -225,12 +200,14 @@ public class UserService {
     }
 
     private UserProfileDto buildUserProfileDto(User user) {
-        var avatarUrl = avatarStorageService.createPresignedUrl(user.getAvatarKey());
+        var avatarKey = user.getAvatarKey();
+        var avatarUrl = avatarStorageService.createPresignedUrl(avatarKey);
         return userMapper.toUserProfileDto(user, avatarUrl);
     }
 
     private UserDto buildUserDto(User user) {
-        var avatarUrl = avatarStorageService.createPresignedUrl(user.getAvatarKey());
+        var avatarKey = user.getAvatarKey();
+        var avatarUrl = avatarStorageService.createPresignedUrl(avatarKey);
         return userMapper.toUserDto(user, avatarUrl);
     }
 }

@@ -26,7 +26,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -41,12 +40,7 @@ class SupplierServiceTests {
     void setUp() {
         repository = mock(SupplierRepository.class);
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new SupplierService(
-                repository,
-                TestMappers.mapper(),
-                clock,
-                mock(SupplierImageStorageService.class),
-                mock(ApplicationEventPublisher.class));
+        service = new SupplierService(repository, TestMappers.mapper(), clock, mock(SupplierImageStorageService.class));
     }
 
     private static SupplierRequest request(String name, String building) {

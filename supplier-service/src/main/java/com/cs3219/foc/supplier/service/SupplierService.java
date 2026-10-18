@@ -5,7 +5,6 @@ import com.cs3219.foc.supplier.mapper.SupplierMapper;
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
 import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
-import com.cs3219.foc.supplier.model.dto.event.SupplierImageDeletionRequestedEvent;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
 import com.cs3219.foc.supplier.repository.SupplierSpecifications;
@@ -16,7 +15,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -29,7 +27,6 @@ public class SupplierService {
     private final SupplierMapper supplierMapper;
     private final Clock clock;
     private final SupplierImageStorageService supplierImageStorageService;
-    private final ApplicationEventPublisher eventPublisher;
 
     /** list suppliers that match filters in {@code criteria}, sorted by name. */
     @Transactional(readOnly = true)
@@ -51,14 +48,14 @@ public class SupplierService {
         }
 
         return supplierRepository.findAll(Specification.allOf(filters), Sort.by("name")).stream()
-                .map(this::toSupplierDto)
+                .map(this::buildSupplierDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public SupplierDto getSupplier(UUID id, boolean includeInactive) {
         var supplier = includeInactive ? supplierRepository.findById(id) : supplierRepository.findByIdAndActiveTrue(id);
-        return supplier.map(this::toSupplierDto).orElseThrow(() -> new SupplierNotFoundException(id));
+        return supplier.map(this::buildSupplierDto).orElseThrow(() -> new SupplierNotFoundException(id));
     }
 
     @Transactional
@@ -67,7 +64,7 @@ public class SupplierService {
         var supplier = supplierMapper.toSupplier(normalized);
         supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
         var saved = supplierRepository.saveAndFlush(supplier);
-        return toSupplierDto(saved);
+        return buildSupplierDto(saved);
     }
 
     @Transactional
@@ -76,7 +73,7 @@ public class SupplierService {
         var supplier = findSupplier(id);
         supplierMapper.updateSupplier(normalized, supplier);
         supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
-        return toSupplierDto(supplierRepository.saveAndFlush(supplier));
+        return buildSupplierDto(supplierRepository.saveAndFlush(supplier));
     }
 
     /** Since there might have other data may refer to supplier, so no deletion, but set if active */
@@ -84,32 +81,12 @@ public class SupplierService {
     public SupplierDto setSupplierActive(UUID id, boolean active) {
         var supplier = findSupplier(id);
         supplier.setActive(active);
-        return toSupplierDto(supplierRepository.saveAndFlush(supplier));
+        return buildSupplierDto(supplierRepository.saveAndFlush(supplier));
     }
 
-    @Transactional
-    public SupplierDto updateImageKey(UUID supplierId, String imageKey) {
-        var supplier = findSupplier(supplierId);
-        var previousKey = supplier.getImageKey();
-        supplier.setImageKey(imageKey);
-        supplierRepository.flush();
-        if (previousKey != null && !previousKey.equals(imageKey))
-            eventPublisher.publishEvent(new SupplierImageDeletionRequestedEvent(previousKey));
-        return toSupplierDto(supplier);
-    }
-
-    @Transactional
-    public SupplierDto clearImageKey(UUID supplierId) {
-        var supplier = findSupplier(supplierId);
-        var previousKey = supplier.getImageKey();
-        supplier.setImageKey(null);
-        supplierRepository.flush();
-        if (previousKey != null) eventPublisher.publishEvent(new SupplierImageDeletionRequestedEvent(previousKey));
-        return toSupplierDto(supplier);
-    }
-
-    private SupplierDto toSupplierDto(Supplier supplier) {
-        var imageUrl = supplierImageStorageService.createPresignedUrl(supplier.getImageKey());
+    private SupplierDto buildSupplierDto(Supplier supplier) {
+        var imageKey = supplier.getImageKey();
+        var imageUrl = supplierImageStorageService.createPresignedUrl(imageKey);
         return supplierMapper.toSupplierDto(supplier, imageUrl);
     }
 

@@ -25,7 +25,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,12 +38,7 @@ class UserServiceTests {
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
     private final UserService service = new UserService(
-            repository,
-            mock(PasswordEncoder.class),
-            TestMappers.mapper(),
-            verification,
-            avatarStorageService,
-            mock(ApplicationEventPublisher.class));
+            repository, mock(PasswordEncoder.class), TestMappers.mapper(), verification, avatarStorageService);
     private final UUID userId = UUID.randomUUID();
     private User user;
 

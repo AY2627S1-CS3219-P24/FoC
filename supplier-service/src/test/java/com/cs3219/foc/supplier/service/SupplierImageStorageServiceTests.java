@@ -8,20 +8,20 @@ import com.cs3219.foc.supplier.infrastructure.storage.ObjectStorage;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 
 class SupplierImageStorageServiceTests {
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
     private final SupplierImageStorageProperties properties =
             new SupplierImageStorageProperties(Duration.ofMinutes(10));
     private final SupplierImageStorageService supplierImageStorageService =
-            new SupplierImageStorageService(objectStorage, properties, mock(ApplicationEventPublisher.class));
+            new SupplierImageStorageService(objectStorage, properties);
 
     @Test
     void choosesImageKeyAndContentType() {
         var ownerId = UUID.randomUUID();
         var bytes = new byte[] {1, 2};
-        var key = supplierImageStorageService.storeSupplierImage(ownerId, bytes);
+        var key = supplierImageStorageService.createSupplierImageKey(ownerId);
+        supplierImageStorageService.storeSupplierImage(key, bytes);
         assertThat(key).startsWith("supplier-images/" + ownerId + "/").endsWith(".jpg");
         verify(objectStorage).putObject(key, bytes, "image/jpeg");
     }

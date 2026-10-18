@@ -8,19 +8,18 @@ import com.cs3219.foc.user.infrastructure.storage.ObjectStorage;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 
 class AvatarStorageServiceTests {
     private final ObjectStorage objectStorage = mock(ObjectStorage.class);
     private final AvatarStorageProperties properties = new AvatarStorageProperties(Duration.ofMinutes(10));
-    private final AvatarStorageService avatarStorageService =
-            new AvatarStorageService(objectStorage, properties, mock(ApplicationEventPublisher.class));
+    private final AvatarStorageService avatarStorageService = new AvatarStorageService(objectStorage, properties);
 
     @Test
     void choosesImageKeyAndContentType() {
         var ownerId = UUID.randomUUID();
         var bytes = new byte[] {1, 2};
-        var key = avatarStorageService.storeAvatar(ownerId, bytes);
+        var key = avatarStorageService.createAvatarKey(ownerId);
+        avatarStorageService.storeAvatar(key, bytes);
         assertThat(key).startsWith("avatars/" + ownerId + "/").endsWith(".png");
         verify(objectStorage).putObject(key, bytes, "image/png");
     }
