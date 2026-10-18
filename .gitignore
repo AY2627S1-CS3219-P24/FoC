@@ -20,3 +20,11 @@ Thumbs.db
 .idea/
 *.iml
 .run/
+# Terraform local working files; commit provider lock files.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+**/tfplan
+**/backend.hcl
+**/*.auto.tfvars

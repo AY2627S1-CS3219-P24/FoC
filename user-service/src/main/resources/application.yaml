@@ -1,4 +1,18 @@
 spring:
+  cloud:
+    aws:
+      s3:
+        region: ${AWS_REGION:ap-southeast-2}
+        endpoint: ${FOC_S3_ENDPOINT:}
+        path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
+  modulith:
+    events:
+      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -66,8 +80,6 @@ server:
   servlet:
     context-path: /api
   port: 8080
-avatar:
-  directory: ${FOC_AVATAR_DIRECTORY:${user.home}/.foc/avatars}
 account-mail:
   from: ${MAIL_FROM:no-reply@localhost}
   frontend-url: ${FOC_FRONTEND_URL:http://localhost:3000}
@@ -78,3 +90,9 @@ management:
   health:
     mail:
       enabled: false
+
+storage:
+  s3:
+    bucket: ${FOC_USER_BUCKET:foc-dev-user}
+  avatars:
+    read-url-ttl: 10m

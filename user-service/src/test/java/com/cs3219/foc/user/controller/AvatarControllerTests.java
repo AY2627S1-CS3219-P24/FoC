@@ -7,11 +7,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.cs3219.foc.user.exception.AvatarException;
+import com.cs3219.foc.user.exception.StorageException;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.service.AvatarService;
 import java.util.List;
 import java.util.UUID;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,7 +19,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -35,7 +34,7 @@ class AvatarControllerTests {
     private WebApplicationContext context;
 
     @Autowired
-    private AvatarService avatars;
+    private AvatarService avatarService;
 
     @Autowired
     private JwtDecoder decoder;
@@ -46,7 +45,7 @@ class AvatarControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(avatars, decoder);
+        reset(avatarService, decoder);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -62,7 +61,7 @@ class AvatarControllerTests {
                 null,
                 null,
                 "/api/users/" + userId + "/avatar?v=test.png");
-        when(avatars.upload(eq(userId), any())).thenReturn(profile);
+        when(avatarService.uploadAvatar(eq(userId), any())).thenReturn(profile);
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .param("userId", UUID.randomUUID().toString())
@@ -70,19 +69,13 @@ class AvatarControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatarUrl").value(profile.avatarUrl()))
                 .andExpect(jsonPath("$.avatarKey").doesNotExist());
-        verify(avatars).upload(eq(userId), any());
+        verify(avatarService).uploadAvatar(eq(userId), any());
     }
 
     @Test
-    void retrievesPublicImageByUserId() throws Exception {
-        when(avatars.read(userId)).thenReturn(new byte[] {1, 2});
-        mvc.perform(get("/users/{userId}/avatar", userId).param("v", "cache-version"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_PNG))
-                .andExpect(content().bytes(new byte[] {1, 2}))
-                .andExpect(header().string("Cache-Control", Matchers.containsString("max-age=31536000")))
-                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
-        verify(avatars).read(userId);
+    void publicImageEndpointIsNotAvailable() throws Exception {
+        mvc.perform(get("/users/{userId}/avatar", userId)).andExpect(status().isUnauthorized());
+        verifyNoInteractions(avatarService);
     }
 
     @Test
@@ -90,14 +83,14 @@ class AvatarControllerTests {
         mvc.perform(delete("/users/me/avatar").with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
-        verify(avatars).remove(userId);
+        verify(avatarService).removeAvatar(userId);
     }
 
     @Test
     void writeAndRemoveOperationsRequireAuthentication() throws Exception {
         mvc.perform(delete("/users/me/avatar")).andExpect(status().isUnauthorized());
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar").file(file)).andExpect(status().isUnauthorized());
-        verifyNoInteractions(avatars);
+        verifyNoInteractions(avatarService);
     }
 
     @Test
@@ -105,7 +98,7 @@ class AvatarControllerTests {
         when(decoder.decode("invalid")).thenThrow(new BadJwtException("Invalid token"));
         mvc.perform(delete("/users/me/avatar").header("Authorization", "Bearer invalid"))
                 .andExpect(status().isUnauthorized());
-        verifyNoInteractions(avatars);
+        verifyNoInteractions(avatarService);
     }
 
     @Test
@@ -114,13 +107,14 @@ class AvatarControllerTests {
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Image file is required"));
-        verifyNoInteractions(avatars);
+        verifyNoInteractions(avatarService);
     }
 
     @ParameterizedTest
     @ValueSource(ints = {400, 413, 415, 503})
     void mapsUploadErrorsToHttpResponses(int status) throws Exception {
-        when(avatars.upload(any(), any())).thenThrow(new AvatarException(HttpStatus.valueOf(status), "Upload failed"));
+        when(avatarService.uploadAvatar(any(), any()))
+                .thenThrow(new AvatarException(HttpStatus.valueOf(status), "Upload failed"));
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
@@ -129,17 +123,22 @@ class AvatarControllerTests {
     }
 
     @Test
+    void reportsStorageUnavailable() throws Exception {
+        when(avatarService.uploadAvatar(any(), any()))
+                .thenThrow(new StorageException(new RuntimeException("S3 failed")));
+        mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
+                        .file(file)
+                        .with(jwt().jwt(token -> token.subject(userId.toString()))))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("Object storage operation failed"));
+    }
+
+    @Test
     void mapsMultipartLimitException() throws Exception {
-        when(avatars.upload(any(), any())).thenThrow(new MaxUploadSizeExceededException(2097152));
+        when(avatarService.uploadAvatar(any(), any())).thenThrow(new MaxUploadSizeExceededException(2097152));
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isPayloadTooLarge());
-    }
-
-    @Test
-    void noAvatarReturnsNotFound() throws Exception {
-        when(avatars.read(userId)).thenThrow(new AvatarException(HttpStatus.NOT_FOUND, "Avatar not found"));
-        mvc.perform(get("/users/{userId}/avatar", userId)).andExpect(status().isNotFound());
     }
 }

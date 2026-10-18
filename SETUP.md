@@ -9,7 +9,7 @@
 
 ## Setup
 
-Create the local environment file and start **Postgres + RabbitMQ**:
+Create the local environment file and start **Postgres + RabbitMQ + FLoCI**:
 
 ```bash
   cp .env.example .env

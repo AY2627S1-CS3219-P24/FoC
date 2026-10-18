@@ -19,14 +19,14 @@ public class AvatarImageProcessor {
     private static final int MAX_DIMENSION = 4096;
     private static final int OUTPUT_DIMENSION = 512;
 
-    public byte[] process(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
+    public byte[] processAvatar(MultipartFile file) {
+        if (file.isEmpty()) {
             throw new AvatarException(HttpStatus.BAD_REQUEST, "Image file is required");
         }
         try (var stream = file.getInputStream()) {
             var bytes = stream.readNBytes(MAX_BYTES + 1);
             if (bytes.length > MAX_BYTES) {
-                throw new AvatarException(HttpStatus.PAYLOAD_TOO_LARGE, "Image must not exceed 2 MB");
+                throw new AvatarException(HttpStatus.CONTENT_TOO_LARGE, "Image must not exceed 2 MB");
             }
             try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
                 var readers = ImageIO.getImageReaders(input);

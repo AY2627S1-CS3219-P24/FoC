@@ -38,11 +38,10 @@ public class SecurityConfig {
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
             .authorizeHttpRequests(auth -> auth
-                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                .requestMatchers("/auth/**", "/.well-known/jwks.json", "/actuator/health").permitAll()
-                .requestMatchers(HttpMethod.GET, "/users/*/avatar").permitAll()
-                .requestMatchers(HttpMethod.POST, "/users/email-change/confirm").permitAll()
-                .anyRequest().authenticated())
+                    .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                    .requestMatchers("/auth/**", "/.well-known/jwks.json", "/actuator/health").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/users/email-change/confirm").permitAll()
+                    .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler)
