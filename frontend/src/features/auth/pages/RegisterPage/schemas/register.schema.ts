@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { nusEmailSchema } from '#/features/auth/schemas/nusEmail.schema'
+import { passwordSchema } from '#/features/auth/schemas/password.schema'
 
 export const registerSchema = z
   .object({
@@ -8,12 +9,7 @@ export const registerSchema = z
 
     email: nusEmailSchema,
 
-    password: z
-      .string()
-      .refine((value) => value.trim().length > 0, {
-        message: 'Please enter your password.',
-      })
-      .min(8, 'Password must contain at least 8 characters.'),
+    password: passwordSchema,
 
     confirmPassword: z.string().refine((value) => value.trim().length > 0, {
       message: 'Please confirm your password.',

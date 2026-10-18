@@ -37,8 +37,14 @@ class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
+    private final EmailChangeService emailChange = mock(EmailChangeService.class);
     private final UserService service = new UserService(
-            repository, mock(PasswordEncoder.class), TestMappers.mapper(), verification, avatarStorageService);
+            repository,
+            mock(PasswordEncoder.class),
+            TestMappers.mapper(),
+            verification,
+            emailChange,
+            avatarStorageService);
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -187,6 +193,17 @@ class UserServiceTests {
 
         assertThat(result.phoneNumber()).isEqualTo("+6591235436");
         assertThat(result.faculty()).isEqualTo("School of Computing");
+    }
+
+    @Test
+    void adminEmailUpdateRequestsVerificationWithoutChangingTheCurrentAddress() {
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
+        when(repository.saveAndFlush(user)).thenReturn(user);
+        var result = service.updateUser(
+                userId, new UpdateUserRequest("Updated name", "new@nus.edu.sg", List.of(UserRole.USER), null, null));
+        verify(emailChange).requestChange(userId, "new@nus.edu.sg");
+        assertThat(result.email()).isEqualTo("alex@u.nus.edu");
+        assertThat(result.name()).isEqualTo("Updated name");
     }
 
     @ParameterizedTest

@@ -75,7 +75,7 @@ flowchart TD
     Request -->|403 unverified| Verify[Offer email verification and resend]
     Request -->|Success| Complete[Provider.completeLogin]
     Complete --> Save[Invalidate old refresh result and save token]
-    Save --> App[Open /app through route guard]
+    Save --> App[Open /home through route guard]
 ```
 
 The browser processes the refresh cookie from the login response. Provider saves
@@ -89,7 +89,7 @@ which calls `POST /auth/refresh` without reloading the document.
 
 ```mermaid
 flowchart TD
-    Open[Open / or /app] --> Guard[beforeLoad]
+    Open[Open / or /home] --> Guard[beforeLoad]
     Guard --> Check[Provider.ensureAuthenticated]
     Check -->|Token present| App[Render protected page]
     Check -->|Explicitly ended| Login[Redirect to /login]
@@ -197,6 +197,58 @@ logout left a valid Cookie.
 
 The obsolete-result marker belongs only to the pending refresh. It is not a
 global session version propagated through every business request.
+
+## 7. Updating an Email Address
+
+```mermaid
+flowchart TD
+    Form[Edit Profile: Update Email] --> Request[Authenticated request with new email]
+    Request --> Pending[Store target email in EMAIL_CHANGE token]
+    Pending --> Mail[Send verification link after commit]
+    Mail --> Open[Open link and automatically confirm]
+    Open --> Valid{Valid token and available address?}
+    Valid -->|Yes| Update[Update user email and consume token]
+    Update --> Profile[Show success and return to profile]
+    Valid -->|No| Error[Show error and return to Edit Profile]
+```
+
+Sending and resending share `POST /api/users/me/email-change`; confirmation uses
+`POST /api/users/email-change/confirm`. Until confirmation, the old email remains
+the account's login address. Confirmation preserves existing sessions because
+tokens identify the account by user ID. The verification tab invalidates its
+profile cache; other tabs follow normal cache behavior without cross-tab messaging.
+
+## 8. Forgot Password
+
+```mermaid
+flowchart TD
+    Login[Login: Forgot password?] --> Request[Enter account email and send link]
+    Request --> Feedback[Stay on page: check inbox and spam or resend]
+    Request --> Mail[Existing account: send reset link after commit]
+    Mail --> Form[Open link and enter a new password twice]
+    Form --> Submit[Submit token and new password]
+    Submit --> Check{Valid token and same account email?}
+    Check -->|Yes| Save[Consume token, verify email, save password, delete refresh tokens]
+    Save --> Done[Show success and link to login]
+    Save --> Notice[After commit: email reset completion notification]
+    Check -->|No| Invalid[Show unavailable link and offer a new request]
+```
+
+Request and resend share `POST /api/auth/password-reset/request`. The response
+does not disclose whether an account exists or is verified. Links use the existing
+token lifetime and resend interval, with `PASSWORD_RESET` distinguishing their
+purpose from registration and email changes. Unverified accounts can also request
+a link; a successful reset verifies their current email.
+Within the resend interval, reset requests return the same success response
+without replacing the token or sending another email.
+
+`POST /api/auth/password-reset/confirm` consumes the token only on form submission.
+Password, email verification, and token changes commit together. The saved email must still match the
+user's email. Password saving and refresh-token revocation reuse the Profile
+password-change implementation. Access tokens expire normally; success offers
+login with the new password without automatically creating a session.
+Both password operations also delete pending password-reset and email-change
+tokens, so previously issued links cannot change the account after a password change.
 
 ## Acknowledgments
 

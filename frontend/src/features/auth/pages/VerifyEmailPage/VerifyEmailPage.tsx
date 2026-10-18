@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useSearch } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { Input } from '@base-ui/react/input'
+import type { SubmitEvent } from 'react'
 import { useEmailVerification } from '../../hooks/useEmailVerification'
 import { AuthRequestError } from '../../lib/authRequest'
 import { nusEmailSchema } from '../../schemas/nusEmail.schema'
@@ -10,14 +11,22 @@ import pageStyles from '../../styles/authPage.module.scss'
 import styles from './VerifyEmailPage.module.scss'
 
 export const VerifyEmailPage = () => {
-  const { token, email: initialEmail } = useSearch({
+  const {
+    token,
+    email: initialEmail,
+    purpose,
+  } = useSearch({
     from: '/auth/verify-email',
   })
-  const { verification, resend } = useEmailVerification(token)
+  const { verification, resend } = useEmailVerification(token, purpose)
   const [email, setEmail] = useState(initialEmail ?? '')
   const [fieldError, setFieldError] = useState('')
   const [requestedEmail, setRequestedEmail] = useState('')
   const submitting = useRef(false)
+
+  if (purpose === 'email-change') {
+    return <EmailChangeResult token={token} verification={verification} />
+  }
 
   const linkUnavailable =
     verification.error instanceof AuthRequestError &&
@@ -35,7 +44,7 @@ export const VerifyEmailPage = () => {
           : 'Unable to verify email'
         : 'Check your email'
 
-  const resendEmail = async (event: React.SubmitEvent<HTMLFormElement>) => {
+  const resendEmail = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (submitting.current) return
 
@@ -158,6 +167,70 @@ export const VerifyEmailPage = () => {
         <Link className={pageStyles.link} to="/login">
           Back to log in
         </Link>
+      )}
+    </section>
+  )
+}
+
+const EmailChangeResult = ({
+  token,
+  verification,
+}: {
+  token?: string
+  verification: ReturnType<typeof useEmailVerification>['verification']
+}) => {
+  const checking =
+    Boolean(token) && (verification.isIdle || verification.isPending)
+  const status =
+    verification.error instanceof AuthRequestError
+      ? verification.error.status
+      : undefined
+  const unavailable = !token || status === 400
+  const occupied = status === 409
+  const title = checking
+    ? 'Verifying your email…'
+    : verification.isSuccess
+      ? 'Email updated'
+      : unavailable
+        ? 'Link unavailable'
+        : 'Unable to update email'
+
+  return (
+    <section className={styles.content}>
+      <h1 className={pageStyles.title}>{title}</h1>
+      {checking ? (
+        <p role="status">Please wait while we verify your email.</p>
+      ) : verification.isSuccess ? (
+        <>
+          <p role="status">Your email address has been updated successfully.</p>
+          <Link
+            className={`${formStyles.submit} ${styles.action}`}
+            to="/profile"
+          >
+            Back to profile
+          </Link>
+        </>
+      ) : (
+        <>
+          <p role="alert">
+            {unavailable
+              ? 'This link is no longer valid. Return to Edit Profile to request a new one.'
+              : occupied
+                ? 'This email address is already in use. Return to Edit Profile to choose another address.'
+                : 'Unable to verify your email. Please try again.'}
+          </p>
+          {!unavailable && !occupied && (
+            <Button
+              className={formStyles.submit}
+              onClick={() => verification.mutate(token)}
+            >
+              Try again
+            </Button>
+          )}
+          <Link className={pageStyles.link} to="/profile/edit">
+            Back to Edit Profile
+          </Link>
+        </>
       )}
     </section>
   )

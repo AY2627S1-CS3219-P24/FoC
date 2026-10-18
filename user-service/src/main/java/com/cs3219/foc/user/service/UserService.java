@@ -39,6 +39,7 @@ public class UserService {
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
     private final EmailVerificationService emailVerification;
+    private final EmailChangeService emailChange;
     private final AvatarStorageService avatarStorageService;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
@@ -129,8 +130,8 @@ public class UserService {
 
         validateRoleChange(user.getRoles(), request.roles());
 
-        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists with this email.");
+        if (!request.email().equals(user.getEmail())) {
+            emailChange.requestChange(id, request.email());
         }
 
         userMapper.updateUser(request, user);

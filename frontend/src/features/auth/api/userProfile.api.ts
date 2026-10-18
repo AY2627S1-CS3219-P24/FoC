@@ -26,6 +26,10 @@ export const changePassword = async (request: {
   await axiosClient.put('/users/me/password', request)
 }
 
+export const requestEmailChange = async (email: string) => {
+  await axiosClient.post('/users/me/email-change', { email })
+}
+
 export const uploadAvatar = async (file: File) => {
   const body = new FormData()
   body.append('file', file)
