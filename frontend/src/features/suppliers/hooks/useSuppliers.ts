@@ -31,12 +31,14 @@ export const useSuppliers = (filters: SupplierFilters = {}) =>
     queryKey: supplierKeys.list(filters),
     queryFn: () => listSuppliers(filters),
     placeholderData: keepPreviousData,
+    refetchInterval: 10 * 60_000,
   })
 
 export const useSupplier = (id: string) =>
   useQuery({
     queryKey: supplierKeys.detail(id),
     queryFn: () => getSupplier(id),
+    refetchInterval: 10 * 60_000,
   })
 
 const useInvalidateSuppliers = () => {
