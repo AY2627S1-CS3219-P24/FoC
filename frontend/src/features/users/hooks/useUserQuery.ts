@@ -7,5 +7,5 @@ export const useUserQuery = (id: string) =>
     queryKey: userQueryKeys.detail(id),
     queryFn: () => getUser(id),
     staleTime: 0,
-    refetchInterval: 10 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
