@@ -20,18 +20,18 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
-@SpringJUnitWebConfig(CreditControllerTests.TestConfig.class)
+@WebMvcTest({CreditController.class, CreditReservationController.class})
+@Import(CreditControllerTests.TestConfig.class)
 class CreditControllerTests {
     @Autowired
     private WebApplicationContext context;
@@ -170,7 +170,6 @@ class CreditControllerTests {
     }
 
     @TestConfiguration
-    @EnableWebMvc
     @EnableWebSecurity
     @Import({
         SecurityConfig.class,

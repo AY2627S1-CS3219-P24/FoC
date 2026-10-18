@@ -98,8 +98,7 @@ class SettlementMessagingTests {
                     var b = reserved(reserve, owner, 20, "ErrandExpiredEvent", null);
                     var c = reserved(reserve, owner, 40, "ErrandCompletedEvent", courier);
                     channel.confirmSelect();
-                    var invalidAmounts =
-                            List.of("1.9", "1.0", "1e2", "0", "-1", "9223372036854775808", "-9223372036854775809");
+                    var invalidAmounts = List.of("1.9", "1.0", "1e2", "9223372036854775808", "-9223372036854775809");
                     var body = JsonMapper.builder().build().writeValueAsString(a);
                     for (var amount : invalidAmounts) {
                         channel.basicPublish(
@@ -154,7 +153,8 @@ class SettlementMessagingTests {
                     var service = context.getBean(CreditSettlementService.class);
                     sql.execute("ALTER TABLE event_publication ADD CONSTRAINT fail_publication CHECK(FALSE) NOT VALID");
                     try {
-                        assertThatThrownBy(() -> service.settle(d)).isInstanceOf(RuntimeException.class);
+                        assertThatThrownBy(() -> service.releaseReservedCredits(d))
+                                .isInstanceOf(RuntimeException.class);
                         assertThat(accounts.getBalance(owner).reservedBalance()).isEqualTo(10);
                         assertThat(sql.queryForObject(
                                         "SELECT count(*) FROM credit_transaction_log WHERE operation_id=?",
@@ -165,7 +165,7 @@ class SettlementMessagingTests {
                         sql.execute("ALTER TABLE event_publication DROP CONSTRAINT fail_publication");
                     }
                     broker.offline();
-                    service.settle(d);
+                    service.releaseReservedCredits(d);
                     recoveryId = UUID.fromString(sql.queryForObject(
                             "SELECT serialized_event::jsonb->>'eventId' FROM event_publication WHERE serialized_event::jsonb->'payload'->>'operationId'=?",
                             String.class,

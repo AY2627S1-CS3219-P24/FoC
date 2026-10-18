@@ -185,7 +185,7 @@ class CreditReservationPersistenceTests {
         reserve.reserve(user, second);
         reserve.reserve(user, request(90));
         assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
-        settlement.settle(new ErrandSettlementEvent(
+        settlement.releaseReservedCredits(new ErrandSettlementEvent(
                 UUID.randomUUID(),
                 "ErrandCancelledEvent",
                 1,
