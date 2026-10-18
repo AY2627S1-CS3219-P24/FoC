@@ -4,7 +4,6 @@ import com.cs3219.foc.user.model.dto.ErrorResponse;
 import com.cs3219.foc.user.model.dto.ValidationErrorResponse;
 import java.util.Map;
 import java.util.TreeMap;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,12 +14,10 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
-@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(StorageException.class)
     ResponseEntity<ErrorResponse> handleStorage(StorageException exception) {
-        log.error("Object storage operation failed", exception);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ErrorResponse("Object storage operation failed"));
     }
