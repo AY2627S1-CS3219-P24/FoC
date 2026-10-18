@@ -13,11 +13,8 @@ Create the local environment file and start **Postgres + RabbitMQ + FLoCI**:
 
 ```bash
   cp .env.example .env
-  docker compose up -d --wait
+  docker compose up -d
 ```
-
-Private image storage is initialized automatically in FLoCI on `localhost:4566`.
-The S3 migrations clear existing development image keys. Reupload avatars and supplier images after updating.
 
 You only need to create `.env` once. RabbitMQ for the Spring apps is configured via
 `SPRING_RABBITMQ_ADDRESSES` in the IntelliJ run configurations
