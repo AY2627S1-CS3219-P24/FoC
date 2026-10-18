@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.cs3219.foc.user.config.UserProvisioningProperties;
+import com.cs3219.foc.user.config.EventPublicationProperties;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -22,9 +22,7 @@ class UserCreatedEventPublisherTests {
     private final UserCreatedEvent event =
             UserCreatedEvent.of(UUID.randomUUID(), UUID.randomUUID(), OffsetDateTime.now());
     private final UserCreatedEventPublisher publisher = new UserCreatedEventPublisher(
-            bridge,
-            new UserProvisioningProperties(
-                    1, 1, Duration.ofMillis(20), Duration.ofSeconds(30), Duration.ofSeconds(5), Duration.ofMinutes(5)));
+            bridge, new EventPublicationProperties(Duration.ofMillis(20), Duration.ofSeconds(30)));
 
     private void confirm(boolean ack, boolean returned) {
         when(bridge.send(eq(UserCreatedEventPublisher.BINDING), any())).thenAnswer(call -> {

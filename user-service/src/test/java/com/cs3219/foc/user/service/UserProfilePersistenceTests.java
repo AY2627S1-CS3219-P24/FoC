@@ -46,6 +46,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.mapstruct.factory.Mappers;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -736,7 +737,7 @@ class UserProfilePersistenceTests {
                     repository,
                     new BCryptPasswordEncoder(),
                     Mappers.getMapper(UserMapper.class),
-                    mock(UserProvisioningService.class));
+                    mock(ApplicationEventPublisher.class));
         }
     }
 }

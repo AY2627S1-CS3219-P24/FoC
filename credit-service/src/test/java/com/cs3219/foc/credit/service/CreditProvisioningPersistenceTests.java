@@ -2,10 +2,10 @@ package com.cs3219.foc.credit.service;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.cs3219.foc.credit.infrastructure.messaging.consumer.UserCreatedConsumer;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
-import com.cs3219.foc.credit.repository.CreditProvisioningInboxRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -37,19 +39,16 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
 class CreditProvisioningPersistenceTests {
     private static final String SCHEMA =
-            "credit_inbox_test_" + UUID.randomUUID().toString().replace("-", "");
+            "provision_test_" + UUID.randomUUID().toString().replace("-", "");
 
     @Autowired
-    private CreditProvisioningService provisioning;
+    @Qualifier("userCreated") private Consumer<UserCreatedEvent> provisioning;
 
     @Autowired
     private CreditAccountService accounts;
 
     @Autowired
     private CreditAccountRepository accountRepository;
-
-    @Autowired
-    private CreditProvisioningInboxRepository inbox;
 
     @Autowired
     private DataSource dataSource;
@@ -59,7 +58,7 @@ class CreditProvisioningPersistenceTests {
     @BeforeEach
     void clean() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE credit_provisioning_inbox, credit_accounts");
+        jdbc.execute("TRUNCATE credit_accounts");
     }
 
     @AfterAll
@@ -79,77 +78,61 @@ class CreditProvisioningPersistenceTests {
     }
 
     @Test
-    void acceptanceIsDurableAndSeparateFromAccountCreation() {
+    void consumerReturnsOnlyAfterAccountCommitted() {
         var event = event(UUID.randomUUID());
         provisioning.accept(event);
-        assertThat(inbox.count()).isEqualTo(1);
-        assertThat(accountRepository.count()).isZero();
-        assertThat(inbox.findById(event.eventId()).orElseThrow().getProcessedAt())
-                .isNull();
-        assertThat(provisioning.processNext()).isTrue();
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM credit_accounts WHERE user_id = ?",
+                        Long.class,
+                        event.payload().userId()))
+                .isEqualTo(1);
         assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
-        assertThat(inbox.findById(event.eventId()).orElseThrow().getProcessedAt())
-                .isNotNull();
     }
 
     @Test
-    void duplicateEventAndDifferentEventForSameUserPreserveBalances() {
+    void duplicateEventAndDifferentEventForSameUserPreserveBalance() {
         var event = event(UUID.randomUUID());
         provisioning.accept(event);
-        provisioning.accept(event);
-        assertThat(inbox.count()).isEqualTo(1);
-        provisioning.processNext();
         jdbc.update(
-                "UPDATE credit_accounts SET available_balance = 25, reserved_balance = 10 WHERE user_id = ?",
+                "UPDATE credit_accounts SET total_balance = 35 WHERE user_id = ?",
                 event.payload().userId());
-        provisioning.accept(event); // Redelivery after commit must not reprocess.
-        assertThat(provisioning.processNext()).isFalse();
+        provisioning.accept(event);
         provisioning.accept(event(event.payload().userId()));
-        provisioning.processNext();
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(25, 10));
+        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(35, 0));
         assertThat(accountRepository.count()).isEqualTo(1);
     }
 
     @Test
-    void accountAndCompletionRollBackTogetherAndPendingWorkResumes() {
+    void commitFailureReachesConsumerAndRedeliverySucceeds() {
         var event = event(UUID.randomUUID());
-        provisioning.accept(event);
         jdbc.execute(
-                "ALTER TABLE credit_provisioning_inbox ADD CONSTRAINT simulate_completion_failure CHECK (processed_at IS NULL)");
+                "CREATE FUNCTION fail_provisioning_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Simulated commit failure'; END $$");
+        jdbc.execute(
+                "CREATE CONSTRAINT TRIGGER fail_provisioning_commit AFTER INSERT ON credit_accounts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_provisioning_commit()");
         try {
-            assertThatThrownBy(() -> provisioning.processNext()).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> provisioning.accept(event)).isInstanceOf(RuntimeException.class);
             assertThat(accountRepository.count()).isZero();
-            assertThat(inbox.findById(event.eventId()).orElseThrow().getProcessedAt())
-                    .isNull();
         } finally {
-            jdbc.execute("ALTER TABLE credit_provisioning_inbox DROP CONSTRAINT simulate_completion_failure");
+            jdbc.execute("DROP TRIGGER fail_provisioning_commit ON credit_accounts");
+            jdbc.execute("DROP FUNCTION fail_provisioning_commit()");
         }
-        assertThat(provisioning.processNext()).isTrue();
+        provisioning.accept(event);
         assertThat(accountRepository.count()).isEqualTo(1);
     }
 
     @Test
-    void invalidContractAndConflictingIdentityCannotCreateAccounts() {
+    void invalidContractCannotCreateAccount() {
         var event = event(UUID.randomUUID());
-        provisioning.accept(event);
-        var conflicting = new UserCreatedEvent(
-                event.eventId(),
-                event.eventType(),
-                1,
-                event.occurredAt(),
-                new UserCreatedEvent.Payload(UUID.randomUUID()));
-        assertThatThrownBy(() -> provisioning.accept(conflicting)).isInstanceOf(IllegalArgumentException.class);
         var unsupported =
                 new UserCreatedEvent(UUID.randomUUID(), "OtherEvent", 2, OffsetDateTime.now(), event.payload());
         assertThatThrownBy(() -> provisioning.accept(unsupported)).isInstanceOf(IllegalArgumentException.class);
-        assertThat(inbox.count()).isEqualTo(1);
+        assertThatThrownBy(() -> provisioning.accept(null)).isInstanceOf(IllegalArgumentException.class);
         assertThat(accountRepository.count()).isZero();
     }
 
     @Test
-    void concurrentWorkersAndDuplicateAcceptanceCreateOneAccount() throws Exception {
+    void concurrentDuplicateDeliveriesCreateOneAccount() throws Exception {
         var event = event(UUID.randomUUID());
-        var otherEvent = event(event.payload().userId());
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> {
@@ -159,30 +142,18 @@ class CreditProvisioningPersistenceTests {
             });
             var second = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
-                provisioning.accept(event);
+                provisioning.accept(event(event.payload().userId()));
                 return true;
             });
             assertThat(first.get(20, TimeUnit.SECONDS)).isTrue();
             assertThat(second.get(20, TimeUnit.SECONDS)).isTrue();
-            assertThat(inbox.count()).isEqualTo(1);
-            provisioning.accept(otherEvent);
-            var a = executor.submit(() -> {
-                barrier.await(10, TimeUnit.SECONDS);
-                return provisioning.processNext();
-            });
-            var b = executor.submit(() -> {
-                barrier.await(10, TimeUnit.SECONDS);
-                return provisioning.processNext();
-            });
-            assertThat(a.get(20, TimeUnit.SECONDS)).isTrue();
-            assertThat(b.get(20, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(accountRepository.count()).isEqualTo(1);
         assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
     }
 
     @Test
-    void upgradeChangesOnlyDefaultAndPreservesExistingBalances() {
+    void migrationPreservesBalancesAndCompletesPreviouslyAcknowledgedInboxWork() {
         var schema = SCHEMA + "_upgrade";
         var url = System.getenv("FOC_TEST_DATABASE_URL");
         var source = new DriverManagerDataSource(
@@ -198,11 +169,20 @@ class CreditProvisioningPersistenceTests {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .locations(location)
-                    .target("1")
+                    .target("3")
                     .load()
                     .migrate();
             var existing = UUID.randomUUID();
-            sql.update("INSERT INTO credit_accounts (user_id) VALUES (?)", existing);
+            var pending = UUID.randomUUID();
+            sql.update(
+                    "INSERT INTO credit_accounts (user_id, available_balance, reserved_balance) VALUES (?, 70, 30)",
+                    existing);
+            for (var user : new UUID[] {existing, pending, pending}) {
+                sql.update(
+                        "INSERT INTO credit_provisioning_inbox (event_id, user_id, occurred_at) VALUES (?, ?, now())",
+                        UUID.randomUUID(),
+                        user);
+            }
             Flyway.configure()
                     .dataSource(source)
                     .schemas(schema)
@@ -210,14 +190,21 @@ class CreditProvisioningPersistenceTests {
                     .locations(location)
                     .load()
                     .migrate();
+            assertThat(sql.queryForObject(
+                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, existing))
+                    .isEqualTo(100);
+            assertThat(sql.queryForObject(
+                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, pending))
+                    .isZero();
+            assertThat(sql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
+                    .isEqualTo(2);
             var fresh = UUID.randomUUID();
             sql.update("INSERT INTO credit_accounts (user_id) VALUES (?)", fresh);
             assertThat(sql.queryForObject(
-                            "SELECT available_balance FROM credit_accounts WHERE user_id = ?", Long.class, existing))
-                    .isEqualTo(100);
-            assertThat(sql.queryForObject(
-                            "SELECT available_balance FROM credit_accounts WHERE user_id = ?", Long.class, fresh))
+                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, fresh))
                     .isZero();
+            assertThat(sql.queryForObject("SELECT to_regclass('credit_provisioning_inbox')", String.class))
+                    .isNull();
         } finally {
             sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
         }
@@ -226,7 +213,7 @@ class CreditProvisioningPersistenceTests {
     @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({CreditProvisioningService.class, CreditAccountService.class})
+    @Import({UserCreatedConsumer.class, CreditProvisioningService.class, CreditAccountService.class})
     static class TestConfig {
         @Bean
         DataSource dataSource() {

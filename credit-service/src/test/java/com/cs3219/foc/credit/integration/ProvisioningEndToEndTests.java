@@ -5,8 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.user.UserServiceApplication;
-import com.cs3219.foc.user.infrastructure.messaging.producer.UserCreatedEventPublisher;
-import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
+import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.ConnectionFactory;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -17,12 +16,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -40,7 +39,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -55,42 +53,31 @@ class ProvisioningEndToEndTests {
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @Test
-    void provisionsExistingUsersAndAdminBeforeFirstCreditStartupAndRecoversAcceptedWork() throws Exception {
+    void provisionsRegisteredUsersAcrossServiceStartupAndDuplicateDelivery() throws Exception {
         try (var app = new Applications(temporaryDirectory)) {
-            var existing = app.seed("USER");
-            var admin = app.seed("ADMIN");
             app.startUser();
+            var existing = app.register();
+            var admin = app.register();
+            app.userSql.update("UPDATE users SET roles = ARRAY['ADMIN']::text[] WHERE id = ?", admin);
             var registered = app.register();
+            app.startCredit();
             app.awaitPublishedUsers(3);
-            assertThat(app.queueDepth()).isEqualTo(3); // Credit has never started.
-            app.startCredit(false); // Accept durably, but leave work pending to simulate a crash.
-            await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(
-                            app.creditSql.queryForObject("SELECT count(*) FROM credit_provisioning_inbox", Long.class))
-                    .isEqualTo(3));
-            assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
-                    .isZero();
             var registeredToken = app.login(registered);
-            assertThat(app.balance(registeredToken, "").statusCode()).isEqualTo(409);
-            app.stopCredit();
-            app.startCredit(true);
             app.awaitZeroBalance(registeredToken);
             app.awaitZeroBalance(app.login(existing));
             app.awaitZeroBalance(app.login(admin));
             assertThat(app.balance(null, "").statusCode()).isEqualTo(401);
 
-            // Existing balances must survive duplicate delivery, even across a Credit restart.
-            app.creditSql.update("UPDATE credit_accounts SET available_balance = 9 WHERE user_id = ?", registered);
+            app.creditSql.update("UPDATE credit_accounts SET total_balance = 9 WHERE user_id = ?", registered);
             app.stopCredit();
             var createdWhileStopped = app.register();
-            var stored = app.userSql.queryForMap(
-                    "SELECT event_id, occurred_at FROM user_created_outbox WHERE user_id = ?", registered);
-            var occurredAt = app.userSql.queryForObject(
-                    "SELECT occurred_at FROM user_created_outbox WHERE user_id = ?", OffsetDateTime.class, registered);
-            app.user
-                    .getBean(UserCreatedEventPublisher.class)
-                    .publish(UserCreatedEvent.of((UUID) stored.get("event_id"), registered, occurredAt));
+            var stored = app.userSql.queryForObject(
+                    "SELECT serialized_event FROM event_publication WHERE serialized_event::jsonb->'payload'->>'userId' = ?",
+                    String.class,
+                    registered.toString());
+            app.redeliver(stored);
             app.awaitPublishedUsers(4);
-            app.startCredit(true);
+            app.startCredit();
             app.awaitZeroBalance(app.login(createdWhileStopped));
             var response = app.balance(registeredToken, "?userId=" + admin);
             assertThat(response.statusCode()).isEqualTo(200);
@@ -102,29 +89,32 @@ class ProvisioningEndToEndTests {
     }
 
     @Test
-    void brokerAndCreditDatabaseOutagesRecoverWithoutAnotherUserAction() throws Exception {
+    void publicationRecoversAfterRestartAndConsumerFailuresParkUntilReplay() throws Exception {
         try (var app = new Applications(temporaryDirectory)) {
             app.broker.offline();
             app.startUser();
             var whileBrokerDown = app.register();
             assertThat(app.userSql.queryForObject(
-                            "SELECT count(*) FROM user_created_outbox WHERE published_at IS NULL", Long.class))
+                            "SELECT count(*) FROM event_publication WHERE completion_date IS NULL", Long.class))
                     .isEqualTo(1);
+            app.user.close();
+            app.user = null;
             app.broker.online();
+            app.startUser();
+            app.startCredit();
             app.awaitPublishedUsers(1);
-            app.startCredit(true);
             app.awaitZeroBalance(app.login(whileBrokerDown));
 
             app.database.offline();
             var whileDatabaseDown = app.register();
             app.awaitPublishedUsers(2);
-            // Bounded consumer retries exhaust; the original message reaches the durable retry queue.
             await().atMost(Duration.ofSeconds(30))
-                    .untilAsserted(() -> assertThat(app.retryQueueDepth()).isGreaterThan(0));
+                    .untilAsserted(() -> assertThat(app.dlqDepth()).isEqualTo(1));
             assertThat(app.creditSql.queryForObject(
                             "SELECT count(*) FROM credit_accounts WHERE user_id = ?", Long.class, whileDatabaseDown))
                     .isZero();
             app.database.online();
+            app.replayDlq();
             app.awaitZeroBalance(app.login(whileDatabaseDown));
             assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
                     .isEqualTo(2);
@@ -199,15 +189,6 @@ class ProvisioningEndToEndTests {
             return new JdbcTemplate(source);
         }
 
-        UUID seed(String role) {
-            var id = UUID.randomUUID();
-            userSql.update("""
-                    INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at)
-                    VALUES (?, ?, 'Seeded user', ARRAY[?]::text[], ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, id, id + "@u.nus.edu", role, new BCryptPasswordEncoder(4).encode("password123"));
-            return id;
-        }
-
         private ArrayList<String> arguments(String module, String schema, String url) {
             return new ArrayList<>(List.of(
                     "--spring.config.location="
@@ -237,18 +218,18 @@ class ProvisioningEndToEndTests {
                     "--auth.private-key-location=" + privateKey.toUri(),
                     "--auth.public-key-location=" + publicKey.toUri(),
                     "--avatar.directory=" + privateKey.getParent().resolve("avatars"),
-                    "--user.provisioning.publish-interval=100",
-                    "--user.provisioning.backfill-interval=100",
-                    "--user.provisioning.confirm-timeout=1s",
-                    "--user.provisioning.retry-delay=100ms",
-                    "--user.provisioning.max-retry-delay=1s",
-                    "--spring.cloud.stream.bindings.userCreated-out-0.destination=" + destination,
-                    "--spring.cloud.stream.rabbit.bindings.userCreated-out-0.producer.dlq-ttl=2000"));
+                    "--events.publication.confirm-timeout=1s",
+                    "--events.publication.retry-delay=100ms",
+                    "--spring.modulith.events.staleness.published=1s",
+                    "--spring.modulith.events.staleness.processing=1s",
+                    "--spring.modulith.events.staleness.resubmitted=1s",
+                    "--spring.modulith.events.staleness.check-interval=100ms",
+                    "--spring.cloud.stream.bindings.userCreated-out-0.destination=" + destination));
             user = new SpringApplicationBuilder(UserServiceApplication.class).run(args.toArray(String[]::new));
             userPort = user.getEnvironment().getProperty("local.server.port", Integer.class);
         }
 
-        void startCredit(boolean worker) throws Exception {
+        void startCredit() throws Exception {
             var uri = URI.create(databaseUrl.substring("jdbc:".length()));
             var proxyUrl = "jdbc:"
                     + new URI(
@@ -261,14 +242,11 @@ class ProvisioningEndToEndTests {
                             uri.getFragment());
             var args = arguments("credit-service", creditSchema, proxyUrl);
             args.addAll(List.of(
-                    "--credit.provisioning.enabled=" + worker,
-                    "--credit.provisioning.interval=100",
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
                     "--spring.cloud.stream.bindings.userCreated-in-0.destination=" + destination,
                     "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-initial-interval=100",
-                    "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-max-interval=200",
-                    "--spring.cloud.stream.rabbit.bindings.userCreated-in-0.consumer.dlq-ttl=2000"));
+                    "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-max-interval=200"));
             credit = new SpringApplicationBuilder(CreditServiceApplication.class).run(args.toArray(String[]::new));
             creditPort = credit.getEnvironment().getProperty("local.server.port", Integer.class);
         }
@@ -326,16 +304,40 @@ class ProvisioningEndToEndTests {
 
         void awaitPublishedUsers(int expected) {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> assertThat(userSql.queryForObject(
-                            "SELECT count(*) FROM user_created_outbox WHERE published_at IS NOT NULL", Long.class))
+                            "SELECT count(*) FROM event_publication WHERE completion_date IS NOT NULL", Long.class))
                     .isEqualTo(expected));
         }
 
-        int queueDepth() throws Exception {
-            return depth(queue);
+        int dlqDepth() throws Exception {
+            return depth(queue + ".dlq");
         }
 
-        int retryQueueDepth() throws Exception {
-            return depth(queue + ".retry");
+        void redeliver(String serialized) throws Exception {
+            try (var connection = rabbitFactory.newConnection();
+                    var channel = connection.createChannel()) {
+                channel.confirmSelect();
+                channel.basicPublish(
+                        destination,
+                        "",
+                        new AMQP.BasicProperties.Builder()
+                                .contentType("application/json")
+                                .deliveryMode(2)
+                                .build(),
+                        serialized.getBytes(StandardCharsets.UTF_8));
+                channel.waitForConfirmsOrDie(5000);
+            }
+        }
+
+        void replayDlq() throws Exception {
+            try (var connection = rabbitFactory.newConnection();
+                    var channel = connection.createChannel()) {
+                var message = channel.basicGet(queue + ".dlq", false);
+                assertThat(message).isNotNull();
+                channel.confirmSelect();
+                channel.basicPublish(destination, "", message.getProps(), message.getBody());
+                channel.waitForConfirmsOrDie(5000);
+                channel.basicAck(message.getEnvelope().getDeliveryTag(), false);
+            }
         }
 
         private int depth(String name) throws Exception {
@@ -354,7 +356,7 @@ class ProvisioningEndToEndTests {
             try (var connection = rabbitFactory.newConnection();
                     var channel = connection.createChannel()) {
                 channel.queueDelete(queue);
-                channel.queueDelete(queue + ".retry");
+                channel.queueDelete(queue + ".dlq");
                 channel.exchangeDelete(destination);
                 channel.exchangeDelete(destination + ".dlx");
             } finally {

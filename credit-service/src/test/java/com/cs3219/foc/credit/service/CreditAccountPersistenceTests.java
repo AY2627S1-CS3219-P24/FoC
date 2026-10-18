@@ -20,8 +20,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -83,10 +81,9 @@ class CreditAccountPersistenceTests {
         var initial = repository.findById(owner).orElseThrow();
         assertThat(initial.getCreatedAt()).isNotNull();
         assertThat(initial.getUpdatedAt()).isNotNull();
-        jdbc.update(
-                "UPDATE credit_accounts SET available_balance = 70, reserved_balance = 30 WHERE user_id = ?", owner);
+        jdbc.update("UPDATE credit_accounts SET total_balance = 100 WHERE user_id = ?", owner);
         assertThat(service.initializeAccount(owner)).isFalse();
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(70, 30));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(100, 0));
         var after = repository.findById(owner).orElseThrow();
         assertThat(after.getCreatedAt()).isEqualTo(initial.getCreatedAt());
         assertThat(after.getUpdatedAt()).isEqualTo(initial.getUpdatedAt());
@@ -129,21 +126,19 @@ class CreditAccountPersistenceTests {
         var second = UUID.randomUUID();
         service.initializeAccount(first);
         service.initializeAccount(second);
-        jdbc.update(
-                "UPDATE credit_accounts SET available_balance = 20, reserved_balance = 80 WHERE user_id = ?", first);
-        assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(20, 80));
+        jdbc.update("UPDATE credit_accounts SET total_balance = 20 WHERE user_id = ?", first);
+        assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(20, 0));
         assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(0, 0));
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"available_balance", "reserved_balance"})
-    void databaseRejectsNegativeBalancesOnInsertAndUpdate(String column) {
+    @Test
+    void databaseRejectsNegativeBalancesOnInsertAndUpdate() {
         var owner = UUID.randomUUID();
-        assertThatThrownBy(() ->
-                        jdbc.update("INSERT INTO credit_accounts (user_id, " + column + ") VALUES (?, -1)", owner))
+        assertThatThrownBy(
+                        () -> jdbc.update("INSERT INTO credit_accounts (user_id, total_balance) VALUES (?, -1)", owner))
                 .isInstanceOf(DataIntegrityViolationException.class);
         service.initializeAccount(owner);
-        assertThatThrownBy(() -> jdbc.update("UPDATE credit_accounts SET " + column + " = -1 WHERE user_id = ?", owner))
+        assertThatThrownBy(() -> jdbc.update("UPDATE credit_accounts SET total_balance = -1 WHERE user_id = ?", owner))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
     }

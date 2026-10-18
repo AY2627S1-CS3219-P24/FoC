@@ -16,11 +16,8 @@ public class CreditAccount {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    @Column(name = "available_balance", nullable = false)
-    private long availableBalance;
-
-    @Column(name = "reserved_balance", nullable = false)
-    private long reservedBalance;
+    @Column(name = "total_balance", nullable = false)
+    private long totalBalance;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -12,7 +12,6 @@ spring:
           destination: foc.user-created.v1
           content-type: application/json
           producer:
-            required-groups: credit-provisioning
             error-channel-enabled: true
       rabbit:
         bindings:
@@ -22,13 +21,16 @@ spring:
               delivery-mode: PERSISTENT
               exchange-durable: true
               exchange-auto-delete: false
-              auto-bind-dlq: true
-              dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-out-0.destination}.dlx
-              dead-letter-routing-key: credit-provisioning
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-out-0.destination}.credit-provisioning.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-out-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.userCreated-out-0.destination}
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false
+      staleness:
+        published: 1m
+        processing: 1m
+        resubmitted: 1m
+        check-interval: 30s
   servlet:
     multipart:
       max-file-size: 2MB

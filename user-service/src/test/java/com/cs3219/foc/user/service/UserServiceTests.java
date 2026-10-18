@@ -13,6 +13,7 @@ import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
+import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
@@ -29,6 +30,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,7 +42,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
-    private final UserProvisioningService provisioning = mock(UserProvisioningService.class);
+    private final ApplicationEventPublisher provisioning = mock(ApplicationEventPublisher.class);
     private final UserService service =
             new UserService(repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), provisioning);
     private final UUID userId = UUID.randomUUID();
@@ -201,7 +203,9 @@ class UserServiceTests {
         var result = service.registerUser(new RegisterUserRequest(email, "Jamie", "password123"));
         assertThat(result.email()).isEqualTo(email);
         verify(repository).save(any(User.class));
-        verify(provisioning).recordUser(userId);
+        verify(provisioning)
+                .publishEvent(ArgumentMatchers.<Object>argThat(event -> event instanceof UserCreatedEvent created
+                        && created.payload().userId().equals(userId)));
     }
 
     @ParameterizedTest

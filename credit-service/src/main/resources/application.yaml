@@ -27,10 +27,7 @@ spring:
               requeue-rejected: false
               dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.dlx
               dead-letter-routing-key: credit-provisioning
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.credit-provisioning.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.userCreated-in-0.destination}
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.credit-provisioning.dlq
   jpa:
     hibernate:
       ddl-auto: validate
