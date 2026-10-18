@@ -64,8 +64,12 @@ class ProvisioningEndToEndTests {
             var admin = app.register();
             app.userSql.update("UPDATE users SET roles = ARRAY['ADMIN']::text[] WHERE id = ?", admin);
             var registered = app.register();
+            var stored = app.userSql.queryForObject(
+                    "SELECT serialized_event FROM event_publication WHERE serialized_event::jsonb->'payload'->>'userId' = ?",
+                    String.class,
+                    registered.toString());
             app.startCredit();
-            app.awaitPublishedUsers(3);
+            app.awaitPublishedUsers();
             var registeredToken = app.login(registered);
             app.awaitInitialBalance(registeredToken);
             app.awaitInitialBalance(app.login(existing));
@@ -75,12 +79,8 @@ class ProvisioningEndToEndTests {
             app.creditSql.update("UPDATE credit_accounts SET total_balance = 9 WHERE user_id = ?", registered);
             app.stopCredit();
             var createdWhileStopped = app.register();
-            var stored = app.userSql.queryForObject(
-                    "SELECT serialized_event FROM event_publication WHERE serialized_event::jsonb->'payload'->>'userId' = ?",
-                    String.class,
-                    registered.toString());
             app.redeliver(stored);
-            app.awaitPublishedUsers(4);
+            app.awaitPublishedUsers();
             app.startCredit();
             app.awaitInitialBalance(app.login(createdWhileStopped));
             var response = app.balance(registeredToken, "?userId=" + admin);
@@ -107,12 +107,12 @@ class ProvisioningEndToEndTests {
             app.broker.online();
             app.startUser();
             app.startCredit();
-            app.awaitPublishedUsers(1);
+            app.awaitPublishedUsers();
             app.awaitInitialBalance(app.login(whileBrokerDown));
 
             app.database.offline();
             var whileDatabaseDown = app.register();
-            app.awaitPublishedUsers(2);
+            app.awaitPublishedUsers();
             await().atMost(Duration.ofSeconds(30))
                     .untilAsserted(() -> assertThat(app.dlqDepth()).isEqualTo(1));
             assertThat(app.creditSql.queryForObject(
@@ -230,7 +230,8 @@ class ProvisioningEndToEndTests {
             args.addAll(List.of(
                     "--auth.private-key-location=" + privateKey.toUri(),
                     "--auth.public-key-location=" + publicKey.toUri(),
-                    "--avatar.directory=" + privateKey.getParent().resolve("avatars"),
+                    "--spring.cloud.aws.credentials.access-key=test",
+                    "--spring.cloud.aws.credentials.secret-key=test",
                     "--events.publication.confirm-timeout=1s",
                     "--events.publication.retry-delay=100ms",
                     "--spring.modulith.events.staleness.published=1s",
@@ -256,6 +257,7 @@ class ProvisioningEndToEndTests {
                             uri.getFragment());
             var args = arguments("credit-service", creditSchema, proxyUrl);
             args.addAll(List.of(
+                    "--spring.cloud.aws.s3.enabled=false",
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
                     "--spring.cloud.function.definition=userCreated",
@@ -319,11 +321,11 @@ class ProvisioningEndToEndTests {
             });
         }
 
-        void awaitPublishedUsers(int expected) {
+        void awaitPublishedUsers() {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> assertThat(userSql.queryForObject(
-                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit' AND completion_date IS NOT NULL",
+                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit'",
                             Long.class))
-                    .isEqualTo(expected));
+                    .isZero());
         }
 
         int dlqDepth() throws Exception {

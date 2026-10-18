@@ -17,3 +17,7 @@ spring:
     default-schema: suppliers
 server:
   forward-headers-strategy: framework
+
+storage:
+  s3:
+    bucket: ${FOC_SUPPLIER_BUCKET}

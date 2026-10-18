@@ -1,12 +1,13 @@
 package com.cs3219.foc.supplier;
 
-import com.cs3219.foc.supplier.config.SupplierImageProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 @SpringBootApplication
-@EnableConfigurationProperties(SupplierImageProperties.class)
+@ConfigurationPropertiesScan
+@EnableAsync
 public class SupplierServiceApplication {
 
     public static void main(String[] args) {

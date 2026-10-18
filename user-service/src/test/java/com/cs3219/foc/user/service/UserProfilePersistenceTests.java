@@ -1,24 +1,17 @@
 package com.cs3219.foc.user.service;
 
-import static com.cs3219.foc.user.support.AvatarTestImages.image;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.user.config.AccountMailProperties;
 import com.cs3219.foc.user.config.AuthProperties;
-import com.cs3219.foc.user.config.AvatarProperties;
-import com.cs3219.foc.user.exception.AvatarException;
 import com.cs3219.foc.user.exception.EmailVerificationException;
 import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
-import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.infrastructure.mail.AccountMailListener;
-import com.cs3219.foc.user.infrastructure.storage.AvatarStorage;
-import com.cs3219.foc.user.infrastructure.storage.LocalAvatarStorage;
-import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
@@ -31,10 +24,9 @@ import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
+import com.cs3219.foc.user.support.TestMappers;
 import jakarta.persistence.EntityManagerFactory;
 import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Duration;
@@ -53,8 +45,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.junit.jupiter.api.io.TempDir;
-import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -95,15 +85,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 class UserProfilePersistenceTests {
     private static final String SCHEMA =
             "profile_test_" + UUID.randomUUID().toString().replace("-", "");
-
-    @TempDir
-    static Path avatarDirectory;
-
-    @Autowired
-    private AvatarStorage avatarStorage;
-
-    @Autowired
-    private AvatarService avatars;
 
     @Autowired
     private DataSource dataSource;
@@ -155,13 +136,8 @@ class UserProfilePersistenceTests {
 
     @BeforeEach
     void cleanUsers() throws Exception {
-        reset(avatarStorage, mailSender);
+        reset(mailSender);
         repository.deleteAll();
-        try (var files = Files.list(avatarDirectory)) {
-            for (var file : files.toList()) {
-                Files.delete(file);
-            }
-        }
     }
 
     @AfterAll
@@ -182,148 +158,6 @@ class UserProfilePersistenceTests {
                 .roles(List.of(UserRole.USER))
                 .passwordHash("unchanged-hash")
                 .build());
-    }
-
-    @Test
-    void uploadsReplacesAndRemovesAvatarWithoutChangingProfileOrPassword() throws Exception {
-        var user = createPasswordUser("avatar@u.nus.edu");
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
-        var first = avatars.upload(user.getId(), image("jpeg", 32, 32));
-        assertThat(first.avatarUrl()).startsWith("/api/users/" + user.getId() + "/avatar?v=");
-        var oldKey = repository.findById(user.getId()).orElseThrow().getAvatarKey();
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-        var second = avatars.upload(user.getId(), image("png", 64, 64));
-        assertThat(second.avatarUrl()).isNotEqualTo(first.avatarUrl());
-        assertThat(Files.exists(avatarDirectory.resolve(oldKey))).isFalse();
-        service.updateUserProfile(user.getId(), new UpdateUserProfileRequest("New Name", null, null));
-        passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(second.avatarUrl());
-        avatars.remove(user.getId());
-        avatars.remove(user.getId());
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isNull();
-        assertThat(service.getUserProfile(user.getId()).name()).isEqualTo("New Name");
-        assertThat(passwordEncoder.matches(
-                        "NewPassword2",
-                        repository.findById(user.getId()).orElseThrow().getPasswordHash()))
-                .isTrue();
-        assertThatThrownBy(() -> avatars.read(user.getId()))
-                .isInstanceOfSatisfying(
-                        AvatarException.class, ex -> assertThat(ex.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
-        assertThat(avatarFileCount()).isZero();
-    }
-
-    @Test
-    void anotherAccountCannotReadOrRemoveThisUsersAvatar() throws Exception {
-        var first = createUser("first-avatar@example.com");
-        var second = createUser("second-avatar@example.com");
-        avatars.upload(first.getId(), image("png", 10, 10));
-        assertThatThrownBy(() -> avatars.read(second.getId())).isInstanceOf(AvatarException.class);
-        avatars.remove(second.getId());
-        assertThat(avatars.read(first.getId())).isNotEmpty();
-    }
-
-    @Test
-    void failedStorageWritePreservesPreviousAvatarAndCleansPartialFile() throws Exception {
-        var user = createUser("avatar@example.com");
-        var original = avatars.upload(user.getId(), image("png", 10, 10));
-        doAnswer(invocation -> {
-                    invocation.callRealMethod();
-                    throw new AvatarException(HttpStatus.SERVICE_UNAVAILABLE, "Simulated write failure");
-                })
-                .when(avatarStorage)
-                .write(anyString(), any());
-        assertThatThrownBy(() -> avatars.upload(user.getId(), image("png", 20, 20)))
-                .isInstanceOf(AvatarException.class);
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-        assertThat(avatarFileCount()).isEqualTo(1);
-    }
-
-    @Test
-    void databaseFailurePreservesPreviousAvatarAndDeletesNewFile() throws Exception {
-        var user = createUser("avatar@example.com");
-        var original = avatars.upload(user.getId(), image("png", 10, 10));
-        var originalKey = repository.findById(user.getId()).orElseThrow().getAvatarKey();
-        try (var connection = dataSource.getConnection();
-                var statement = connection.createStatement()) {
-            // Only the existing generated key is allowed, deliberately failing the next update.
-            statement.execute(
-                    "ALTER TABLE users ADD CONSTRAINT test_avatar_failure CHECK (avatar_key IS NULL OR avatar_key = '"
-                            + originalKey + "')");
-            try {
-                assertThatThrownBy(() -> avatars.upload(user.getId(), image("png", 20, 20)))
-                        .isInstanceOfSatisfying(AvatarException.class, ex -> assertThat(ex.getStatus())
-                                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
-            } finally {
-                statement.execute("ALTER TABLE users DROP CONSTRAINT test_avatar_failure");
-            }
-        }
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-        assertThat(avatarFileCount()).isEqualTo(1);
-    }
-
-    @Test
-    void failedDeletionDoesNotFailSuccessfulReplacement() throws Exception {
-        var user = createUser("avatar@example.com");
-        avatars.upload(user.getId(), image("png", 10, 10));
-        var previous = repository.findById(user.getId()).orElseThrow().getAvatarKey();
-        doThrow(new AvatarException(HttpStatus.SERVICE_UNAVAILABLE, "Simulated delete failure"))
-                .when(avatarStorage)
-                .delete(previous);
-        var replacement = avatars.upload(user.getId(), image("png", 20, 20));
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(replacement.avatarUrl());
-        assertThat(avatarFileCount()).isEqualTo(2);
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-    }
-
-    @Test
-    void rolledBackReplacementKeepsPreviousFileAndDeletesNewFile() throws Exception {
-        var user = createUser("avatar@example.com");
-        var original = avatars.upload(user.getId(), image("png", 10, 10));
-        var replacement = image("png", 20, 20);
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            avatars.upload(user.getId(), replacement);
-            assertThat(avatarStorage.read(
-                            repository.findById(user.getId()).orElseThrow().getAvatarKey()))
-                    .isNotEmpty();
-            status.setRollbackOnly();
-        });
-        assertThat(service.getUserProfile(user.getId()).avatarUrl()).isEqualTo(original.avatarUrl());
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-        assertThat(avatarFileCount()).isEqualTo(1);
-    }
-
-    @Test
-    void concurrentReplacementsKeepOnlyTheWinningImage() throws Exception {
-        var user = createUser("avatar@example.com");
-        avatars.upload(user.getId(), image("png", 10, 10));
-        var barrier = new CyclicBarrier(2);
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Callable<String> upload = () -> {
-                barrier.await(10, TimeUnit.SECONDS);
-                return avatars.upload(user.getId(), image("png", 20, 20)).avatarUrl();
-            };
-            var first = executor.submit(upload);
-            var second = executor.submit(upload);
-            var urls = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
-            assertThat(urls).contains(service.getUserProfile(user.getId()).avatarUrl());
-        }
-        assertThat(avatars.read(user.getId())).isNotEmpty();
-        assertThat(avatarFileCount()).isEqualTo(1);
-    }
-
-    @Test
-    void uploadForMissingAccountLeavesNoImage() throws Exception {
-        assertThatThrownBy(() -> avatars.upload(UUID.randomUUID(), image("png", 10, 10)))
-                .isInstanceOf(UserNotFoundException.class);
-        assertThat(avatarFileCount()).isZero();
-    }
-
-    private long avatarFileCount() throws Exception {
-        try (var files = Files.list(avatarDirectory)) {
-            return files.count();
-        }
     }
 
     private User createPasswordUser(String email) {
@@ -938,16 +772,6 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        AvatarStorage avatarStorage() {
-            return spy(new LocalAvatarStorage(new AvatarProperties(avatarDirectory)));
-        }
-
-        @Bean
-        AvatarService avatarService(UserRepository users, AvatarStorage storage) {
-            return new AvatarService(users, Mappers.getMapper(UserMapper.class), storage, new AvatarImageProcessor());
-        }
-
-        @Bean
         PasswordEncoder passwordEncoder() {
             return new BCryptPasswordEncoder(4);
         }
@@ -1027,13 +851,18 @@ class UserProfilePersistenceTests {
         @Bean
         UserService userService(
                 UserRepository repository, EmailVerificationService verification, EmailChangeService emailChange) {
+            var avatarStorageService = mock(AvatarStorageService.class);
+            when(avatarStorageService.createPresignedUrl(any()))
+                    .thenAnswer(call ->
+                            call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
             return new UserService(
                     repository,
                     new BCryptPasswordEncoder(),
-                    Mappers.getMapper(UserMapper.class),
+                    TestMappers.mapper(),
                     mock(ApplicationEventPublisher.class),
                     verification,
-                    emailChange);
+                    emailChange,
+                    avatarStorageService);
         }
     }
 }

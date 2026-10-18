@@ -57,6 +57,7 @@ class SettlementMessagingTests {
                             + root.resolve("credit-service/src/main/resources/application.yaml")
                                     .toUri(),
                     "--spring.main.banner-mode=off",
+                    "--spring.cloud.aws.s3.enabled=false",
                     "--logging.level.root=WARN",
                     "--server.port=0",
                     "--spring.datasource.url=" + url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,

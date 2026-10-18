@@ -16,3 +16,7 @@ auth:
   public-key-location: file:/run/secrets/jwt_public_key
 account-mail:
   frontend-url: ${FOC_FRONTEND_URL:https://localhost}
+
+storage:
+  s3:
+    bucket: ${FOC_USER_BUCKET}

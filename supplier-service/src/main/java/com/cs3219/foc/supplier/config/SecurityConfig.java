@@ -19,7 +19,6 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers(HttpMethod.GET, "/suppliers/*/image").permitAll()
                 .requestMatchers(HttpMethod.GET, "/suppliers/**").authenticated()
                 .requestMatchers("/suppliers/**").hasRole("ADMIN")
                 .anyRequest().authenticated())

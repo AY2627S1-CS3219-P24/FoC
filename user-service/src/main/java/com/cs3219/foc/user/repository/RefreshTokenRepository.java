@@ -26,5 +26,7 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 
     void deleteByTokenHash(String tokenHash);
 
+    @Modifying
+    @Query("delete from RefreshToken t where t.expiresAt < :dateTime")
     void deleteAllByExpiresAtBefore(OffsetDateTime dateTime);
 }

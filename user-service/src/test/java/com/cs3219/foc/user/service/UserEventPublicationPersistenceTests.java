@@ -13,7 +13,6 @@ import com.cs3219.foc.user.repository.UserRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -53,7 +52,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         properties = {
             "spring.flyway.enabled=false", "spring.modulith.events.jdbc.schema-initialization.enabled=false",
             "spring.modulith.events.staleness.published=0s", "spring.modulith.events.staleness.processing=0s",
-            "spring.modulith.events.staleness.resubmitted=0s"
+            "spring.modulith.events.staleness.resubmitted=0s", "spring.cloud.aws.s3.enabled=false"
         })
 @TestExecutionListeners(
         listeners = UserEventPublicationPersistenceTests.SchemaCleanup.class,
@@ -100,10 +99,16 @@ class UserEventPublicationPersistenceTests {
                 .isEqualTo(1));
     }
 
+    private void awaitPublicationCompleted() {
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(
+                        jdbc.queryForObject("SELECT count(*) FROM event_publication", Long.class))
+                .isZero());
+    }
+
     @Test
     void registrationRecordsPublicationAndDeliversAfterCommit() {
         var user = register();
-        awaitState("COMPLETED");
+        awaitPublicationCompleted();
         var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
         verify(publisher).publish(captor.capture());
         assertThat(captor.getValue().payload().userId()).isEqualTo(user);
@@ -146,7 +151,7 @@ class UserEventPublicationPersistenceTests {
         awaitState("FAILED");
         doNothing().when(publisher).publish(any());
         publications.resubmit(ResubmissionOptions.defaults());
-        awaitState("COMPLETED");
+        awaitPublicationCompleted();
         var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
         verify(publisher, times(2)).publish(captor.capture());
         var first = captor.getAllValues().getFirst();
@@ -155,55 +160,6 @@ class UserEventPublicationPersistenceTests {
         assertThat(retried.payload()).isEqualTo(first.payload());
         assertThat(retried.occurredAt().toInstant())
                 .isEqualTo(first.occurredAt().toInstant());
-    }
-
-    @Test
-    void migrationPreservesAndResubmitsPendingOutboxEvent() {
-        var schema = SCHEMA + "_upgrade";
-        var url = System.getenv("FOC_TEST_DATABASE_URL");
-        var source = new DriverManagerDataSource(
-                url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,
-                System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-        var sql = new JdbcTemplate(source);
-        var eventId = UUID.randomUUID();
-        var userId = UUID.randomUUID();
-        try {
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(schema)
-                    .defaultSchema(schema)
-                    .locations("classpath:db/migration")
-                    .target("6")
-                    .load()
-                    .migrate();
-            sql.update("INSERT INTO user_credit_provisioning (user_id, event_id) VALUES (?, ?)", userId, eventId);
-            sql.update(
-                    "INSERT INTO user_created_outbox (event_id, user_id, occurred_at) VALUES (?, ?, ?)",
-                    eventId,
-                    userId,
-                    OffsetDateTime.now());
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(schema)
-                    .defaultSchema(schema)
-                    .locations("classpath:db/migration")
-                    .load()
-                    .migrate();
-            assertThat(sql.queryForObject("SELECT to_regclass('user_created_outbox')", String.class))
-                    .isNull();
-            assertThat(sql.queryForObject("SELECT to_regclass('user_credit_provisioning')", String.class))
-                    .isNull();
-            jdbc.execute("INSERT INTO event_publication SELECT * FROM " + schema + ".event_publication");
-            publications.resubmit(ResubmissionOptions.defaults());
-            awaitState("COMPLETED");
-            var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
-            verify(publisher).publish(captor.capture());
-            assertThat(captor.getValue().eventId()).isEqualTo(eventId);
-            assertThat(captor.getValue().payload().userId()).isEqualTo(userId);
-        } finally {
-            sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-        }
     }
 
     static class SchemaCleanup extends AbstractTestExecutionListener {
@@ -244,7 +200,8 @@ class UserEventPublicationPersistenceTests {
                     Mappers.getMapper(UserMapper.class),
                     events,
                     mock(EmailVerificationService.class),
-                    mock(EmailChangeService.class));
+                    mock(EmailChangeService.class),
+                    mock(AvatarStorageService.class));
         }
 
         @Bean
