@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
     location_description VARCHAR(500),
     latitude DOUBLE PRECISION CHECK (latitude BETWEEN -90 AND 90),
     longitude DOUBLE PRECISION CHECK (longitude BETWEEN -180 AND 180),
-    image_url VARCHAR(2048),
+    image_key VARCHAR(64),
     active BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
