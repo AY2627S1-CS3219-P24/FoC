@@ -115,6 +115,7 @@ public class TokenService {
         refreshTokenRepository.deleteByTokenHash(tokenHash);
     }
 
+    @Transactional
     public void cleanExpiredRefreshTokens() {
         var now = OffsetDateTime.now(clock);
         refreshTokenRepository.deleteAllByExpiresAtBefore(now);
