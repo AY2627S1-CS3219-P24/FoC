@@ -1,22 +1,28 @@
-Name,Type,Building,Floor,Location Description,Latitude,Longitude,StartingTime,ClosingTime,ImageURL
-Anna's x Soup Union,Food,Central Library,1,Next to NUS Co-op,1.296444,103.773032,0900hrs,1800hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/ANNA.jpeg
-NUS Co-op,Shopping,Central Library,1,Inside the library on the right side,1.2967866,103.7732677,0900hrs,1600hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/NUS_COOP.jpeg
-Printer @ Com 2,Printing,Com 2,1,Next to LT19,1.2938347,103.7744572,0000hrs,2359hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/PRINTER_COM2.jpeg
-Cool Spot,Food,Com2,1,Opp LT16,1.2940156,103.7738478,0900hrs,2130hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/COOL_SPOT.jpeg
-InstaChef,Food,Terrace,1,Next to foyer,1.2938898,103.7736305,0000hrs,2359hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/INSTACHEF.jpeg
-Cafe+ Robot Cafe,Food/Coffee,Central Library,1,Opp to central library entrance,1.296444,103.773032,0000hrs,2359hrs,https://github.com/CS3219-AY2627S1/FoC-Template/blob/main/data/images/ROBOT_CAFE.jpeg
-A Hot Hideout,Food,Prince George's Park,2,Near PGP entrance,1.2908445,103.7770891,1100hrs,2130hrs,
-Arise and Shine,Food,Engineering Block E4,4,Near LT6,1.2991517,103.769064,0800hrs,1800hrs,
-Bakehaus / Aurea,Food,The Ridge,1,Near COM2,1.2946778,103.7707872,0800hrs,2100hrs,
-Central Square @ YIH,Food,Yusof Ishak House,1,Closest to Opp UHC bus stop,1.2984401,103.7726256,0800hrs,2000hrs,
-Pasta Express,Food,Frontier,1,Aircon section,1.2947819,103.7704435,0930hrs,1930hrs,
-TOMORO COFFEE,Food/Coffee,Hon Sui Sen Memorial Library,2,Inside HSSML,1.2931259,103.7719943,0815hrs,1800hrs,
-Octobox,Shopping,Prince George’s Park,2,Near PGP entrance,1.2904347,103.7787588,0000hrs,2359hrs,
-Smooy,Food,COM3,1,The Terrace @ COM3,1.2948308,103.7716305,1100hrs,2100hrs,
-Goh Bros E-Print Pte Ltd,Printing,Yusof Ishak House,5,Take the long staircase up YIH,1.2984905,103.7720544,0900hrs,1800hrs,
-Cheers Unmanned Convenience Store,Shopping,Engineering Block E3,4,Take right from Arise n Shine,1.2994341,103.7526298,0000hrs,2359hrs,
-Nami,Food,innovation4.0,1,Opp TCOMS,1.2942982,103.7708813,0800hrs,1730hrs,
-Supersnacks,Food,Prince George’s Park,1,"At level 1 in Prince George's Park Residences, Block 10",1.2913847,103.7776367,1100hrs,0200hrs,
-Good Day Cafe,Food/Coffee,Medicine+Science Library,1,Inside MedScience library ,1.2967989,103.7794336,0730hrs,1830hrs,
-The Coffee Roaster,Food/Coffee,Blk AS8,1,Behind central library bus stop,1.296252229,103.7720926,0800hrs,1730hrs,
-he by He Brews,Food/Coffee,Engineering Block EA,1,Near LT7 & Engineering Auditorium,1.300566804,103.7707577,0800hrs,1700hrs,
+id,name,category,building,floor,location_description,latitude,longitude,active
+438f630d-70f1-519b-a271-a0ec74f0409b,Anna's x Soup Union,FOOD,Central Library,1,Next to NUS Co-op,1.296444,103.773032,true
+d20db68d-b147-53ea-a588-d347550859f2,NUS Co-op,SHOPPING,Central Library,1,"Inside Central Library, on the right",1.2967866,103.7732677,true
+88681fc3-e569-5921-9543-3d17e831fc72,Printer @ COM2,PRINTING,COM2,1,Next to LT19,1.2938347,103.7744572,true
+cc0b0490-a3ef-5be3-97bc-c9a215ba09b6,Cool Spot,FOOD,COM2,1,Opposite LT16,1.2940156,103.7738478,true
+4b518bc7-519f-50e2-b1db-f6a366df5cbb,InstaChef,FOOD,The Terrace,1,Next to the foyer,1.2938898,103.7736305,true
+deeb85c5-d0e6-5050-b0c9-cfcd5dca1bf9,Cafe+ Robot Cafe,COFFEE,Central Library,1,Opposite the Central Library entrance,1.296444,103.773032,true
+5072b4ff-84a9-5566-a0bc-8b791abef0de,A Hot Hideout,FOOD,Prince George's Park,2,Near the Prince George's Park entrance,1.2908445,103.7770891,true
+f7a0f5e2-c62f-532d-80f6-4f2bafab6c3f,Arise and Shine,FOOD,E4,4,Near LT6,1.2991517,103.769064,true
+71b4f11a-3771-5732-b3e3-521768708ecf,Bakehaus / Aurea,FOOD,The Ridge,1,Near COM2,1.2946778,103.7707872,true
+af9cbba4-98aa-5493-921c-3afe953065dd,Central Square @ YIH,FOOD,Yusof Ishak House,1,Near the Opp UHC bus stop,1.2984401,103.7726256,true
+0e58f17f-1e65-5d42-8ec6-71bf201e8b48,Pasta Express,FOOD,Frontier,1,Air-conditioned section,1.2947819,103.7704435,true
+ae834dab-cfd7-5fbe-9e82-4d29f72bb6f7,TOMORO COFFEE,COFFEE,Hon Sui Sen Memorial Library,2,Inside Hon Sui Sen Memorial Library,1.2931259,103.7719943,true
+2988eac8-521f-5570-a300-150261d16c89,Octobox,SHOPPING,Prince George's Park,2,Near the Prince George's Park entrance,1.2904347,103.7787588,true
+391df1f6-7355-583c-8fe1-1bff16fd49d2,Smooy,FOOD,COM3,1,The Terrace at COM3,1.2948308,103.7716305,true
+ce09b443-dd43-56fa-b85d-e3110eee513e,Goh Bros E-Print Pte Ltd,PRINTING,Yusof Ishak House,5,Up the long staircase at Yusof Ishak House,1.2984905,103.7720544,true
+be0e3bf2-2077-524d-9df5-8992c15505ca,Cheers Unmanned Convenience Store,SHOPPING,E3,4,To the right of Arise and Shine,1.2994341,103.7526298,true
+604954cc-68a0-53c9-9d6a-c505f833c7b1,Nami,FOOD,Innovation 4.0,1,Opposite TCOMS,1.2942982,103.7708813,true
+ce8bdc78-f05c-5919-8ae1-c2808512cc9d,Supersnacks,FOOD,Prince George's Park,1,"Prince George's Park Residences, Block 10",1.2913847,103.7776367,true
+ed913764-0ca0-537c-a432-d650d7e450fa,Good Day Cafe,COFFEE,Medicine + Science Library,1,Inside Medicine + Science Library,1.2967989,103.7794336,true
+5a48574d-b445-53cf-9a2d-f256c2258c4c,The Coffee Roaster,COFFEE,AS8,1,Behind the Central Library bus stop,1.296252229,103.7720926,true
+b609a470-4777-514c-abf2-af976902ccc4,he by He Brews,COFFEE,EA,1,Near LT7 and the Engineering Auditorium,1.300566804,103.7707577,true
+8cdcf65a-d0b0-584c-b66c-c4ce038445f4,CoffeeBean @ COM3,COFFEE,COM3,1,"Unit #01-05, next to the main entrance",1.2948,103.7736,true
+e21ede4e-e6f4-555a-83d9-b14fd55d46e7,Printer 1 @ PGP,PRINTING,Prince George's Park,1,Beside the vending machines,1.2911,103.7803,true
+7c3d1bd6-3fa6-5107-acbc-dd6ec76354bc,Tamarind Hill,FOOD,UTown,1,Stephen Riady Centre,1.305,103.773,true
+94b28c59-dbb1-5272-b1b5-d56b7e72452e,Late Night Prata @ UTown,FOOD,UTown,1,"Town Plaza, near the fountain",1.3044,103.7736,true
+f0c4b1f5-00b9-5f25-8eed-99cfcc0243d1,Old Kiosk @ YIH,SHOPPING,Yusof Ishak House,1,Closed for renovation,1.2985,103.7725,false
+48a2a05c-1a08-5cf3-ad01-53f42a53a385,Frontier Drinks Stall,COFFEE,Frontier,1,Stall 12,1.2966,103.7802,false
