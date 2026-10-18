@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreditAccountService {
     private final CreditAccountRepository repository;
 
-    /** Returns true only when this call creates the account with zero balances. */
+    /** Returns true only when this call creates the account with its initial credit allocation. */
     @Transactional
     public boolean initializeAccount(UUID userId) {
         return repository.initializeIfAbsent(userId) == 1;

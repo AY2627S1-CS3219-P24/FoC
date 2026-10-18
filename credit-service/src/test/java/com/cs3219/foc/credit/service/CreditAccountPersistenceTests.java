@@ -74,10 +74,10 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void initializesAtZeroAndPreservesExistingBalancesAndTimestamps() {
+    void initializesAtFifteenAndPreservesExistingBalancesAndTimestamps() {
         var owner = UUID.randomUUID();
         assertThat(service.initializeAccount(owner)).isTrue();
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
         var initial = repository.findById(owner).orElseThrow();
         assertThat(initial.getCreatedAt()).isNotNull();
         assertThat(initial.getUpdatedAt()).isNotNull();
@@ -91,7 +91,7 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void concurrentInitializationCreatesExactlyOneZeroBalanceAccount() throws Exception {
+    void concurrentInitializationAllocatesFifteenCreditsOnce() throws Exception {
         var owner = UUID.randomUUID();
         int workers = 8;
         var barrier = new CyclicBarrier(workers);
@@ -110,7 +110,7 @@ class CreditAccountPersistenceTests {
             assertThat(created).isEqualTo(1);
         }
         assertThat(repository.count()).isEqualTo(1);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -128,7 +128,7 @@ class CreditAccountPersistenceTests {
         service.initializeAccount(second);
         jdbc.update("UPDATE credit_accounts SET total_balance = 20 WHERE user_id = ?", first);
         assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(20, 0));
-        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -140,7 +140,7 @@ class CreditAccountPersistenceTests {
         service.initializeAccount(owner);
         assertThatThrownBy(() -> jdbc.update("UPDATE credit_accounts SET total_balance = -1 WHERE user_id = ?", owner))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test

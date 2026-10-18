@@ -71,9 +71,9 @@ class ProvisioningEndToEndTests {
             app.startCredit();
             app.awaitPublishedUsers();
             var registeredToken = app.login(registered);
-            app.awaitZeroBalance(registeredToken);
-            app.awaitZeroBalance(app.login(existing));
-            app.awaitZeroBalance(app.login(admin));
+            app.awaitInitialBalance(registeredToken);
+            app.awaitInitialBalance(app.login(existing));
+            app.awaitInitialBalance(app.login(admin));
             assertThat(app.balance(null, "").statusCode()).isEqualTo(401);
 
             app.creditSql.update("UPDATE credit_accounts SET total_balance = 9 WHERE user_id = ?", registered);
@@ -82,7 +82,7 @@ class ProvisioningEndToEndTests {
             app.redeliver(stored);
             app.awaitPublishedUsers();
             app.startCredit();
-            app.awaitZeroBalance(app.login(createdWhileStopped));
+            app.awaitInitialBalance(app.login(createdWhileStopped));
             var response = app.balance(registeredToken, "?userId=" + admin);
             assertThat(response.statusCode()).isEqualTo(200);
             assertThat(JSON.readTree(response.body()).get("availableBalance").asLong())
@@ -108,7 +108,7 @@ class ProvisioningEndToEndTests {
             app.startUser();
             app.startCredit();
             app.awaitPublishedUsers();
-            app.awaitZeroBalance(app.login(whileBrokerDown));
+            app.awaitInitialBalance(app.login(whileBrokerDown));
 
             app.database.offline();
             var whileDatabaseDown = app.register();
@@ -120,7 +120,7 @@ class ProvisioningEndToEndTests {
                     .isZero();
             app.database.online();
             app.replayDlq();
-            app.awaitZeroBalance(app.login(whileDatabaseDown));
+            app.awaitInitialBalance(app.login(whileDatabaseDown));
             assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
                     .isEqualTo(2);
         }
@@ -310,12 +310,12 @@ class ProvisioningEndToEndTests {
             return HTTP.send(request.GET().build(), HttpResponse.BodyHandlers.ofString());
         }
 
-        void awaitZeroBalance(String token) {
+        void awaitInitialBalance(String token) {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> {
                 var response = balance(token, "");
                 assertThat(response.statusCode()).isEqualTo(200);
                 JsonNode body = JSON.readTree(response.body());
-                assertThat(body.get("availableBalance").asLong()).isZero();
+                assertThat(body.get("availableBalance").asLong()).isEqualTo(15);
                 assertThat(body.get("reservedBalance").asLong()).isZero();
             });
         }

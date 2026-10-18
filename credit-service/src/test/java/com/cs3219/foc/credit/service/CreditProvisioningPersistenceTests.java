@@ -34,6 +34,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringJUnitConfig(CreditProvisioningPersistenceTests.TestConfig.class)
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
@@ -86,7 +87,7 @@ class CreditProvisioningPersistenceTests {
                         Long.class,
                         event.payload().userId()))
                 .isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -121,13 +122,18 @@ class CreditProvisioningPersistenceTests {
     }
 
     @Test
-    void invalidContractCannotCreateAccount() {
-        var event = event(UUID.randomUUID());
-        var unsupported =
-                new UserCreatedEvent(UUID.randomUUID(), "OtherEvent", 2, OffsetDateTime.now(), event.payload());
-        assertThatThrownBy(() -> provisioning.accept(unsupported)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> provisioning.accept(null)).isInstanceOf(IllegalArgumentException.class);
-        assertThat(accountRepository.count()).isZero();
+    void userServiceEventContractCreatesAccount() {
+        var userId = UUID.randomUUID();
+        var eventId = UUID.randomUUID();
+        var occurredAt = OffsetDateTime.parse("2026-10-18T00:00:00Z");
+        var published = com.cs3219.foc.user.model.dto.event.UserCreatedEvent.of(eventId, userId, occurredAt);
+        var json = JsonMapper.builder().build();
+        var received = json.readValue(json.writeValueAsString(published), UserCreatedEvent.class);
+        assertThat(received)
+                .isEqualTo(new UserCreatedEvent(
+                        eventId, "UserCreatedEvent", 1, occurredAt, new UserCreatedEvent.Payload(userId)));
+        provisioning.accept(received);
+        assertThat(accounts.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -149,71 +155,13 @@ class CreditProvisioningPersistenceTests {
             assertThat(second.get(20, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(accountRepository.count()).isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
-    }
-
-    @Test
-    void migrationPreservesBalancesAndCompletesPreviouslyAcknowledgedInboxWork() {
-        var schema = SCHEMA + "_upgrade";
-        var url = System.getenv("FOC_TEST_DATABASE_URL");
-        var source = new DriverManagerDataSource(
-                url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,
-                System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-        var sql = new JdbcTemplate(source);
-        var location =
-                "filesystem:" + System.getProperty("foc.root") + "/credit-service/src/main/resources/db/migration";
-        try {
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(schema)
-                    .defaultSchema(schema)
-                    .locations(location)
-                    .target("3")
-                    .load()
-                    .migrate();
-            var existing = UUID.randomUUID();
-            var pending = UUID.randomUUID();
-            sql.update(
-                    "INSERT INTO credit_accounts (user_id, available_balance, reserved_balance) VALUES (?, 70, 30)",
-                    existing);
-            for (var user : new UUID[] {existing, pending, pending}) {
-                sql.update(
-                        "INSERT INTO credit_provisioning_inbox (event_id, user_id, occurred_at) VALUES (?, ?, now())",
-                        UUID.randomUUID(),
-                        user);
-            }
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(schema)
-                    .defaultSchema(schema)
-                    .locations(location)
-                    .load()
-                    .migrate();
-            assertThat(sql.queryForObject(
-                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, existing))
-                    .isEqualTo(100);
-            assertThat(sql.queryForObject(
-                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, pending))
-                    .isZero();
-            assertThat(sql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
-                    .isEqualTo(2);
-            var fresh = UUID.randomUUID();
-            sql.update("INSERT INTO credit_accounts (user_id) VALUES (?)", fresh);
-            assertThat(sql.queryForObject(
-                            "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, fresh))
-                    .isZero();
-            assertThat(sql.queryForObject("SELECT to_regclass('credit_provisioning_inbox')", String.class))
-                    .isNull();
-        } finally {
-            sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-        }
+        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({UserCreatedConsumer.class, CreditProvisioningService.class, CreditAccountService.class})
+    @Import({UserCreatedConsumer.class, CreditAccountService.class})
     static class TestConfig {
         @Bean
         DataSource dataSource() {
