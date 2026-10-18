@@ -53,7 +53,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         properties = {
             "spring.flyway.enabled=false", "spring.modulith.events.jdbc.schema-initialization.enabled=false",
             "spring.modulith.events.staleness.published=0s", "spring.modulith.events.staleness.processing=0s",
-            "spring.modulith.events.staleness.resubmitted=0s"
+            "spring.modulith.events.staleness.resubmitted=0s", "spring.cloud.aws.s3.enabled=false"
         })
 @TestExecutionListeners(
         listeners = UserEventPublicationPersistenceTests.SchemaCleanup.class,
@@ -100,10 +100,16 @@ class UserEventPublicationPersistenceTests {
                 .isEqualTo(1));
     }
 
+    private void awaitPublicationCompleted() {
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(
+                        jdbc.queryForObject("SELECT count(*) FROM event_publication", Long.class))
+                .isZero());
+    }
+
     @Test
     void registrationRecordsPublicationAndDeliversAfterCommit() {
         var user = register();
-        awaitState("COMPLETED");
+        awaitPublicationCompleted();
         var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
         verify(publisher).publish(captor.capture());
         assertThat(captor.getValue().payload().userId()).isEqualTo(user);
@@ -146,7 +152,7 @@ class UserEventPublicationPersistenceTests {
         awaitState("FAILED");
         doNothing().when(publisher).publish(any());
         publications.resubmit(ResubmissionOptions.defaults());
-        awaitState("COMPLETED");
+        awaitPublicationCompleted();
         var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
         verify(publisher, times(2)).publish(captor.capture());
         var first = captor.getAllValues().getFirst();
@@ -174,7 +180,7 @@ class UserEventPublicationPersistenceTests {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .locations("classpath:db/migration")
-                    .target("6")
+                    .target("8")
                     .load()
                     .migrate();
             sql.update("INSERT INTO user_credit_provisioning (user_id, event_id) VALUES (?, ?)", userId, eventId);
@@ -196,7 +202,7 @@ class UserEventPublicationPersistenceTests {
                     .isNull();
             jdbc.execute("INSERT INTO event_publication SELECT * FROM " + schema + ".event_publication");
             publications.resubmit(ResubmissionOptions.defaults());
-            awaitState("COMPLETED");
+            awaitPublicationCompleted();
             var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
             verify(publisher).publish(captor.capture());
             assertThat(captor.getValue().eventId()).isEqualTo(eventId);
@@ -244,7 +250,8 @@ class UserEventPublicationPersistenceTests {
                     Mappers.getMapper(UserMapper.class),
                     events,
                     mock(EmailVerificationService.class),
-                    mock(EmailChangeService.class));
+                    mock(EmailChangeService.class),
+                    mock(AvatarStorageService.class));
         }
 
         @Bean

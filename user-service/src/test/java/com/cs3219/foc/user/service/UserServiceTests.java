@@ -45,6 +45,7 @@ class UserServiceTests {
             repository,
             mock(PasswordEncoder.class),
             TestMappers.mapper(),
+            provisioning,
             verification,
             emailChange,
             avatarStorageService);
