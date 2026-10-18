@@ -7,7 +7,7 @@ spring:
     connection-timeout: 5s
   cloud:
     function:
-      definition: userCreated;errandSubmitted;errandCancelled;errandExpired;errandCompleted
+      definition: userCreated;errandCancelled;errandExpired;errandCompleted
     stream:
       bindings:
         errandCancelled-in-0:
@@ -40,20 +40,6 @@ spring:
           producer:
             required-groups: order-credit-settlements
             error-channel-enabled: true
-        errandSubmitted-in-0:
-          destination: foc.errand-submitted.v1
-          group: credit-reservations
-          content-type: application/json
-          consumer:
-            max-attempts: 3
-            back-off-initial-interval: 1000
-            back-off-max-interval: 2000
-        creditResult-out-0:
-          destination: foc.credit-reservation-result.v1
-          content-type: application/json
-          producer:
-            required-groups: order-credit-results
-            error-channel-enabled: true
         userCreated-in-0:
           destination: foc.user-created.v1
           group: credit-provisioning
@@ -75,10 +61,7 @@ spring:
               requeue-rejected: false
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandCancelled-in-0.destination}.dlx
               dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCancelled-in-0.destination}.credit-settlements.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.errandCancelled-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.errandCancelled-in-0.destination}
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCancelled-in-0.destination}.credit-settlements.dlq
           errandExpired-in-0:
             consumer:
               acknowledge-mode: AUTO
@@ -90,10 +73,7 @@ spring:
               requeue-rejected: false
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandExpired-in-0.destination}.dlx
               dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandExpired-in-0.destination}.credit-settlements.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.errandExpired-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.errandExpired-in-0.destination}
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandExpired-in-0.destination}.credit-settlements.dlq
           errandCompleted-in-0:
             consumer:
               acknowledge-mode: AUTO
@@ -105,44 +85,13 @@ spring:
               requeue-rejected: false
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}.dlx
               dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}.credit-settlements.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}.credit-settlements.dlq
           creditSettlementResult-out-0:
             producer:
               use-confirm-header: true
               delivery-mode: PERSISTENT
               exchange-durable: true
               exchange-auto-delete: false
-          creditResult-out-0:
-            producer:
-              use-confirm-header: true
-              delivery-mode: PERSISTENT
-              exchange-durable: true
-              exchange-auto-delete: false
-              auto-bind-dlq: true
-              dead-letter-exchange: ${spring.cloud.stream.bindings.creditResult-out-0.destination}.dlx
-              dead-letter-routing-key: order-credit-results
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditResult-out-0.destination}.order-credit-results.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.creditResult-out-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.creditResult-out-0.destination}
-          errandSubmitted-in-0:
-            consumer:
-              acknowledge-mode: AUTO
-              prefetch: 10
-              exchange-durable: true
-              exchange-auto-delete: false
-              auto-bind-dlq: true
-              republish-to-dlq: false
-              requeue-rejected: false
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandSubmitted-in-0.destination}.dlx
-              dead-letter-routing-key: credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandSubmitted-in-0.destination}.credit-reservations.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.errandSubmitted-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.errandSubmitted-in-0.destination}
           userCreated-in-0:
             consumer:
               acknowledge-mode: AUTO
@@ -155,6 +104,16 @@ spring:
               dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.dlx
               dead-letter-routing-key: credit-provisioning
               dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.credit-provisioning.dlq
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: false
+      staleness:
+        published: 1m
+        processing: 1m
+        resubmitted: 1m
+        check-interval: 30s
   jpa:
     hibernate:
       ddl-auto: validate

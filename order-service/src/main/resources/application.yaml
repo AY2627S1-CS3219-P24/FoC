@@ -1,59 +1,6 @@
 spring:
   application:
     name: order-service
-  rabbitmq:
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    connection-timeout: 5s
-  cloud:
-    function:
-      definition: creditReservationResult
-    stream:
-      bindings:
-        creditReservationResult-in-0:
-          destination: foc.credit-reservation-result.v1
-          group: order-credit-results
-          content-type: application/json
-          consumer:
-            max-attempts: 3
-            back-off-initial-interval: 1000
-            back-off-max-interval: 2000
-        errandSubmitted-out-0:
-          destination: foc.errand-submitted.v1
-          content-type: application/json
-          producer:
-            required-groups: credit-reservations
-            error-channel-enabled: true
-      rabbit:
-        bindings:
-          creditReservationResult-in-0:
-            consumer:
-              acknowledge-mode: AUTO
-              prefetch: 10
-              exchange-durable: true
-              exchange-auto-delete: false
-              auto-bind-dlq: true
-              republish-to-dlq: false
-              requeue-rejected: false
-              dead-letter-exchange: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}.dlx
-              dead-letter-routing-key: order-credit-results
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}.order-credit-results.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}
-          errandSubmitted-out-0:
-            producer:
-              use-confirm-header: true
-              delivery-mode: PERSISTENT
-              exchange-durable: true
-              exchange-auto-delete: false
-              auto-bind-dlq: true
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandSubmitted-out-0.destination}.dlx
-              dead-letter-routing-key: credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandSubmitted-out-0.destination}.credit-reservations.retry
-              dlq-ttl: 30000
-              dlq-dead-letter-exchange: ${spring.cloud.stream.bindings.errandSubmitted-out-0.destination}
-              dlq-dead-letter-routing-key: ${spring.cloud.stream.bindings.errandSubmitted-out-0.destination}
   jpa:
     hibernate:
       ddl-auto: validate

@@ -1,18 +1,17 @@
 package com.cs3219.foc.order.service;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-import com.cs3219.foc.order.config.OrderCreditProperties;
 import com.cs3219.foc.order.exception.IdempotencyConflictException;
+import com.cs3219.foc.order.infrastructure.credit.CreditReservationClient;
 import com.cs3219.foc.order.model.dto.CreateErrandRequest;
-import com.cs3219.foc.order.model.dto.event.CreditReservationResultEvent;
+import com.cs3219.foc.order.model.dto.CreditReservationRequest;
+import com.cs3219.foc.order.model.dto.CreditReservationResponse;
 import com.cs3219.foc.order.repository.ErrandRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
-import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -25,11 +24,13 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -49,20 +50,20 @@ class ErrandPersistenceTests {
     private ErrandService service;
 
     @Autowired
-    private CreditReservationResultService results;
-
-    @Autowired
-    private ErrandSubmissionOutboxService outbox;
+    private CreditReservationClient credit;
 
     @Autowired
     private DataSource dataSource;
 
     private JdbcTemplate jdbc;
+    private final CreateErrandRequest request = new CreateErrandRequest("COM3", "UTown", "Collect lunch", 80);
 
     @BeforeEach
     void clean() {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE errands CASCADE");
+        reset(credit);
+        when(credit.reserve(any(), any())).thenReturn(new CreditReservationResponse("RESERVED"));
     }
 
     @AfterAll
@@ -76,29 +77,8 @@ class ErrandPersistenceTests {
         }
     }
 
-    private final CreateErrandRequest request = new CreateErrandRequest("COM3", "UTown", "Collect lunch", 80);
-
-    private long count(String table) {
-        return jdbc.queryForObject("SELECT count(*) FROM " + table, Long.class);
-    }
-
-    private CreditReservationResultEvent result(UUID id, String outcome) {
-        var row = jdbc.queryForMap("SELECT * FROM errands WHERE id = ?", id);
-        return new CreditReservationResultEvent(
-                UUID.randomUUID(),
-                "CreditReservationResultEvent",
-                1,
-                OffsetDateTime.now(),
-                new CreditReservationResultEvent.Payload(
-                        (UUID) row.get("reservation_operation_id"),
-                        id,
-                        (UUID) row.get("requester_id"),
-                        ((Number) row.get("reward")).longValue(),
-                        outcome));
-    }
-
     @Test
-    void concurrentHttpRetriesCreateOneErrandAndOneSubmissionPerRequester() throws Exception {
+    void concurrentRetriesCreateOneErrandWithOneReservationIdentity() throws Exception {
         var owner = UUID.randomUUID();
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
@@ -106,163 +86,93 @@ class ErrandPersistenceTests {
             for (int i = 0; i < 2; i++)
                 tasks.add(executor.submit(() -> {
                     barrier.await(10, TimeUnit.SECONDS);
-                    return service.create(owner, "retry-key", request).id();
+                    return service.create(owner, "key", request, "token").id();
                 }));
             assertThat(tasks.get(0).get(20, TimeUnit.SECONDS))
                     .isEqualTo(tasks.get(1).get(20, TimeUnit.SECONDS));
         }
-        assertThat(count("errands")).isEqualTo(1);
-        assertThat(count("errand_submission_outbox")).isEqualTo(1);
-        assertThat(service.create(owner, "retry-key", request).status()).isEqualTo("PENDING_CREDIT");
-        service.create(UUID.randomUUID(), "retry-key", request);
-        assertThat(count("errands")).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM errands", Long.class))
+                .isEqualTo(1);
+        assertThat(service.create(owner, "key", request, "token").status()).isEqualTo("OPEN");
+        var captor = ArgumentCaptor.forClass(CreditReservationRequest.class);
+        verify(credit, atLeastOnce()).reserve(captor.capture(), eq("token"));
+        assertThat(captor.getAllValues().stream().distinct().count()).isEqualTo(1);
     }
 
     @Test
-    void changedIdempotentRequestConflictsAndAnotherUserCannotReadTheErrand() {
+    void changedPayloadConflictsAndAnotherUserCannotReadErrand() {
         var owner = UUID.randomUUID();
-        var e = service.create(owner, "key", request);
-        assertThatThrownBy(() ->
-                        service.create(owner, "key", new CreateErrandRequest("COM3", "UTown", "Collect lunch", 10)))
+        var e = service.create(owner, "key", request, "token");
+        assertThatThrownBy(() -> service.create(
+                        owner, "key", new CreateErrandRequest("COM3", "UTown", "Collect lunch", 10), "token"))
                 .isInstanceOf(IdempotencyConflictException.class);
         assertThatThrownBy(() -> service.get(UUID.randomUUID(), e.id())).isInstanceOf(ResponseStatusException.class);
-        assertThat(service.get(owner, e.id()).reward()).isEqualTo(80);
-        assertThat(count("errand_submission_outbox")).isEqualTo(1);
+        verify(credit, times(1)).reserve(any(), any());
     }
 
     @Test
-    void outboxFailureRollsBackCreationAndKeyCanBeRetried() {
+    void insufficientCreditsAreReturnedImmediatelyAndDecisionIsStable() {
+        when(credit.reserve(any(), any())).thenReturn(new CreditReservationResponse("INSUFFICIENT_BALANCE"));
         var owner = UUID.randomUUID();
-        jdbc.execute("ALTER TABLE errand_submission_outbox ADD CONSTRAINT fail_enqueue CHECK (FALSE)");
+        var rejected = service.create(owner, "key", request, "token");
+        assertThat(rejected.status()).isEqualTo("CREDIT_REJECTED");
+        assertThat(rejected.creditOutcome()).isEqualTo("INSUFFICIENT_BALANCE");
+        when(credit.reserve(any(), any())).thenReturn(new CreditReservationResponse("RESERVED"));
+        assertThat(service.create(owner, "key", request, "token").status()).isEqualTo("CREDIT_REJECTED");
+        verify(credit, times(1)).reserve(any(), any());
+    }
+
+    @Test
+    void lostCreditResponseKeepsIdentityForExplicitRetry() {
+        var owner = UUID.randomUUID();
+        when(credit.reserve(any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE))
+                .thenReturn(new CreditReservationResponse("RESERVED"));
+        assertThatThrownBy(() -> service.create(owner, "key", request, "token"))
+                .isInstanceOf(ResponseStatusException.class);
+        assertThat(service.create(owner, "key", request, "token").status()).isEqualTo("OPEN");
+        var captor = ArgumentCaptor.forClass(CreditReservationRequest.class);
+        verify(credit, times(2)).reserve(captor.capture(), eq("token"));
+        assertThat(captor.getAllValues().getFirst())
+                .isEqualTo(captor.getAllValues().getLast());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM errands", Long.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void orderWriteFailureAfterReservationRetriesSameCreditOperation() {
+        var owner = UUID.randomUUID();
+        jdbc.execute("ALTER TABLE errands ADD CONSTRAINT fail_funding CHECK(credit_outcome IS NULL)");
         try {
-            assertThatThrownBy(() -> service.create(owner, "key", request)).isInstanceOf(RuntimeException.class);
-            assertThat(count("errands")).isZero();
-            assertThat(count("errand_submission_outbox")).isZero();
+            assertThatThrownBy(() -> service.create(owner, "key", request, "token"))
+                    .isInstanceOf(RuntimeException.class);
         } finally {
-            jdbc.execute("ALTER TABLE errand_submission_outbox DROP CONSTRAINT fail_enqueue");
+            jdbc.execute("ALTER TABLE errands DROP CONSTRAINT fail_funding");
         }
-        assertThat(service.create(owner, "key", request).status()).isEqualTo("PENDING_CREDIT");
+        assertThat(service.create(owner, "key", request, "token").status()).isEqualTo("OPEN");
+        var captor = ArgumentCaptor.forClass(CreditReservationRequest.class);
+        verify(credit, times(2)).reserve(captor.capture(), eq("token"));
+        assertThat(captor.getAllValues().getFirst())
+                .isEqualTo(captor.getAllValues().getLast());
     }
 
     @Test
-    void onlyMatchingSuccessOpensAndDuplicatesDoNotReopenLaterStates() {
+    void duplicateCreationDoesNotReopenLaterState() {
         var owner = UUID.randomUUID();
-        var e = service.create(owner, "key", request);
-        var event = result(e.id(), "RESERVED");
-        results.accept(event);
-        assertThat(service.get(owner, e.id()).status()).isEqualTo("PENDING_CREDIT");
-        results.processNext();
-        assertThat(service.get(owner, e.id()).status()).isEqualTo("OPEN");
-        results.accept(event);
-        assertThat(results.processNext()).isFalse();
-        for (var state : List.of("ACCEPTED", "CANCELLED", "EXPIRED", "COMPLETED")) {
-            jdbc.update("UPDATE errands SET status = ? WHERE id = ?", state, e.id());
-            results.accept(result(e.id(), "RESERVED"));
-            results.processNext();
-            assertThat(service.get(owner, e.id()).status()).isEqualTo(state);
-        }
-        assertThat(service.create(owner, "key", request).id()).isEqualTo(e.id());
-        assertThat(count("errand_submission_outbox")).isEqualTo(1);
-    }
-
-    @Test
-    void rejectionAndCancellationBeforeResultNeverBecomeOpen() {
-        var owner = UUID.randomUUID();
-        var rejected = service.create(owner, "reject", request);
-        results.accept(result(rejected.id(), "INSUFFICIENT_BALANCE"));
-        results.processNext();
-        results.accept(result(rejected.id(), "RESERVED"));
-        results.processNext();
-        assertThat(service.get(owner, rejected.id()).status()).isEqualTo("CREDIT_REJECTED");
-        assertThat(service.get(owner, rejected.id()).creditOutcome()).isEqualTo("INSUFFICIENT_BALANCE");
-        var cancelled = service.create(owner, "cancel", request);
-        jdbc.update("UPDATE errands SET status = 'CANCELLED' WHERE id = ?", cancelled.id());
-        results.accept(result(cancelled.id(), "RESERVED"));
-        results.processNext();
-        assertThat(service.get(owner, cancelled.id()).status()).isEqualTo("CANCELLED");
-        assertThat(service.get(owner, cancelled.id()).creditOutcome()).isEqualTo("RESERVED");
-    }
-
-    @Test
-    void changedResultIdentityOrAmountIsRejectedBeforeInboxAcceptance() {
-        var owner = UUID.randomUUID();
-        var e = service.create(owner, "key", request);
-        var event = result(e.id(), "RESERVED");
-        var p = event.payload();
-        for (var changed : List.of(
-                new CreditReservationResultEvent.Payload(UUID.randomUUID(), e.id(), owner, 80, "RESERVED"),
-                new CreditReservationResultEvent.Payload(p.operationId(), e.id(), UUID.randomUUID(), 80, "RESERVED"),
-                new CreditReservationResultEvent.Payload(p.operationId(), e.id(), owner, 70, "RESERVED"))) {
-            assertThatThrownBy(() -> results.accept(new CreditReservationResultEvent(
-                            UUID.randomUUID(), event.eventType(), 1, event.occurredAt(), changed)))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-        assertThat(count("credit_reservation_result_inbox")).isZero();
-        results.accept(event);
-        assertThatThrownBy(() -> results.accept(new CreditReservationResultEvent(
-                        event.eventId(),
-                        event.eventType(),
-                        1,
-                        event.occurredAt(),
-                        new CreditReservationResultEvent.Payload(
-                                p.operationId(), e.id(), owner, 80, "INSUFFICIENT_BALANCE"))))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void resultCompletionFailureRollsBackStatusAndResumes() {
-        var owner = UUID.randomUUID();
-        var e = service.create(owner, "key", request);
-        results.accept(result(e.id(), "RESERVED"));
-        jdbc.execute(
-                "ALTER TABLE credit_reservation_result_inbox ADD CONSTRAINT fail_completion CHECK (processed_at IS NULL)");
-        try {
-            assertThatThrownBy(() -> results.processNext()).isInstanceOf(RuntimeException.class);
-            assertThat(service.get(owner, e.id()).status()).isEqualTo("PENDING_CREDIT");
-            assertThat(service.get(owner, e.id()).creditOutcome()).isNull();
-        } finally {
-            jdbc.execute("ALTER TABLE credit_reservation_result_inbox DROP CONSTRAINT fail_completion");
-        }
-        results.processNext();
-        assertThat(service.get(owner, e.id()).status()).isEqualTo("OPEN");
-    }
-
-    @Test
-    void lostConfirmAndExpiredLeaseRepublishSameSubmission() {
-        var owner = UUID.randomUUID();
-        var e = service.create(owner, "key", request);
-        var original = outbox.claimNext().orElseThrow();
-        assertThat(original.event().payload().errandId()).isEqualTo(e.id());
-        assertThat(outbox.claimNext()).isEmpty();
-        outbox.retryLater(original, "BrokerUnavailable");
-        jdbc.update("UPDATE errand_submission_outbox SET next_attempt_at = CURRENT_TIMESTAMP");
-        var retry = outbox.claimNext().orElseThrow();
-        assertThat(retry.event()).isEqualTo(original.event());
-        jdbc.update("UPDATE errand_submission_outbox SET lease_until = CURRENT_TIMESTAMP - INTERVAL '1 second'");
-        var recovered = outbox.claimNext().orElseThrow();
-        assertThat(recovered.event()).isEqualTo(original.event());
-        outbox.markPublished(retry);
-        assertThat(jdbc.queryForObject("SELECT published_at IS NULL FROM errand_submission_outbox", Boolean.class))
-                .isTrue();
-        outbox.markPublished(recovered);
-        assertThat(outbox.claimNext()).isEmpty();
-        assertThat(service.get(owner, e.id()).status()).isEqualTo("PENDING_CREDIT");
+        var e = service.create(owner, "key", request, "token");
+        jdbc.update("UPDATE errands SET status='COMPLETED' WHERE id=?", e.id());
+        assertThat(service.create(owner, "key", request, "token").status()).isEqualTo("COMPLETED");
+        verify(credit, times(1)).reserve(any(), any());
     }
 
     @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
-    @Import({ErrandService.class, CreditReservationResultService.class, ErrandSubmissionOutboxService.class})
+    @Import(ErrandService.class)
     static class TestConfig {
         @Bean
-        OrderCreditProperties properties() {
-            return new OrderCreditProperties(
-                    10,
-                    10,
-                    Duration.ofSeconds(5),
-                    Duration.ofSeconds(30),
-                    Duration.ofMillis(10),
-                    Duration.ofSeconds(1));
+        CreditReservationClient credit() {
+            return mock(CreditReservationClient.class);
         }
 
         @Bean

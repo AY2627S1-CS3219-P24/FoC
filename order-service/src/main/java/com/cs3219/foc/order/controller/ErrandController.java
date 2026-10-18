@@ -27,12 +27,15 @@ public class ErrandController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String key,
             @Valid @RequestBody CreateErrandRequest request) {
-        var errand = service.create(userId(jwt), key, request);
+        var errand = service.create(userId(jwt), key, request, jwt.getTokenValue());
         var location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(errand.id())
                 .toUri();
-        return ResponseEntity.status("PENDING_CREDIT".equals(errand.status()) ? HttpStatus.ACCEPTED : HttpStatus.OK)
+        return ResponseEntity.status(
+                        "CREDIT_REJECTED".equals(errand.status())
+                                ? HttpStatus.UNPROCESSABLE_ENTITY
+                                : HttpStatus.CREATED)
                 .location(location)
                 .body(errand);
     }

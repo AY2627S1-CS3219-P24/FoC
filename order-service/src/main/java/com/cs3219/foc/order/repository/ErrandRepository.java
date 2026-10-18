@@ -27,10 +27,7 @@ public interface ErrandRepository extends JpaRepository<Errand, UUID> {
 
     Optional<Errand> findByIdAndRequesterId(UUID id, UUID requesterId);
 
-    @Query(value = "SELECT * FROM errands WHERE id = :id FOR UPDATE", nativeQuery = true)
-    Optional<Errand> lockById(@Param("id") UUID id);
-
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query(value = """
         UPDATE errands SET credit_outcome = :outcome,
           status = CASE WHEN status = 'PENDING_CREDIT' THEN :status ELSE status END,

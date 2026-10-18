@@ -57,19 +57,19 @@ class ErrandControllerTests {
     }
 
     @Test
-    void creationUsesJwtRequesterAndReturnsPendingWithPollingLocation() throws Exception {
+    void creationUsesJwtRequesterAndReturnsImmediateFundingDecision() throws Exception {
         var owner = UUID.randomUUID();
-        var e = response(owner, "PENDING_CREDIT");
-        when(service.create(eq(owner), eq("key"), any())).thenReturn(e);
+        var e = response(owner, "OPEN");
+        when(service.create(eq(owner), eq("key"), any(), eq("token"))).thenReturn(e);
         mvc.perform(post("/orders")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .header("Idempotency-Key", "key")
                         .contentType("application/json")
                         .content(body))
-                .andExpect(status().isAccepted())
+                .andExpect(status().isCreated())
                 .andExpect(header().string("Location", "http://localhost/orders/" + e.id()))
-                .andExpect(jsonPath("$.status").value("PENDING_CREDIT"));
-        verify(service).create(eq(owner), eq("key"), any());
+                .andExpect(jsonPath("$.status").value("OPEN"));
+        verify(service).create(eq(owner), eq("key"), any(), eq("token"));
     }
 
     @Test
@@ -111,7 +111,7 @@ class ErrandControllerTests {
 
     @Test
     void changedKeyPayloadReturnsConflict() throws Exception {
-        when(service.create(any(), any(), any())).thenThrow(new IdempotencyConflictException());
+        when(service.create(any(), any(), any(), any())).thenThrow(new IdempotencyConflictException());
         mvc.perform(post("/orders")
                         .with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString())))
                         .header("Idempotency-Key", "key")
@@ -124,13 +124,13 @@ class ErrandControllerTests {
     @Test
     void replayOfFinishedCreationReturnsCurrentState() throws Exception {
         var owner = UUID.randomUUID();
-        when(service.create(eq(owner), any(), any())).thenReturn(response(owner, "OPEN"));
+        when(service.create(eq(owner), any(), any(), any())).thenReturn(response(owner, "OPEN"));
         mvc.perform(post("/orders")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .header("Idempotency-Key", "key")
                         .contentType("application/json")
                         .content(body))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("OPEN"));
     }
 
@@ -145,6 +145,19 @@ class ErrandControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CREDIT_REJECTED"));
         verify(service).get(owner, e.id());
+    }
+
+    @Test
+    void insufficientCreditsReturnImmediateRejection() throws Exception {
+        var owner = UUID.randomUUID();
+        when(service.create(eq(owner), any(), any(), any())).thenReturn(response(owner, "CREDIT_REJECTED"));
+        mvc.perform(post("/orders")
+                        .with(jwt().jwt(t -> t.subject(owner.toString())))
+                        .header("Idempotency-Key", "key")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value("CREDIT_REJECTED"));
     }
 
     @TestConfiguration

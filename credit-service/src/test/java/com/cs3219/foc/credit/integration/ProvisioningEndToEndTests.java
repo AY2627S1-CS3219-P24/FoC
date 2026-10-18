@@ -259,7 +259,6 @@ class ProvisioningEndToEndTests {
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
                     "--spring.cloud.function.definition=userCreated",
-                    "--credit.rewards.enabled=false",
                     "--spring.cloud.stream.bindings.userCreated-in-0.destination=" + destination,
                     "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-initial-interval=100",
                     "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-max-interval=200"));

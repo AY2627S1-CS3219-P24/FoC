@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(ReservationConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleReservationConflict(ReservationConflictException exception) {
+        return new ErrorResponse("RESERVATION_CONFLICT", exception.getMessage());
+    }
+
     @ExceptionHandler(CreditAccountPendingException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handlePendingAccount(CreditAccountPendingException exception) {

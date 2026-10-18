@@ -4,8 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record CreditSettlementResultEvent(
-        UUID eventId, String eventType, int schemaVersion, OffsetDateTime occurredAt, Payload payload)
-        implements CreditResultEvent {
+        UUID eventId, String eventType, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
     public record Payload(
             UUID operationId,
             UUID errandId,
@@ -13,6 +12,5 @@ public record CreditSettlementResultEvent(
             long amount,
             String outcome,
             String settlementType,
-            UUID courierId)
-            implements CreditResultEvent.Payload {}
+            UUID courierId) {}
 }

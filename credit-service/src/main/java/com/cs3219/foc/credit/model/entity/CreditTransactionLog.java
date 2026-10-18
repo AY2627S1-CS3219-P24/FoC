@@ -8,10 +8,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "credit_reserve_operations")
+@Table(name = "credit_transaction_log")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class CreditReserveOperation {
+public class CreditTransactionLog {
     @Id
     @Column(name = "operation_id")
     private UUID operationId;
@@ -19,18 +19,18 @@ public class CreditReserveOperation {
     @Column(name = "errand_id")
     private UUID errandId;
 
-    @Column(name = "requester_id")
-    private UUID requesterId;
+    @Column(name = "user_id")
+    private UUID userId;
+
+    @Column(name = "courier_id")
+    private UUID courierId;
 
     @Column(name = "amount")
     private long amount;
 
-    @Column(name = "outcome")
-    private String outcome;
+    @Column(name = "transaction_type")
+    private String transactionType;
 
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
-
-    @Column(name = "completed_at")
-    private OffsetDateTime completedAt;
 }

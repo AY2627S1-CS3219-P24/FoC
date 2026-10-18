@@ -18,13 +18,16 @@ public interface CreditReservationRepository extends JpaRepository<CreditReserva
     int settle(@Param("errand") UUID errand, @Param("state") String state, @Param("courier") UUID courier);
 
     @Modifying
-    @Query(
-            value =
-                    "INSERT INTO credit_reservations(errand_id, operation_id, user_id, amount) VALUES (:errand, :operation, :user, :amount)",
-            nativeQuery = true)
+    @Query(value = """
+        INSERT INTO credit_reservations(errand_id, operation_id, user_id, amount, state, settled_at)
+        VALUES (:errand, :operation, :user, :amount, :state,
+                CASE WHEN :state = 'INSUFFICIENT_BALANCE' THEN CURRENT_TIMESTAMP ELSE NULL END)
+        ON CONFLICT DO NOTHING
+        """, nativeQuery = true)
     int reserve(
             @Param("errand") UUID errand,
             @Param("operation") UUID operation,
             @Param("user") UUID user,
-            @Param("amount") long amount);
+            @Param("amount") long amount,
+            @Param("state") String state);
 }

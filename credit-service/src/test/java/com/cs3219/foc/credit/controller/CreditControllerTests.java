@@ -3,14 +3,16 @@ package com.cs3219.foc.credit.controller;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.cs3219.foc.credit.config.SecurityConfig;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.exception.GlobalExceptionHandler;
+import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.service.CreditAccountService;
+import com.cs3219.foc.credit.service.CreditReservationService;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,11 +40,14 @@ class CreditControllerTests {
     @Autowired
     private JwtDecoder decoder;
 
+    @Autowired
+    private CreditReservationService reservations;
+
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder);
+        reset(service, decoder, reservations);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -103,11 +108,53 @@ class CreditControllerTests {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void reservationUsesAuthenticatedAccountAndValidatesRequest() throws Exception {
+        var owner = UUID.randomUUID();
+        var operation = UUID.randomUUID();
+        var errand = UUID.randomUUID();
+        var body = "{\"operationId\":\"" + operation + "\",\"errandId\":\"" + errand + "\",\"amount\":80}";
+        when(reservations.reserve(eq(owner), any())).thenReturn(new CreditReservationResponse("RESERVED"));
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt().jwt(t -> t.subject(owner.toString())))
+                        .param("userId", UUID.randomUUID().toString())
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("RESERVED"));
+        verify(reservations).reserve(owner, new ReserveCreditRequest(operation, errand, 80));
+        mvc.perform(post("/credits/reservations")
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt().jwt(t -> t.subject(owner.toString())))
+                        .contentType("application/json")
+                        .content(body.replace("80", "0")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt().jwt(t -> t.subject(owner.toString())))
+                        .contentType("application/json")
+                        .content("{\"amount\":80}"))
+                .andExpect(status().isBadRequest());
+        verifyNoMoreInteractions(reservations);
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableWebSecurity
-    @Import({SecurityConfig.class, CreditController.class, GlobalExceptionHandler.class})
+    @Import({
+        SecurityConfig.class,
+        CreditController.class,
+        CreditReservationController.class,
+        GlobalExceptionHandler.class
+    })
     static class TestConfig {
+        @Bean
+        CreditReservationService reservations() {
+            return mock(CreditReservationService.class);
+        }
+
         @Bean
         CreditAccountService creditAccountService() {
             return mock(CreditAccountService.class);
