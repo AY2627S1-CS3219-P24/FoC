@@ -1,10 +1,12 @@
 package com.cs3219.foc.credit.model.dto.event;
 
+import com.cs3219.foc.credit.config.CreditAmountDeserializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /** Order-owned terminal facts, validated once at the messaging boundary. */
 public record ErrandSettlementEvent(
@@ -25,6 +27,9 @@ public record ErrandSettlementEvent(
             @NotNull UUID reservationOperationId,
             @NotNull UUID errandId,
             @NotNull UUID requesterId,
-            @Positive long amount,
+
+            @Positive @JsonDeserialize(using = CreditAmountDeserializer.class)
+            long amount,
+
             UUID courierId) {}
 }

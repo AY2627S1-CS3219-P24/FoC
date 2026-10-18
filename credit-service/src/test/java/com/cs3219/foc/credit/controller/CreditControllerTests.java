@@ -16,6 +16,8 @@ import com.cs3219.foc.credit.service.CreditReservationService;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -138,6 +140,33 @@ class CreditControllerTests {
                         .content("{\"amount\":80}"))
                 .andExpect(status().isBadRequest());
         verifyNoMoreInteractions(reservations);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1, 80, Long.MAX_VALUE})
+    void reservationAcceptsIntegerAmountsWithoutChangingThem(long amount) throws Exception {
+        var owner = UUID.randomUUID();
+        var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
+        when(reservations.reserve(owner, request)).thenReturn(new CreditReservationResponse("RESERVED"));
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt().jwt(t -> t.subject(owner.toString())))
+                        .contentType("application/json")
+                        .content("{\"operationId\":\"" + request.operationId() + "\",\"errandId\":\""
+                                + request.errandId() + "\",\"amount\":" + amount + "}"))
+                .andExpect(status().isOk());
+        verify(reservations).reserve(owner, request);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1.9", "1.0", "1e2", "0", "-1", "9223372036854775808", "-9223372036854775809"})
+    void reservationRejectsInvalidAmountsBeforeCallingService(String amount) throws Exception {
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt().jwt(t -> t.subject(UUID.randomUUID().toString())))
+                        .contentType("application/json")
+                        .content("{\"operationId\":\"" + UUID.randomUUID() + "\",\"errandId\":\"" + UUID.randomUUID()
+                                + "\",\"amount\":" + amount + "}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(reservations);
     }
 
     @TestConfiguration

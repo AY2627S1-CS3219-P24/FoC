@@ -8,6 +8,7 @@ import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.credit.model.dto.event.ErrandSettlementEvent;
 import com.cs3219.foc.credit.service.*;
 import com.rabbitmq.client.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -96,6 +97,28 @@ class SettlementMessagingTests {
                     var b = reserved(reserve, owner, 20, "ErrandExpiredEvent", null);
                     var c = reserved(reserve, owner, 40, "ErrandCompletedEvent", courier);
                     channel.confirmSelect();
+                    var invalidAmounts =
+                            List.of("1.9", "1.0", "1e2", "0", "-1", "9223372036854775808", "-9223372036854775809");
+                    var body = JsonMapper.builder().build().writeValueAsString(a);
+                    for (var amount : invalidAmounts) {
+                        channel.basicPublish(
+                                cancelled,
+                                cancelled,
+                                new AMQP.BasicProperties.Builder()
+                                        .contentType("application/json")
+                                        .deliveryMode(2)
+                                        .build(),
+                                body.replace("\"amount\":20", "\"amount\":" + amount)
+                                        .getBytes(StandardCharsets.UTF_8));
+                    }
+                    channel.waitForConfirmsOrDie(5000);
+                    await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
+                                    channel.queueDeclarePassive(cancelled + ".credit-settlements.dlq")
+                                            .getMessageCount())
+                            .isEqualTo(invalidAmounts.size()));
+                    assertThat(accounts.getBalance(owner).reservedBalance()).isEqualTo(80);
+                    assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
+                            .isEqualTo(3);
                     publish(channel, cancelled, a);
                     publish(channel, expired, b);
                     publish(channel, completed, c);

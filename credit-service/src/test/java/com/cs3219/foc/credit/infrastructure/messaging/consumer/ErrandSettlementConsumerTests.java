@@ -11,6 +11,10 @@ import jakarta.validation.ValidatorFactory;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 class ErrandSettlementConsumerTests {
     private final CreditSettlementService service = mock(CreditSettlementService.class);
@@ -79,5 +83,28 @@ class ErrandSettlementConsumerTests {
                         .errandExpired(service, validators.getValidator())
                         .accept(e))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1, 80, Long.MAX_VALUE})
+    void acceptsJsonIntegerAmountsWithoutChangingThem(long amount) {
+        var json = JsonMapper.builder().build();
+        var expected = event("ErrandCompletedEvent", 1, UUID.randomUUID(), amount);
+        var decoded = json.readValue(json.writeValueAsString(expected), ErrandSettlementEvent.class);
+        assertThat(decoded.payload()).isEqualTo(expected.payload());
+        consumers.errandCompleted(service, validators.getValidator()).accept(decoded);
+        verify(service).settle(decoded);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1.9", "1.0", "1e2", "0", "-1", "9223372036854775808", "-9223372036854775809"})
+    void rejectsInvalidJsonAmountsBeforeCallingService(String amount) {
+        var json = JsonMapper.builder().build();
+        var body = json.writeValueAsString(event("ErrandCompletedEvent", 1, UUID.randomUUID(), 80))
+                .replace("\"amount\":80", "\"amount\":" + amount);
+        var consumer = consumers.errandCompleted(service, validators.getValidator());
+        assertThatThrownBy(() -> consumer.accept(json.readValue(body, ErrandSettlementEvent.class)))
+                .isInstanceOfAny(JacksonException.class, ConstraintViolationException.class);
+        verifyNoInteractions(service);
     }
 }
