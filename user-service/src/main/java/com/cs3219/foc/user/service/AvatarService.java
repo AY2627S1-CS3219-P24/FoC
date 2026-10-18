@@ -106,11 +106,11 @@ public class AvatarService {
         TransactionSynchronizationManager.registerSynchronization(rollbackCleanup);
     }
 
-    private void cleanupFailedUpload(String key, RuntimeException failure) {
+    private void cleanupFailedUpload(String key, RuntimeException originalFailure) {
         try {
             avatarStorageService.deleteAvatar(key);
         } catch (RuntimeException cleanupFailure) {
-            failure.addSuppressed(cleanupFailure);
+            originalFailure.addSuppressed(cleanupFailure);
             log.warn("Could not delete unreferenced image: key={}", key, cleanupFailure);
         }
     }
