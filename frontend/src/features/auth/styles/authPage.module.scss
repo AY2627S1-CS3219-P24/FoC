@@ -2,6 +2,21 @@
   text-align: center;
 }
 
+.description {
+  margin: 16px 0 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .title {
   margin: 0;
   font-size: 24px;

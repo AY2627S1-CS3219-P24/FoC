@@ -38,7 +38,6 @@ class SupplierSpecificationsTests {
 
     @BeforeEach
     void setUp() {
-        // Replace the Flyway seed data with a small, known set.
         repository.deleteAll();
         repository.flush();
         repository.saveAll(List.of(

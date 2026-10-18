@@ -3,7 +3,6 @@ import type { UserProfileDto } from '../types/auth.types'
 
 export type UpdateProfileRequest = {
   name: string
-  email: string
   phoneNumber: string | null
   faculty: string | null
 }
@@ -25,6 +24,10 @@ export const changePassword = async (request: {
   newPassword: string
 }) => {
   await axiosClient.put('/users/me/password', request)
+}
+
+export const requestEmailChange = async (email: string) => {
+  await axiosClient.post('/users/me/email-change', { email })
 }
 
 export const uploadAvatar = async (file: File) => {

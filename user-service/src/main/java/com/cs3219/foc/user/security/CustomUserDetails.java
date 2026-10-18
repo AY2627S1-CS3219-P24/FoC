@@ -32,8 +32,12 @@ public class CustomUserDetails implements UserDetails {
     @Getter
     private final List<UserRole> roles;
 
+    @Getter
+    private final boolean emailVerified;
+
     public static CustomUserDetails from(User user) {
-        return new CustomUserDetails(user.getId(), user.getEmail(), user.getPasswordHash(), user.getRoles());
+        return new CustomUserDetails(
+                user.getId(), user.getEmail(), user.getPasswordHash(), user.getRoles(), user.isEmailVerified());
     }
 
     @Override

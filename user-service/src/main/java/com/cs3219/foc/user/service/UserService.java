@@ -42,6 +42,8 @@ public class UserService {
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
+    private final EmailVerificationService emailVerification;
+    private final EmailChangeService emailChange;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -127,12 +129,12 @@ public class UserService {
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto updateUser(UUID id, UpdateUserRequest request) {
         validateFaculty(request.faculty());
-        var user = getUser(id);
+        var user = userRepository.findForUpdateById(id).orElseThrow(() -> new UserNotFoundException("User not found"));
 
         validateRoleChange(user.getRoles(), request.roles());
 
-        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists with this email.");
+        if (!request.email().equals(user.getEmail())) {
+            emailChange.requestChange(id, request.email());
         }
 
         userMapper.updateUser(request, user);
@@ -167,14 +169,6 @@ public class UserService {
         // Avoid saving a stale password hash if a password change happens concurrently.
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
-        if (!NusEmailPolicy.isAllowed(request.email())) {
-            throw new UnsupportedEmailDomainException();
-        }
-
-        if (userRepository.existsByEmailAndIdNot(request.email(), userId)) {
-            throw new EntityAlreadyExistsException("Email is already associated with another account");
-        }
-
         userMapper.updateUserProfile(request, user);
         var savedUser = userRepository.saveAndFlush(user);
         return userMapper.toUserProfileDto(savedUser);
@@ -208,6 +202,7 @@ public class UserService {
 
         var savedUser = userRepository.save(user);
         events.publishEvent(UserCreatedEvent.of(UUID.randomUUID(), savedUser.getId(), OffsetDateTime.now()));
+        emailVerification.createRegistrationVerification(savedUser);
         return userMapper.toUserProfileDto(savedUser);
     }
 }
