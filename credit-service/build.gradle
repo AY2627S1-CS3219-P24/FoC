@@ -44,6 +44,7 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     // End-to-end tests boot both services; production modules remain independent.
     testImplementation project(':user-service')
+    testImplementation 'org.springframework.boot:spring-boot-starter-mail'
     testImplementation 'org.awaitility:awaitility'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

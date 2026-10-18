@@ -214,3 +214,17 @@ test('saves normalized phone and clears faculty', async () => {
     }),
   )
 })
+
+test('email change feedback explains that verification is still required', async () => {
+  const { patch, userEvents } = renderEditPage()
+  const email = await screen.findByRole('textbox', { name: 'Email' })
+  await userEvents.clear(email)
+  await userEvents.type(email, 'updated@u.nus.edu')
+  await userEvents.click(screen.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(patch).toHaveBeenCalledTimes(1))
+  expect(
+    await screen.findByText(
+      /A verification email has been requested for updated@u.nus.edu/,
+    ),
+  ).toBeVisible()
+})

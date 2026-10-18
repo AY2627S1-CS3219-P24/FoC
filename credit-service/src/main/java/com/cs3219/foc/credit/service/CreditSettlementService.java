@@ -131,10 +131,8 @@ public class CreditSettlementService {
             }
         }
         if (payout) {
-            accounts.debitReserved(reservation.getUserId(), reservation.getAmount());
-            accounts.creditAvailable(recipient, reservation.getAmount());
-        } else {
-            accounts.refund(reservation.getUserId(), reservation.getAmount());
+            accounts.debitTotal(reservation.getUserId(), reservation.getAmount());
+            accounts.creditTotal(recipient, reservation.getAmount());
         }
         reservations.settle(reservation.getErrandId(), targetState, operation.getCourierId());
         finish(operation, delivery.getEventId(), targetState);

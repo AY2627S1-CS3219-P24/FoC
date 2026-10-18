@@ -58,10 +58,14 @@ class ErrandFundingIntegrationTests {
             assertThat(rejected.statusCode()).isEqualTo(202);
             apps.awaitState(apps.unfunded, apps.id(rejected), "CREDIT_REJECTED");
             assertThat(apps.creditSql.queryForObject(
-                            "SELECT available_balance FROM credit_accounts WHERE user_id = ?", Long.class, apps.owner))
+                            "SELECT total_balance - (SELECT COALESCE(SUM(amount), 0) FROM credit_reservations r WHERE r.user_id = a.user_id AND r.state = 'RESERVED') FROM credit_accounts a WHERE user_id = ?",
+                            Long.class,
+                            apps.owner))
                     .isEqualTo(20);
             assertThat(apps.creditSql.queryForObject(
-                            "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?", Long.class, apps.owner))
+                            "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
+                            Long.class,
+                            apps.owner))
                     .isEqualTo(80);
             assertThat(apps.creditSql.queryForObject("SELECT count(*) FROM credit_reservations", Long.class))
                     .isEqualTo(1);
@@ -98,7 +102,9 @@ class ErrandFundingIntegrationTests {
                     .isEqualTo(1));
             assertThat(apps.state(apps.owner, id)).isEqualTo("PENDING_CREDIT");
             assertThat(apps.creditSql.queryForObject(
-                            "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?", Long.class, apps.owner))
+                            "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
+                            Long.class,
+                            apps.owner))
                     .isZero();
             apps.stopOrder();
             apps.broker.online();
@@ -109,7 +115,9 @@ class ErrandFundingIntegrationTests {
             assertThat(apps.creditSql.queryForObject("SELECT count(*) FROM credit_reservations", Long.class))
                     .isEqualTo(1);
             assertThat(apps.creditSql.queryForObject(
-                            "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?", Long.class, apps.owner))
+                            "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
+                            Long.class,
+                            apps.owner))
                     .isEqualTo(80);
         }
     }
@@ -151,7 +159,7 @@ class ErrandFundingIntegrationTests {
                     .load()
                     .migrate();
             creditSql.update(
-                    "INSERT INTO credit_accounts(user_id,available_balance) VALUES (?,100),(?,0)", owner, unfunded);
+                    "INSERT INTO credit_accounts(user_id,total_balance) VALUES (?,100),(?,0)", owner, unfunded);
         }
 
         JdbcTemplate sql(String schema) {
@@ -226,7 +234,6 @@ class ErrandFundingIntegrationTests {
                     "--spring.cloud.function.definition=errandSubmitted",
                     "--spring.cloud.stream.bindings.errandSubmitted-in-0.destination=" + input,
                     "--spring.cloud.stream.bindings.creditResult-out-0.destination=" + output,
-                    "--credit.provisioning.enabled=false",
                     "--credit.rewards.retry-delay=100ms",
                     "--credit.rewards.max-retry-delay=1s",
                     "--credit.rewards.interval=100",

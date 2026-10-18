@@ -76,7 +76,6 @@ class ReservationMessagingTests {
                     "--spring.cloud.function.definition=errandSubmitted",
                     "--spring.cloud.stream.bindings.errandSubmitted-in-0.destination=" + input,
                     "--spring.cloud.stream.bindings.creditResult-out-0.destination=" + output,
-                    "--credit.provisioning.enabled=false",
                     "--credit.rewards.retry-delay=100ms",
                     "--credit.rewards.publish-interval=100",
                     "--credit.rewards.interval=100"));
@@ -92,7 +91,7 @@ class ReservationMessagingTests {
                 var paused = new ArrayList<>(args);
                 paused.add("--credit.rewards.enabled=false");
                 try (var context = startCredit(paused, rabbitExecutor)) {
-                    sql.update("INSERT INTO credit_accounts(user_id,available_balance) VALUES (?,100)", user);
+                    sql.update("INSERT INTO credit_accounts(user_id,total_balance) VALUES (?,100)", user);
                     channel.confirmSelect();
                     channel.basicPublish(
                             input,
@@ -120,7 +119,9 @@ class ReservationMessagingTests {
                                     "SELECT published_at IS NULL FROM credit_result_outbox", Boolean.class))
                             .isTrue();
                     assertThat(sql.queryForObject(
-                                    "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?", Long.class, user))
+                                    "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
+                                    Long.class,
+                                    user))
                             .isEqualTo(80);
                 }
                 broker.online();
@@ -138,7 +139,7 @@ class ReservationMessagingTests {
                     assertThat(body.get("payload").get("operationId").asText())
                             .isEqualTo(event.payload().operationId().toString());
                     assertThat(sql.queryForObject(
-                                    "SELECT available_balance FROM credit_accounts WHERE user_id = ?",
+                                    "SELECT total_balance - (SELECT COALESCE(SUM(amount), 0) FROM credit_reservations r WHERE r.user_id = a.user_id AND r.state = 'RESERVED') FROM credit_accounts a WHERE user_id = ?",
                                     Long.class,
                                     user))
                             .isEqualTo(20);

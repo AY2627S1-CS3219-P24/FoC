@@ -2,12 +2,11 @@ package com.cs3219.foc.user.infrastructure.messaging.producer;
 
 import static org.assertj.core.api.Assertions.*;
 
-import com.cs3219.foc.user.config.UserProvisioningProperties;
+import com.cs3219.foc.user.config.EventPublicationProperties;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.rabbitmq.client.ConnectionFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -41,7 +40,7 @@ class UserCreatedRabbitIntegrationTests {
     }
 
     @Test
-    void confirmsPersistentDeliveryBeforeConsumerExistsAndDetectsUnroutableMessages() throws Exception {
+    void confirmsPersistentDeliveryToExistingQueueAndDetectsUnroutableMessages() throws Exception {
         var destination = "foc.user-created.test." + UUID.randomUUID();
         var queue = destination + ".credit-provisioning";
         var event = UserCreatedEvent.of(UUID.randomUUID(), UUID.randomUUID(), OffsetDateTime.now());
@@ -53,20 +52,14 @@ class UserCreatedRabbitIntegrationTests {
         try (var connection = factory.newConnection();
                 var channel = connection.createChannel()) {
             try {
+                channel.exchangeDeclare(destination, "topic", true, false, null);
+                channel.queueDeclare(queue, true, false, false, null);
+                channel.queueBind(queue, destination, "#");
                 try (var context = startPublisher(destination)) {
                     context.getBean(UserCreatedEventPublisher.class).publish(event);
                 }
                 // Publisher shutdown must not delete the durable queue or its message.
-                var declared = channel.queueDeclare(
-                        queue,
-                        true,
-                        false,
-                        false,
-                        Map.of(
-                                "x-dead-letter-exchange",
-                                destination + ".dlx",
-                                "x-dead-letter-routing-key",
-                                "credit-provisioning"));
+                var declared = channel.queueDeclarePassive(queue);
                 assertThat(declared.getConsumerCount()).isZero();
                 assertThat(declared.getMessageCount()).isEqualTo(1);
                 channel.exchangeDeclare(destination, "topic", true, false, null);
@@ -99,8 +92,6 @@ class UserCreatedRabbitIntegrationTests {
             } finally {
                 channel.queueDelete(queue);
                 channel.exchangeDelete(destination);
-                channel.queueDelete(queue + ".retry");
-                channel.exchangeDelete(destination + ".dlx");
             }
         }
     }
@@ -112,8 +103,13 @@ class UserCreatedRabbitIntegrationTests {
                 HibernateJpaAutoConfiguration.class,
                 DataJpaRepositoriesAutoConfiguration.class,
                 FlywayAutoConfiguration.class
+            },
+            excludeName = {
+                "org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration",
+                "org.springframework.modulith.events.config.EventPublicationAutoConfiguration",
+                "org.springframework.modulith.events.config.EventExternalizationAutoConfiguration"
             })
-    @EnableConfigurationProperties(UserProvisioningProperties.class)
+    @EnableConfigurationProperties(EventPublicationProperties.class)
     @Import(UserCreatedEventPublisher.class)
     static class TestConfig {}
 }

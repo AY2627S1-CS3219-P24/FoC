@@ -71,8 +71,10 @@ public class CreditReservationService {
             return true;
         }
         String outcome = "INSUFFICIENT_BALANCE";
-        if (account.get().getAvailableBalance() >= operation.getAmount()) {
-            accounts.reserve(operation.getRequesterId(), operation.getAmount());
+        if (accounts.findBalanceByUserId(operation.getRequesterId())
+                        .orElseThrow()
+                        .availableBalance()
+                >= operation.getAmount()) {
             reservations.reserve(
                     operation.getErrandId(),
                     operation.getOperationId(),

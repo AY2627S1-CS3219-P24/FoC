@@ -80,7 +80,7 @@ class CreditSettlementPersistenceTests {
     private UUID fund(long amount) {
         var user = UUID.randomUUID();
         accounts.initializeAccount(user);
-        jdbc.update("UPDATE credit_accounts SET available_balance = ? WHERE user_id = ?", amount, user);
+        jdbc.update("UPDATE credit_accounts SET total_balance = ? WHERE user_id = ?", amount, user);
         return user;
     }
 
@@ -297,7 +297,7 @@ class CreditSettlementPersistenceTests {
         var e = settlement(reserved(owner, 80), "ErrandCompletedEvent", courier);
         accept(e);
         jdbc.execute("ALTER TABLE credit_accounts ADD CONSTRAINT fail_recipient CHECK (user_id <> '" + courier
-                + "'::uuid OR available_balance = 0)");
+                + "'::uuid OR total_balance = 0)");
         try {
             assertThatThrownBy(() -> service.processNext()).isInstanceOf(RuntimeException.class);
             assertThat(accounts.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 80));

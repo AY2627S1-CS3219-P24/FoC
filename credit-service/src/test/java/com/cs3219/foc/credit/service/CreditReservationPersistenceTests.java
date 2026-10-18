@@ -77,7 +77,7 @@ class CreditReservationPersistenceTests {
     private UUID fund(long amount) {
         var user = UUID.randomUUID();
         accounts.initializeAccount(user);
-        jdbc.update("UPDATE credit_accounts SET available_balance = ? WHERE user_id = ?", amount, user);
+        jdbc.update("UPDATE credit_accounts SET total_balance = ? WHERE user_id = ?", amount, user);
         return user;
     }
 
@@ -176,7 +176,7 @@ class CreditReservationPersistenceTests {
         var original = outbox.claimNext().orElseThrow();
         assertThat(original.event().payload().outcome()).isEqualTo("INSUFFICIENT_BALANCE");
         outbox.markPublished(original);
-        jdbc.update("UPDATE credit_accounts SET available_balance = 100 WHERE user_id = ?", user);
+        jdbc.update("UPDATE credit_accounts SET total_balance = 100 WHERE user_id = ?", user);
         service.accept(redelivery(e));
         service.processNext();
         assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
@@ -203,7 +203,7 @@ class CreditReservationPersistenceTests {
         service.processNext();
         assertThat(accounts.getBalance(funded)).isEqualTo(new CreditBalanceResponse(90, 10));
         accounts.initializeAccount(missing);
-        jdbc.update("UPDATE credit_accounts SET available_balance = 100 WHERE user_id = ?", missing);
+        jdbc.update("UPDATE credit_accounts SET total_balance = 100 WHERE user_id = ?", missing);
         jdbc.update(
                 "UPDATE credit_reserve_inbox SET next_attempt_at = CURRENT_TIMESTAMP WHERE operation_id IN (SELECT operation_id FROM credit_reserve_operations WHERE requester_id = ?)",
                 missing);

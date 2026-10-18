@@ -4,11 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
+import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
 import java.util.List;
@@ -18,13 +23,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class PasswordServiceTests {
     private final UserRepository users = mock(UserRepository.class);
     private final RefreshTokenRepository tokens = mock(RefreshTokenRepository.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
-    private final PasswordService service = new PasswordService(users, tokens, encoder);
+    private final EmailTokenService emailTokens = mock(EmailTokenService.class);
+    private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
+    private final PasswordService service = new PasswordService(
+            users, tokens, encoder, emailTokens, emailTokenRepository, mock(ApplicationEventPublisher.class));
     private final UUID userId = UUID.randomUUID();
     private User user;
     private String previousHash;
@@ -59,6 +68,39 @@ class PasswordServiceTests {
         verify(users).saveAndFlush(user);
         verify(tokens).deleteAllByUserId(userId);
         verifyNoMoreInteractions(tokens);
+        verify(emailTokenRepository)
+                .deleteAllByUserIdAndPurposeIn(
+                        userId, List.of(EmailTokenPurpose.PASSWORD_RESET, EmailTokenPurpose.EMAIL_CHANGE));
+    }
+
+    @Test
+    void resetRequestsAllowUnverifiedAccountsButIgnoreUnknownAccounts() {
+        when(users.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        service.requestPasswordReset("missing@u.nus.edu");
+        service.requestPasswordReset(user.getEmail());
+        verify(emailTokens).issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        verifyNoMoreInteractions(emailTokens);
+        verifyNoInteractions(tokens);
+        verify(users, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void unavailableResetLinkThrowsExplicitExceptionWithoutChangingCredentials() {
+        when(emailTokens.consume("invalid-token", EmailTokenPurpose.PASSWORD_RESET))
+                .thenThrow(new InvalidEmailTokenException());
+        assertThatThrownBy(() -> service.resetPassword("invalid-token", "NewPassword2"))
+                .isInstanceOf(InvalidPasswordResetTokenException.class);
+        assertUnchanged();
+    }
+
+    @Test
+    void resetRequestKeepsGenericResponseDuringCooldown() {
+        when(users.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        doThrow(new EmailRateLimitException())
+                .when(emailTokens)
+                .issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        service.requestPasswordReset(user.getEmail());
+        assertUnchanged();
     }
 
     @ParameterizedTest
@@ -105,6 +147,6 @@ class PasswordServiceTests {
     private void assertUnchanged() {
         assertThat(user.getPasswordHash()).isEqualTo(previousHash);
         verify(users, never()).saveAndFlush(any());
-        verifyNoInteractions(tokens);
+        verifyNoInteractions(tokens, emailTokenRepository);
     }
 }

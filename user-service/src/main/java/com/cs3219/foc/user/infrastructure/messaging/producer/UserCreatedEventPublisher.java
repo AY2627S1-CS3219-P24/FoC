@@ -1,6 +1,6 @@
 package com.cs3219.foc.user.infrastructure.messaging.producer;
 
-import com.cs3219.foc.user.config.UserProvisioningProperties;
+import com.cs3219.foc.user.config.EventPublicationProperties;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -10,6 +10,7 @@ import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,8 +18,9 @@ import org.springframework.stereotype.Component;
 public class UserCreatedEventPublisher {
     public static final String BINDING = "userCreated-out-0";
     private final StreamBridge streamBridge;
-    private final UserProvisioningProperties properties;
+    private final EventPublicationProperties properties;
 
+    @ApplicationModuleListener(id = "user-created-rabbit")
     public void publish(UserCreatedEvent event) {
         // Correlation is per attempt; the business event ID remains unchanged on every retry.
         var correlation = new CorrelationData();

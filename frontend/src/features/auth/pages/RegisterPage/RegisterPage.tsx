@@ -26,8 +26,8 @@ export const RegisterPage = () => {
       {
         onSuccess: () => {
           void navigate({
-            to: '/login',
-            search: { registered: true },
+            to: '/verify-email',
+            search: { email },
             replace: true,
           })
         },

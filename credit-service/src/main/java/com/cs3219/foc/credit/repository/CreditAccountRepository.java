@@ -1,5 +1,6 @@
 package com.cs3219.foc.credit.repository;
 
+import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.entity.CreditAccount;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,33 +13,29 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
     @Query(value = "SELECT * FROM credit_accounts WHERE user_id = :userId FOR UPDATE", nativeQuery = true)
     Optional<CreditAccount> lockByUserId(@Param("userId") UUID userId);
 
-    @Modifying
-    @Query(
-            value =
-                    "UPDATE credit_accounts SET reserved_balance = reserved_balance - :amount, available_balance = available_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
-            nativeQuery = true)
-    int refund(@Param("userId") UUID userId, @Param("amount") long amount);
+    @Query("""
+            SELECT new com.cs3219.foc.credit.model.dto.CreditBalanceResponse(
+                a.totalBalance - COALESCE(SUM(r.amount), 0), COALESCE(SUM(r.amount), 0))
+            FROM CreditAccount a
+            LEFT JOIN CreditReservation r ON r.userId = a.userId AND r.state = 'RESERVED'
+            WHERE a.userId = :userId
+            GROUP BY a.userId, a.totalBalance
+            """)
+    Optional<CreditBalanceResponse> findBalanceByUserId(@Param("userId") UUID userId);
 
     @Modifying
     @Query(
             value =
-                    "UPDATE credit_accounts SET reserved_balance = reserved_balance - :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
+                    "UPDATE credit_accounts SET total_balance = total_balance - :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
             nativeQuery = true)
-    int debitReserved(@Param("userId") UUID userId, @Param("amount") long amount);
+    int debitTotal(@Param("userId") UUID userId, @Param("amount") long amount);
 
     @Modifying
     @Query(
             value =
-                    "UPDATE credit_accounts SET available_balance = available_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
+                    "UPDATE credit_accounts SET total_balance = total_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
             nativeQuery = true)
-    int creditAvailable(@Param("userId") UUID userId, @Param("amount") long amount);
-
-    @Modifying
-    @Query(
-            value =
-                    "UPDATE credit_accounts SET available_balance = available_balance - :amount, reserved_balance = reserved_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
-            nativeQuery = true)
-    int reserve(@Param("userId") UUID userId, @Param("amount") long amount);
+    int creditTotal(@Param("userId") UUID userId, @Param("amount") long amount);
 
     @Modifying
     @Query(

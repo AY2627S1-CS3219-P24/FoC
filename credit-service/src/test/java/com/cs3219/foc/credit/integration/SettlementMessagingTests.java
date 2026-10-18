@@ -78,7 +78,6 @@ class SettlementMessagingTests {
                     "--spring.cloud.stream.bindings.errandCompleted-in-0.destination=" + completed,
                     "--spring.cloud.stream.bindings.creditSettlementResult-out-0.destination=" + output,
                     "--spring.cloud.stream.bindings.creditResult-out-0.destination=" + reserveOutput,
-                    "--credit.provisioning.enabled=false",
                     "--credit.rewards.retry-delay=100ms",
                     "--credit.rewards.publish-interval=100",
                     "--credit.rewards.settlement-interval=100"));
@@ -90,7 +89,7 @@ class SettlementMessagingTests {
                 var paused = new ArrayList<>(args);
                 paused.add("--credit.rewards.enabled=false");
                 try (var context = ReservationMessagingTests.startCredit(paused, rabbitExecutor)) {
-                    sql.update("INSERT INTO credit_accounts(user_id,available_balance) VALUES (?,100)", owner);
+                    sql.update("INSERT INTO credit_accounts(user_id,total_balance) VALUES (?,100)", owner);
                     var reserve = context.getBean(CreditReservationService.class);
                     var refund = reserveAndSettle(reserve, owner, 20, "ErrandCancelledEvent", null);
                     var expiry = reserveAndSettle(reserve, owner, 10, "ErrandExpiredEvent", null);
@@ -106,7 +105,7 @@ class SettlementMessagingTests {
                     var settle = context.getBean(CreditSettlementService.class);
                     for (int i = 0; i < 3; i++) assertThat(settle.processNext()).isTrue();
                     assertThat(sql.queryForObject(
-                                    "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?",
+                                    "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
                                     Long.class,
                                     owner))
                             .isEqualTo(40);
@@ -129,7 +128,9 @@ class SettlementMessagingTests {
                 publish(channel, completed, completion);
                 sql.update("INSERT INTO credit_accounts(user_id) VALUES (?)", courier);
                 assertThat(sql.queryForObject(
-                                "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?", Long.class, owner))
+                                "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
+                                Long.class,
+                                owner))
                         .isEqualTo(40);
                 broker.online();
                 try (var context = ReservationMessagingTests.startCredit(args, rabbitExecutor)) {
@@ -138,17 +139,17 @@ class SettlementMessagingTests {
                                     Long.class))
                             .isEqualTo(3));
                     assertThat(sql.queryForObject(
-                                    "SELECT available_balance FROM credit_accounts WHERE user_id = ?",
+                                    "SELECT total_balance - (SELECT COALESCE(SUM(amount), 0) FROM credit_reservations r WHERE r.user_id = a.user_id AND r.state = 'RESERVED') FROM credit_accounts a WHERE user_id = ?",
                                     Long.class,
                                     owner))
                             .isEqualTo(60);
                     assertThat(sql.queryForObject(
-                                    "SELECT reserved_balance FROM credit_accounts WHERE user_id = ?",
+                                    "SELECT COALESCE(SUM(amount), 0) FROM credit_reservations WHERE user_id = ? AND state = 'RESERVED'",
                                     Long.class,
                                     owner))
                             .isZero();
                     assertThat(sql.queryForObject(
-                                    "SELECT available_balance FROM credit_accounts WHERE user_id = ?",
+                                    "SELECT total_balance - (SELECT COALESCE(SUM(amount), 0) FROM credit_reservations r WHERE r.user_id = a.user_id AND r.state = 'RESERVED') FROM credit_accounts a WHERE user_id = ?",
                                     Long.class,
                                     courier))
                             .isEqualTo(40);

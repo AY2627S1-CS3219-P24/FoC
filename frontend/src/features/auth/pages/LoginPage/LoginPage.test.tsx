@@ -40,6 +40,7 @@ const httpError = (status: number) =>
   new AuthRequestError(status, 'Internal details')
 
 beforeEach(() => {
+  sessionStorage.clear()
   vi.spyOn(window, 'scrollTo').mockImplementation(vi.fn())
   setAccessToken(null)
   loginMock.mockReset()
@@ -85,7 +86,7 @@ const fill = async () => {
 }
 
 describe('LoginPage', () => {
-  it('blocks rapid, pending and successful resubmissions and replaces the registration notice', async () => {
+  it('blocks rapid, pending and successful resubmissions', async () => {
     let resolveRequest!: (value: AccessTokenResponse) => void
     loginMock.mockImplementation(
       () =>
@@ -93,11 +94,8 @@ describe('LoginPage', () => {
           resolveRequest = resolve
         }),
     )
-    const router = await setup('/login?registered=true')
+    const router = await setup()
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Account created successfully. Please log in.',
-    )
     await fill()
     const form = screen.getByRole('button', { name: 'Log In' }).closest('form')!
     act(() => {
@@ -128,13 +126,10 @@ describe('LoginPage', () => {
     ).toBeInTheDocument()
     expect(getAccessToken()).toBe(tokens.accessToken)
     expect(
-      screen.queryByText('Account created successfully. Please log in.'),
-    ).not.toBeInTheDocument()
-    expect(
       screen.queryByRole('button', { name: 'Log In' }),
     ).not.toBeInTheDocument()
     expect(loginMock).toHaveBeenCalledTimes(1)
-    expect(router.state.location.pathname).toBe('/app')
+    expect(router.state.location.pathname).toBe('/home')
     expect(screen.queryByText(tokens.accessToken)).not.toBeInTheDocument()
   })
 
@@ -165,6 +160,24 @@ describe('LoginPage', () => {
       email: 'jamie@example.com',
       password: 'correct-password',
     })
+  })
+
+  it('offers verification without establishing a session for an unverified account', async () => {
+    loginMock.mockRejectedValue(httpError(403))
+    const router = await setup()
+    const user = await fill()
+    await user.click(screen.getByRole('button', { name: 'Log In' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Please verify your email before logging in.',
+    )
+    expect(getAccessToken()).toBeNull()
+    await user.click(
+      screen.getByRole('link', { name: 'Resend verification email' }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Check your email' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.search).toEqual({ email: 'jamie@example.com' })
   })
 
   it.each([
