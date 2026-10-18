@@ -86,7 +86,7 @@ class CreditProvisioningPersistenceTests {
                         Long.class,
                         event.payload().userId()))
                 .isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -149,7 +149,7 @@ class CreditProvisioningPersistenceTests {
             assertThat(second.get(20, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(accountRepository.count()).isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -202,7 +202,7 @@ class CreditProvisioningPersistenceTests {
             sql.update("INSERT INTO credit_accounts (user_id) VALUES (?)", fresh);
             assertThat(sql.queryForObject(
                             "SELECT total_balance FROM credit_accounts WHERE user_id = ?", Long.class, fresh))
-                    .isZero();
+                    .isEqualTo(15);
             assertThat(sql.queryForObject("SELECT to_regclass('credit_provisioning_inbox')", String.class))
                     .isNull();
         } finally {

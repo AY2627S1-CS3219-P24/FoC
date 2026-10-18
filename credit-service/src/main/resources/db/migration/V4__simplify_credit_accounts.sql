@@ -8,7 +8,7 @@ DROP TABLE credit_provisioning_inbox;
 ALTER TABLE credit_accounts ADD COLUMN total_balance BIGINT;
 UPDATE credit_accounts SET total_balance = available_balance + reserved_balance;
 ALTER TABLE credit_accounts ALTER COLUMN total_balance SET NOT NULL;
-ALTER TABLE credit_accounts ALTER COLUMN total_balance SET DEFAULT 0;
+ALTER TABLE credit_accounts ALTER COLUMN total_balance SET DEFAULT 15;
 ALTER TABLE credit_accounts ADD CONSTRAINT credit_accounts_total_nonnegative CHECK (total_balance >= 0);
 ALTER TABLE credit_accounts DROP COLUMN available_balance;
 ALTER TABLE credit_accounts DROP COLUMN reserved_balance;

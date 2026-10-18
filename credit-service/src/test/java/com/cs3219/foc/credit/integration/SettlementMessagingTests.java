@@ -141,7 +141,7 @@ class SettlementMessagingTests {
                     channel.basicAck(parked.getEnvelope().getDeliveryTag(), false);
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
                                     accounts.getBalance(courier).availableBalance())
-                            .isEqualTo(40));
+                            .isEqualTo(55));
                     publish(channel, completed, c); // Acknowledging a duplicate must not transfer credits again.
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
                                     "SELECT count(*) FROM event_publication WHERE completion_date IS NULL", Long.class))

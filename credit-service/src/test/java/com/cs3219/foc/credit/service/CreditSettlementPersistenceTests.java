@@ -184,7 +184,7 @@ class CreditSettlementPersistenceTests {
         assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         accounts.initializeAccount(courier);
         settlement.settle(paid);
-        assertThat(accounts.getBalance(courier)).isEqualTo(new CreditBalanceResponse(80, 0));
+        assertThat(accounts.getBalance(courier)).isEqualTo(new CreditBalanceResponse(95, 0));
     }
 
     @Test
