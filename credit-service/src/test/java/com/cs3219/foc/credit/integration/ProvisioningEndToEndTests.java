@@ -2,6 +2,7 @@ package com.cs3219.foc.credit.integration;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.mock;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.user.UserServiceApplication;
@@ -36,9 +37,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.mail.javamail.JavaMailSender;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -95,7 +99,8 @@ class ProvisioningEndToEndTests {
             app.startUser();
             var whileBrokerDown = app.register();
             assertThat(app.userSql.queryForObject(
-                            "SELECT count(*) FROM event_publication WHERE completion_date IS NULL", Long.class))
+                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit' AND completion_date IS NULL",
+                            Long.class))
                     .isEqualTo(1);
             app.user.close();
             app.user = null;
@@ -118,6 +123,14 @@ class ProvisioningEndToEndTests {
             app.awaitZeroBalance(app.login(whileDatabaseDown));
             assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
                     .isEqualTo(2);
+        }
+    }
+
+    @TestConfiguration
+    static class MailConfig {
+        @Bean
+        JavaMailSender mailSender() {
+            return mock(JavaMailSender.class);
         }
     }
 
@@ -225,7 +238,8 @@ class ProvisioningEndToEndTests {
                     "--spring.modulith.events.staleness.resubmitted=1s",
                     "--spring.modulith.events.staleness.check-interval=100ms",
                     "--spring.cloud.stream.bindings.userCreated-out-0.destination=" + destination));
-            user = new SpringApplicationBuilder(UserServiceApplication.class).run(args.toArray(String[]::new));
+            user = new SpringApplicationBuilder(UserServiceApplication.class, MailConfig.class)
+                    .run(args.toArray(String[]::new));
             userPort = user.getEnvironment().getProperty("local.server.port", Integer.class);
         }
 
@@ -268,6 +282,8 @@ class ProvisioningEndToEndTests {
         }
 
         String login(UUID id) throws Exception {
+            // Email verification has separate tests; balance access uses a verified-user fixture.
+            userSql.update("UPDATE users SET email_verified = true WHERE id = ?", id);
             var email = userSql.queryForObject("SELECT email FROM users WHERE id = ?", String.class, id);
             var response = post("/auth/login", "{\"email\":\"" + email + "\",\"password\":\"password123\"}");
             assertThat(response.statusCode()).isEqualTo(200);
@@ -304,7 +320,8 @@ class ProvisioningEndToEndTests {
 
         void awaitPublishedUsers(int expected) {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> assertThat(userSql.queryForObject(
-                            "SELECT count(*) FROM event_publication WHERE completion_date IS NOT NULL", Long.class))
+                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit' AND completion_date IS NOT NULL",
+                            Long.class))
                     .isEqualTo(expected));
         }
 

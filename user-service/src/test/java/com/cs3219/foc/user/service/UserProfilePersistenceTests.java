@@ -1031,6 +1031,7 @@ class UserProfilePersistenceTests {
                     repository,
                     new BCryptPasswordEncoder(),
                     Mappers.getMapper(UserMapper.class),
+                    mock(ApplicationEventPublisher.class),
                     verification,
                     emailChange);
         }

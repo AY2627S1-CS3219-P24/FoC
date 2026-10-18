@@ -174,7 +174,7 @@ class UserEventPublicationPersistenceTests {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .locations("classpath:db/migration")
-                    .target("5")
+                    .target("6")
                     .load()
                     .migrate();
             sql.update("INSERT INTO user_credit_provisioning (user_id, event_id) VALUES (?, ?)", userId, eventId);
@@ -239,7 +239,12 @@ class UserEventPublicationPersistenceTests {
         @Bean
         UserService userService(UserRepository repository, ApplicationEventPublisher events) {
             return new UserService(
-                    repository, new BCryptPasswordEncoder(4), Mappers.getMapper(UserMapper.class), events);
+                    repository,
+                    new BCryptPasswordEncoder(4),
+                    Mappers.getMapper(UserMapper.class),
+                    events,
+                    mock(EmailVerificationService.class),
+                    mock(EmailChangeService.class));
         }
 
         @Bean

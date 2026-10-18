@@ -28,7 +28,6 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,10 +38,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
+    private final ApplicationEventPublisher provisioning = mock(ApplicationEventPublisher.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final EmailChangeService emailChange = mock(EmailChangeService.class);
     private final UserService service = new UserService(
-            repository, mock(PasswordEncoder.class), Mappers.getMapper(UserMapper.class), verification, emailChange);
+            repository,
+            mock(PasswordEncoder.class),
+            Mappers.getMapper(UserMapper.class),
+            provisioning,
+            verification,
+            emailChange);
     private final UUID userId = UUID.randomUUID();
     private User user;
 

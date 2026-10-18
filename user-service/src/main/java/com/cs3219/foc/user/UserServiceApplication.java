@@ -11,7 +11,12 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@EnableConfigurationProperties({AuthProperties.class, AvatarProperties.class, AccountMailProperties.class})
+@EnableConfigurationProperties({
+    AuthProperties.class,
+    AvatarProperties.class,
+    AccountMailProperties.class,
+    EventPublicationProperties.class
+})
 @EnableScheduling
 @EnableAsync
 public class UserServiceApplication {
