@@ -15,7 +15,7 @@ export const useUserProfile = () =>
   useQuery({
     queryKey: profileKey,
     queryFn: ({ signal }) => getUserProfile(signal),
-    retry: false,
+    refetchInterval: 5 * 60_000,
   })
 
 export const useProfileActions = () => {

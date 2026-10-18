@@ -26,6 +26,7 @@ public class SupplierService {
     private final SupplierRepository supplierRepository;
     private final SupplierMapper supplierMapper;
     private final Clock clock;
+    private final SupplierImageStorageService supplierImageStorageService;
 
     /** list suppliers that match filters in {@code criteria}, sorted by name. */
     @Transactional(readOnly = true)
@@ -47,14 +48,14 @@ public class SupplierService {
         }
 
         return supplierRepository.findAll(Specification.allOf(filters), Sort.by("name")).stream()
-                .map(supplierMapper::toSupplierDto)
+                .map(this::buildSupplierDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public SupplierDto getSupplier(UUID id, boolean includeInactive) {
         var supplier = includeInactive ? supplierRepository.findById(id) : supplierRepository.findByIdAndActiveTrue(id);
-        return supplier.map(supplierMapper::toSupplierDto).orElseThrow(() -> new SupplierNotFoundException(id));
+        return supplier.map(this::buildSupplierDto).orElseThrow(() -> new SupplierNotFoundException(id));
     }
 
     @Transactional
@@ -62,7 +63,8 @@ public class SupplierService {
         var normalized = request.normalized();
         var supplier = supplierMapper.toSupplier(normalized);
         supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
-        return supplierMapper.toSupplierDto(supplierRepository.saveAndFlush(supplier));
+        var saved = supplierRepository.saveAndFlush(supplier);
+        return buildSupplierDto(saved);
     }
 
     @Transactional
@@ -71,7 +73,7 @@ public class SupplierService {
         var supplier = findSupplier(id);
         supplierMapper.updateSupplier(normalized, supplier);
         supplier.replaceOpeningHours(supplierMapper.toOpeningHours(normalized.openingHours()));
-        return supplierMapper.toSupplierDto(supplierRepository.saveAndFlush(supplier));
+        return buildSupplierDto(supplierRepository.saveAndFlush(supplier));
     }
 
     /** Since there might have other data may refer to supplier, so no deletion, but set if active */
@@ -79,10 +81,16 @@ public class SupplierService {
     public SupplierDto setSupplierActive(UUID id, boolean active) {
         var supplier = findSupplier(id);
         supplier.setActive(active);
-        return supplierMapper.toSupplierDto(supplierRepository.saveAndFlush(supplier));
+        return buildSupplierDto(supplierRepository.saveAndFlush(supplier));
+    }
+
+    private SupplierDto buildSupplierDto(Supplier supplier) {
+        var imageKey = supplier.getImageKey();
+        var imageUrl = supplierImageStorageService.createPresignedUrl(imageKey);
+        return supplierMapper.toSupplierDto(supplier, imageUrl);
     }
 
     private Supplier findSupplier(UUID id) {
-        return supplierRepository.findById(id).orElseThrow(() -> new SupplierNotFoundException(id));
+        return supplierRepository.findForUpdateById(id).orElseThrow(() -> new SupplierNotFoundException(id));
     }
 }

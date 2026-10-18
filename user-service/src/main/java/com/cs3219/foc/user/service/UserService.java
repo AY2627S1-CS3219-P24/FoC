@@ -40,6 +40,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final EmailVerificationService emailVerification;
     private final EmailChangeService emailChange;
+    private final AvatarStorageService avatarStorageService;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -71,7 +72,7 @@ public class UserService {
         }
 
         var matches = userRepository.findAll(Specification.allOf(filters), pageRequest);
-        var items = matches.map(userMapper::toUserDto).getContent();
+        var items = matches.map(this::buildUserDto).getContent();
 
         return new PageDto<>(items, matches.getTotalElements(), pageable.getPageNumber(), pageable.getPageSize());
     }
@@ -134,7 +135,7 @@ public class UserService {
         }
 
         userMapper.updateUser(request, user);
-        return userMapper.toUserDto(userRepository.saveAndFlush(user));
+        return buildUserDto(userRepository.saveAndFlush(user));
     }
 
     private void validateRoleChange(Collection<UserRole> currentRoles, Collection<UserRole> requestedRoles) {
@@ -149,14 +150,13 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserProfileDto getUserProfile(UUID userId) {
-        var user = getUser(userId);
-        return userMapper.toUserProfileDto(user);
+        return buildUserProfileDto(getUser(userId));
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto getUserDto(UUID userId) {
-        return userMapper.toUserDto(getUser(userId));
+        return buildUserDto(getUser(userId));
     }
 
     @Transactional
@@ -166,8 +166,7 @@ public class UserService {
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
         userMapper.updateUserProfile(request, user);
-        var savedUser = userRepository.saveAndFlush(user);
-        return userMapper.toUserProfileDto(savedUser);
+        return buildUserProfileDto(userRepository.saveAndFlush(user));
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +197,18 @@ public class UserService {
 
         var savedUser = userRepository.save(user);
         emailVerification.createRegistrationVerification(savedUser);
-        return userMapper.toUserProfileDto(savedUser);
+        return buildUserProfileDto(savedUser);
+    }
+
+    private UserProfileDto buildUserProfileDto(User user) {
+        var avatarKey = user.getAvatarKey();
+        var avatarUrl = avatarStorageService.createPresignedUrl(avatarKey);
+        return userMapper.toUserProfileDto(user, avatarUrl);
+    }
+
+    private UserDto buildUserDto(User user) {
+        var avatarKey = user.getAvatarKey();
+        var avatarUrl = avatarStorageService.createPresignedUrl(avatarKey);
+        return userMapper.toUserDto(user, avatarUrl);
     }
 }

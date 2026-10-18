@@ -37,6 +37,8 @@ services:
       target: user-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      FOC_USER_BUCKET: ${FOC_USER_BUCKET}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
@@ -92,13 +94,13 @@ services:
       target: supplier-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-    volumes:
-      - supplier_images_prod:/data/supplier-images
     depends_on:
       postgres:
         condition: service_healthy
@@ -216,7 +218,6 @@ services:
 volumes:
   pg_data_prod:
   rabbitmq_data_prod:
-  supplier_images_prod:
 
 secrets:
   jwt_private_key:

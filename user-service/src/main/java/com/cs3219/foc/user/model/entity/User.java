@@ -39,7 +39,7 @@ public class User {
     @Column(length = 255)
     private String faculty;
 
-    @Column(length = 40)
+    @Column(length = 255)
     private String avatarKey;
 
     @Column(nullable = false)

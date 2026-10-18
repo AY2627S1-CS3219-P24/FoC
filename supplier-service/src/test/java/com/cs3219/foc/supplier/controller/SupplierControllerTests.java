@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.supplier.config.SecurityConfig;
 import com.cs3219.foc.supplier.exception.GlobalExceptionHandler;
+import com.cs3219.foc.supplier.exception.StorageException;
 import com.cs3219.foc.supplier.exception.SupplierImageException;
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.model.dto.OpeningHoursDto;
@@ -240,13 +241,9 @@ class SupplierControllerTests {
     }
 
     @Test
-    void anyoneCanReadASupplierImage() throws Exception {
-        when(imageService.read(supplierId)).thenReturn(new byte[] {1, 2, 3});
-        mvc.perform(get("/suppliers/{id}/image", supplierId))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
-                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
-                .andExpect(content().bytes(new byte[] {1, 2, 3}));
+    void publicImageEndpointIsNotAvailable() throws Exception {
+        mvc.perform(get("/suppliers/{id}/image", supplierId)).andExpect(status().isUnauthorized());
+        verifyNoInteractions(imageService);
     }
 
     @Test
@@ -262,17 +259,37 @@ class SupplierControllerTests {
         mvc.perform(delete("/suppliers/{id}/image", supplierId).with(user())).andExpect(status().isForbidden());
         verifyNoInteractions(imageService);
 
-        when(imageService.upload(eq(supplierId), any())).thenReturn(supplier);
+        when(imageService.uploadSupplierImage(eq(supplierId), any())).thenReturn(supplier);
         mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
                         .file(file)
                         .with(admin()))
                 .andExpect(status().isOk());
-        verify(imageService).upload(eq(supplierId), any());
+        verify(imageService).uploadSupplierImage(eq(supplierId), any());
+    }
+
+    @Test
+    void rejectsMissingImageFileBeforeCallingService() throws Exception {
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .with(admin()))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(imageService);
+    }
+
+    @Test
+    void reportsStorageUnavailable() throws Exception {
+        when(imageService.uploadSupplierImage(eq(supplierId), any()))
+                .thenThrow(new StorageException(new RuntimeException("S3 failed")));
+        var file = new MockMultipartFile("file", "photo.png", "image/png", new byte[] {1});
+        mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
+                        .file(file)
+                        .with(admin()))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("Object storage operation failed"));
     }
 
     @Test
     void reportsImageErrorsWithTheirStatus() throws Exception {
-        when(imageService.upload(eq(supplierId), any()))
+        when(imageService.uploadSupplierImage(eq(supplierId), any()))
                 .thenThrow(new SupplierImageException(
                         HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only JPEG and PNG images are supported"));
         var file = new MockMultipartFile("file", "notes.txt", "text/plain", new byte[] {1});

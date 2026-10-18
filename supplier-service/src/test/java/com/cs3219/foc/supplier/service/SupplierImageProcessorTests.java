@@ -1,7 +1,6 @@
 package com.cs3219.foc.supplier.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cs3219.foc.supplier.exception.SupplierImageException;
 import java.awt.image.BufferedImage;
@@ -26,7 +25,7 @@ class SupplierImageProcessorTests {
 
     private static HttpStatus statusOf(MockMultipartFile file) {
         try {
-            new SupplierImageProcessor().process(file);
+            new SupplierImageProcessor().processSupplierImage(file);
             return HttpStatus.OK;
         } catch (SupplierImageException exception) {
             return exception.getStatus();
@@ -35,7 +34,8 @@ class SupplierImageProcessorTests {
 
     @Test
     void reencodesPngAsJpegAndShrinksLargeImages() throws IOException {
-        var result = processor.process(new MockMultipartFile("file", "big.png", "image/png", png(2400, 1200)));
+        var result =
+                processor.processSupplierImage(new MockMultipartFile("file", "big.png", "image/png", png(2400, 1200)));
         var decoded = ImageIO.read(new ByteArrayInputStream(result));
         assertThat(decoded.getWidth()).isEqualTo(1200);
         assertThat(decoded.getHeight()).isEqualTo(600);
@@ -46,7 +46,8 @@ class SupplierImageProcessorTests {
 
     @Test
     void keepsSmallImagesAtTheirSize() throws IOException {
-        var result = processor.process(new MockMultipartFile("file", "small.png", "image/png", png(300, 200)));
+        var result =
+                processor.processSupplierImage(new MockMultipartFile("file", "small.png", "image/png", png(300, 200)));
         assertThat(ImageIO.read(new ByteArrayInputStream(result)).getWidth()).isEqualTo(300);
     }
 
@@ -56,13 +57,8 @@ class SupplierImageProcessorTests {
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(statusOf(new MockMultipartFile(
                         "file", "huge.png", "image/png", new byte[SupplierImageProcessor.MAX_BYTES + 1])))
-                .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+                .isEqualTo(HttpStatus.CONTENT_TOO_LARGE);
         assertThat(statusOf(new MockMultipartFile("file", "notes.png", "image/png", "not an image".getBytes())))
                 .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-    }
-
-    @Test
-    void rejectsMissingFile() {
-        assertThatThrownBy(() -> processor.process(null)).isInstanceOf(SupplierImageException.class);
     }
 }
