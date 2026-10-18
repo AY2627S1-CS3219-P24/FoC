@@ -96,10 +96,18 @@ export const UserEditForm = ({
                 maxLength={320}
                 onValueChange={onChange}
                 aria-invalid={Boolean(errors.email)}
-                aria-describedby={errors.email ? 'user-email-error' : undefined}
+                aria-describedby={
+                  errors.email
+                    ? 'user-email-hint user-email-error'
+                    : 'user-email-hint'
+                }
               />
             )}
           />
+          <p id="user-email-hint">
+            A new email address must be verified before it replaces the current
+            one.
+          </p>
           {errors.email && (
             <p id="user-email-error" className={styles.fieldError} role="alert">
               {errors.email.message}

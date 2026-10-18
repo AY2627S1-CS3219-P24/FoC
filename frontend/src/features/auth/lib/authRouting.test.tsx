@@ -34,6 +34,7 @@ vi.mock('#/api/getFaculties.api', () => ({
 vi.mock('../api/userProfile.api', () => ({
   updateUserProfile: vi.fn(),
   changePassword: vi.fn(),
+  requestEmailChange: vi.fn(),
   uploadAvatar: vi.fn(),
   removeAvatar: vi.fn(),
   getUserProfile: vi.fn(async () => ({

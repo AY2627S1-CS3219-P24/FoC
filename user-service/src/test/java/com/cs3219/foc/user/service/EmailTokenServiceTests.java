@@ -5,7 +5,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.user.config.AccountMailProperties;
-import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.model.dto.event.EmailTokenCreatedEvent;
 import com.cs3219.foc.user.model.entity.EmailToken;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
@@ -19,7 +20,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.HttpStatus;
 
 class EmailTokenServiceTests {
     private final EmailTokenRepository tokens = mock(EmailTokenRepository.class);
@@ -44,10 +44,10 @@ class EmailTokenServiceTests {
         var stored = new EmailToken();
         stored.setTokenHash("old-hash");
         stored.setIssuedAt(OffsetDateTime.ofInstant(now.minusSeconds(61), ZoneOffset.UTC));
-        when(tokens.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.REGISTRATION))
+        when(tokens.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.EMAIL_CHANGE))
                 .thenReturn(Optional.of(stored));
 
-        service.issue(user, EmailTokenPurpose.REGISTRATION);
+        service.issue(user, "new@nus.edu.sg", EmailTokenPurpose.EMAIL_CHANGE);
 
         verify(tokens).save(stored);
         var event = ArgumentCaptor.forClass(EmailTokenCreatedEvent.class);
@@ -56,7 +56,8 @@ class EmailTokenServiceTests {
                 .isNotEqualTo("old-hash")
                 .isNotEqualTo(event.getValue().token());
         assertThat(stored.getExpiresAt().toInstant()).isEqualTo(now.plusSeconds(1800));
-        assertThat(event.getValue().email()).isEqualTo(user.getEmail());
+        assertThat(stored.getEmail()).isEqualTo("new@nus.edu.sg");
+        assertThat(event.getValue().email()).isEqualTo("new@nus.edu.sg");
     }
 
     @Test
@@ -65,9 +66,8 @@ class EmailTokenServiceTests {
         stored.setIssuedAt(OffsetDateTime.ofInstant(now.minusSeconds(30), ZoneOffset.UTC));
         when(tokens.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.REGISTRATION))
                 .thenReturn(Optional.of(stored));
-        assertThatThrownBy(() -> service.issue(user, EmailTokenPurpose.REGISTRATION))
-                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
-                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+        assertThatThrownBy(() -> service.issue(user, user.getEmail(), EmailTokenPurpose.REGISTRATION))
+                .isInstanceOf(EmailRateLimitException.class);
         verify(tokens, never()).save(any());
         verifyNoInteractions(events);
     }
@@ -81,8 +81,7 @@ class EmailTokenServiceTests {
         when(users.findForUpdateById(user.getId())).thenReturn(Optional.of(user));
         when(tokens.findByTokenHash(anyString())).thenReturn(Optional.of(stored));
         assertThatThrownBy(() -> service.consume("expired", EmailTokenPurpose.REGISTRATION))
-                .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
-                        .isEqualTo(HttpStatus.BAD_REQUEST));
+                .isInstanceOf(InvalidEmailTokenException.class);
         verify(tokens, never()).delete(any());
     }
 }

@@ -96,6 +96,22 @@ describe('registerSchema', () => {
     }
   })
 
+  it.each([
+    { length: 36, accepted: true },
+    { length: 37, accepted: false },
+  ])(
+    'checks the UTF-8 byte limit for $length accented characters',
+    ({ length, accepted }) => {
+      const password = 'é'.repeat(length)
+      const result = registerSchema.safeParse({
+        ...validValues,
+        password,
+        confirmPassword: password,
+      })
+      expect(result.success).toBe(accepted)
+    },
+  )
+
   it.each(['', '        ', '\t\t\t\t\t\t\t\t', '\n\n\n\n\n\n\n\n'])(
     'reports the required error first for a blank password: %j',
     (password) => {

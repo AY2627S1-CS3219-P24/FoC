@@ -7,6 +7,8 @@ import {
 
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
+import { ForgotPasswordPage } from '#/features/auth/pages/ForgotPasswordPage/ForgotPasswordPage'
+import { ResetPasswordPage } from '#/features/auth/pages/ResetPasswordPage/ResetPasswordPage'
 import { VerifyEmailPage } from '#/features/auth/pages/VerifyEmailPage/VerifyEmailPage'
 import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
@@ -65,7 +67,8 @@ const verifyEmailRoute = createRoute({
   component: VerifyEmailPage,
   validateSearch: (
     search: Record<string, unknown>,
-  ): { token?: string; email?: string } => ({
+  ): { token?: string; email?: string; purpose?: 'email-change' } => ({
+    purpose: search.purpose === 'email-change' ? 'email-change' : undefined,
     token:
       typeof search.token === 'string' && search.token
         ? search.token
@@ -73,6 +76,24 @@ const verifyEmailRoute = createRoute({
     email:
       typeof search.email === 'string' && search.email
         ? search.email
+        : undefined,
+  }),
+})
+
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordPage,
+})
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => authLayoutRoute,
+  path: '/reset-password',
+  component: ResetPasswordPage,
+  validateSearch: (search: Record<string, unknown>): { token?: string } => ({
+    token:
+      typeof search.token === 'string' && search.token
+        ? search.token
         : undefined,
   }),
 })
@@ -221,5 +242,11 @@ export const routeTree = rootRoute.addChildren([
       userEditRoute,
     ]),
   ]),
-  authLayoutRoute.addChildren([loginRoute, registerRoute, verifyEmailRoute]),
+  authLayoutRoute.addChildren([
+    loginRoute,
+    registerRoute,
+    verifyEmailRoute,
+    forgotPasswordRoute,
+    resetPasswordRoute,
+  ]),
 ])

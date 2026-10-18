@@ -8,14 +8,21 @@ import { AuthRouterProvider } from '#/App'
 import { routeTree } from '#/routes'
 import { AuthProvider } from '../../providers/AuthProvider'
 import {
+  confirmEmailChange,
   resendVerification,
   verifyEmail,
 } from '../../api/emailVerification.api'
 import { AuthRequestError } from '../../lib/authRequest'
+import { getUserProfile } from '../../api/userProfile.api'
+import { getAccessToken, setAccessToken } from '../../lib/accessTokenStore'
+import { profileKey } from '../../hooks/useUserProfile'
+
+vi.mock('../../api/userProfile.api')
 
 vi.mock('../../api/emailVerification.api', () => ({
   verifyEmail: vi.fn(),
   resendVerification: vi.fn(),
+  confirmEmailChange: vi.fn(),
 }))
 
 const clients: Array<QueryClient> = []
@@ -30,13 +37,15 @@ afterEach(() => {
   clients.forEach((client) => client.clear())
   clients.length = 0
   vi.restoreAllMocks()
+  setAccessToken(null)
 })
 
-const setup = (path: string) => {
+const setup = (path: string, seed?: (client: QueryClient) => void) => {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
   })
   clients.push(client)
+  seed?.(client)
   const router = createRouter({
     routeTree,
     context: { auth: undefined! },
@@ -132,4 +141,56 @@ it('retries verification after a temporary request failure', async () => {
     await screen.findByRole('heading', { name: 'Email verified' }),
   ).toBeInTheDocument()
   expect(verifyEmail).toHaveBeenCalledTimes(2)
+})
+
+it('confirms an email change and refreshes the profile on return without logging out', async () => {
+  const oldProfile = {
+    id: '1',
+    name: 'Jamie Tan',
+    email: 'old@u.nus.edu',
+    roles: ['USER'],
+    phoneNumber: null,
+    faculty: null,
+    avatarUrl: null,
+  }
+  setAccessToken('existing-token')
+  vi.mocked(confirmEmailChange).mockResolvedValue(undefined)
+  vi.mocked(getUserProfile).mockResolvedValue({
+    ...oldProfile,
+    email: 'new@nus.edu.sg',
+  })
+  setup('/verify-email?purpose=email-change&token=change-token', (client) => {
+    client.setQueryData(profileKey, oldProfile)
+  })
+  expect(
+    await screen.findByRole('heading', { name: 'Email updated' }),
+  ).toBeInTheDocument()
+  expect(confirmEmailChange).toHaveBeenCalledExactlyOnceWith(
+    'change-token',
+    expect.any(Object),
+  )
+  expect(verifyEmail).not.toHaveBeenCalled()
+  await userEvent
+    .setup()
+    .click(screen.getByRole('link', { name: 'Back to profile' }))
+  await screen.findByRole('heading', { name: 'My Profile' })
+  await waitFor(() =>
+    expect(screen.getAllByText('new@nus.edu.sg').length).toBeGreaterThan(0),
+  )
+  expect(getAccessToken()).toBe('existing-token')
+})
+
+it('sends an unavailable email-change link back to profile editing instead of registration resend', async () => {
+  vi.mocked(confirmEmailChange).mockRejectedValue(new AuthRequestError(400))
+  setup('/verify-email?purpose=email-change&token=expired-token')
+  expect(
+    await screen.findByRole('heading', { name: 'Link unavailable' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('link', { name: 'Back to Edit Profile' }),
+  ).toHaveAttribute('href', '/profile/edit')
+  expect(
+    screen.queryByRole('button', { name: 'Resend verification email' }),
+  ).not.toBeInTheDocument()
+  expect(resendVerification).not.toHaveBeenCalled()
 })
