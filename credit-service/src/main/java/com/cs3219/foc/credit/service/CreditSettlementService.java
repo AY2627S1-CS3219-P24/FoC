@@ -22,9 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class CreditSettlementService {
-    private final CreditReservationRepository reservations;
-    private final CreditAccountRepository accounts;
-    private final CreditTransactionLogRepository transactions;
+    private final CreditReservationRepository creditReservationRepository;
+    private final CreditAccountRepository creditAccountRepository;
+    private final CreditTransactionLogRepository creditTransactionLogRepository;
     private final ApplicationEventPublisher events;
 
     @Transactional
@@ -45,9 +45,12 @@ public class CreditSettlementService {
         var reservation = lockReservation(p, "REFUND");
         var outcome = existingOutcome(reservation, p, REFUNDED);
         if (outcome == null) {
-            accounts.lockByUserId(reservation.getUserId()).orElseThrow(CreditAccountPendingException::new);
-            reservations.settle(p.errandId(), REFUNDED, null);
-            transactions.record(p.operationId(), p.errandId(), p.requesterId(), null, p.amount(), "REFUND");
+            creditAccountRepository
+                    .lockByUserId(reservation.getUserId())
+                    .orElseThrow(CreditAccountPendingException::new);
+            creditReservationRepository.settle(p.errandId(), REFUNDED, null);
+            creditTransactionLogRepository.record(
+                    p.operationId(), p.errandId(), p.requesterId(), null, p.amount(), "REFUND");
             outcome = REFUNDED.name();
         }
         publish(p, outcome, "REFUND");
@@ -71,12 +74,13 @@ public class CreditSettlementService {
                     .distinct()
                     .sorted()
                     .toList()) {
-                accounts.lockByUserId(user).orElseThrow(CreditAccountPendingException::new);
+                creditAccountRepository.lockByUserId(user).orElseThrow(CreditAccountPendingException::new);
             }
-            accounts.debitTotal(reservation.getUserId(), reservation.getAmount());
-            accounts.creditTotal(p.courierId(), reservation.getAmount());
-            reservations.settle(p.errandId(), PAID, p.courierId());
-            transactions.record(p.operationId(), p.errandId(), p.requesterId(), p.courierId(), p.amount(), "PAYMENT");
+            creditAccountRepository.debitTotal(reservation.getUserId(), reservation.getAmount());
+            creditAccountRepository.creditTotal(p.courierId(), reservation.getAmount());
+            creditReservationRepository.settle(p.errandId(), PAID, p.courierId());
+            creditTransactionLogRepository.record(
+                    p.operationId(), p.errandId(), p.requesterId(), p.courierId(), p.amount(), "PAYMENT");
             outcome = PAID.name();
         }
         publish(p, outcome, "PAYOUT");
@@ -84,10 +88,10 @@ public class CreditSettlementService {
 
     private CreditReservation lockReservation(Settlement p, String type) {
         // Serialize terminal decisions before locking the affected accounts.
-        var reservation = reservations
+        var reservation = creditReservationRepository
                 .lockByErrandId(p.errandId())
                 .orElseThrow(() -> new IllegalStateException("Reservation is not ready; retry settlement"));
-        var previous = transactions.findById(p.operationId());
+        var previous = creditTransactionLogRepository.findById(p.operationId());
         if (previous.isPresent()) {
             var log = previous.get();
             if (!log.getErrandId().equals(p.errandId())

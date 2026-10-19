@@ -22,13 +22,13 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
 class EmailTokenServiceTests {
-    private final EmailTokenRepository tokens = mock(EmailTokenRepository.class);
-    private final UserRepository users = mock(UserRepository.class);
+    private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final Instant now = Instant.parse("2026-10-08T00:00:00Z");
     private final EmailTokenService service = new EmailTokenService(
-            tokens,
-            users,
+            emailTokenRepository,
+            userRepository,
             new AccountMailProperties(
                     "mail@example.com",
                     URI.create("http://localhost:3000"),
@@ -44,12 +44,12 @@ class EmailTokenServiceTests {
         var stored = new EmailToken();
         stored.setTokenHash("old-hash");
         stored.setIssuedAt(OffsetDateTime.ofInstant(now.minusSeconds(61), ZoneOffset.UTC));
-        when(tokens.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.EMAIL_CHANGE))
+        when(emailTokenRepository.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.EMAIL_CHANGE))
                 .thenReturn(Optional.of(stored));
 
         service.issue(user, "new@nus.edu.sg", EmailTokenPurpose.EMAIL_CHANGE);
 
-        verify(tokens).save(stored);
+        verify(emailTokenRepository).save(stored);
         var event = ArgumentCaptor.forClass(EmailTokenCreatedEvent.class);
         verify(events).publishEvent(event.capture());
         assertThat(stored.getTokenHash())
@@ -64,11 +64,11 @@ class EmailTokenServiceTests {
     void resendWithinTheIntervalDoesNotReplaceOrSendAToken() {
         var stored = new EmailToken();
         stored.setIssuedAt(OffsetDateTime.ofInstant(now.minusSeconds(30), ZoneOffset.UTC));
-        when(tokens.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.REGISTRATION))
+        when(emailTokenRepository.findByUserIdAndPurpose(user.getId(), EmailTokenPurpose.REGISTRATION))
                 .thenReturn(Optional.of(stored));
         assertThatThrownBy(() -> service.issue(user, user.getEmail(), EmailTokenPurpose.REGISTRATION))
                 .isInstanceOf(EmailRateLimitException.class);
-        verify(tokens, never()).save(any());
+        verify(emailTokenRepository, never()).save(any());
         verifyNoInteractions(events);
     }
 
@@ -77,11 +77,11 @@ class EmailTokenServiceTests {
         var stored = new EmailToken();
         stored.setPurpose(EmailTokenPurpose.REGISTRATION);
         stored.setExpiresAt(OffsetDateTime.ofInstant(now, ZoneOffset.UTC));
-        when(tokens.findUserIdByTokenHash(anyString())).thenReturn(Optional.of(user.getId()));
-        when(users.findForUpdateById(user.getId())).thenReturn(Optional.of(user));
-        when(tokens.findByTokenHash(anyString())).thenReturn(Optional.of(stored));
+        when(emailTokenRepository.findUserIdByTokenHash(anyString())).thenReturn(Optional.of(user.getId()));
+        when(userRepository.findForUpdateById(user.getId())).thenReturn(Optional.of(user));
+        when(emailTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.of(stored));
         assertThatThrownBy(() -> service.consume("expired", EmailTokenPurpose.REGISTRATION))
                 .isInstanceOf(InvalidEmailTokenException.class);
-        verify(tokens, never()).delete(any());
+        verify(emailTokenRepository, never()).delete(any());
     }
 }

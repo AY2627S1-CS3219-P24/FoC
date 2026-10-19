@@ -27,7 +27,7 @@ public class PasswordService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final EmailTokenService emailTokens;
+    private final EmailTokenService emailTokenService;
     private final EmailTokenRepository emailTokenRepository;
     private final ApplicationEventPublisher events;
 
@@ -35,7 +35,7 @@ public class PasswordService {
     public void requestPasswordReset(String email) {
         userRepository.findForUpdateByEmail(email).ifPresent(user -> {
             try {
-                emailTokens.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+                emailTokenService.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
             } catch (EmailRateLimitException exception) {
                 // Keep the public response generic without issuing or sending another link.
             }
@@ -47,7 +47,7 @@ public class PasswordService {
         // consume holds the user lock; deleting the token and saving the password commit together.
         EmailToken stored;
         try {
-            stored = emailTokens.consume(token, EmailTokenPurpose.PASSWORD_RESET);
+            stored = emailTokenService.consume(token, EmailTokenPurpose.PASSWORD_RESET);
         } catch (InvalidEmailTokenException exception) {
             throw new InvalidPasswordResetTokenException();
         }

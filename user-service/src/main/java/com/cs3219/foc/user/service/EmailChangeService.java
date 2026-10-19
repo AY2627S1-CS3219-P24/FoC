@@ -19,12 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class EmailChangeService {
-    private final UserRepository users;
-    private final EmailTokenService tokens;
+    private final UserRepository userRepository;
+    private final EmailTokenService emailTokenService;
     private final ApplicationEventPublisher events;
 
     public void requestChange(UUID userId, String email) {
-        var user = users.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
+        var user =
+                userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
         if (!NusEmailPolicy.isAllowed(email)) {
             throw new UnsupportedEmailDomainException();
         }
@@ -32,17 +33,17 @@ public class EmailChangeService {
             throw new EmailVerificationException(HttpStatus.BAD_REQUEST, "Enter a different email address.");
         }
         requireAvailable(email);
-        tokens.issue(user, email, EmailTokenPurpose.EMAIL_CHANGE);
+        emailTokenService.issue(user, email, EmailTokenPurpose.EMAIL_CHANGE);
     }
 
     public void confirmChange(String token) {
-        var stored = tokens.consume(token, EmailTokenPurpose.EMAIL_CHANGE);
-        var user = users.findById(stored.getUserId()).orElseThrow();
+        var stored = emailTokenService.consume(token, EmailTokenPurpose.EMAIL_CHANGE);
+        var user = userRepository.findById(stored.getUserId()).orElseThrow();
         var oldEmail = user.getEmail();
         user.setEmail(stored.getEmail());
         user.setEmailVerified(true);
         try {
-            users.saveAndFlush(user);
+            userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
             // The unique constraint also covers addresses claimed since the request was sent.
             if (exception.getCause() instanceof ConstraintViolationException constraint
@@ -55,7 +56,7 @@ public class EmailChangeService {
     }
 
     private void requireAvailable(String email) {
-        if (users.existsByEmail(email)) {
+        if (userRepository.existsByEmail(email)) {
             throw emailInUse();
         }
     }

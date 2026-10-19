@@ -66,10 +66,10 @@ class UserControllerTests {
     private EmailVerificationService verification;
 
     @Autowired
-    private EmailChangeService emailChange;
+    private EmailChangeService emailChangeService;
 
     @Autowired
-    private PasswordService passwords;
+    private PasswordService passwordService;
 
     @Autowired
     private JwtDecoder decoder;
@@ -80,7 +80,7 @@ class UserControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder, verification, emailChange, passwords);
+        reset(service, decoder, verification, emailChangeService, passwordService);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -102,21 +102,21 @@ class UserControllerTests {
                         {"email":" JAMIE@U.NUS.EDU "}
                         """))
                 .andExpect(status().isNoContent());
-        verify(passwords).requestPasswordReset("jamie@u.nus.edu");
+        verify(passwordService).requestPasswordReset("jamie@u.nus.edu");
         mvc.perform(post("/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {"token":"reset-token","newPassword":"short"}
                         """))
                 .andExpect(status().isBadRequest());
-        verify(passwords, never()).resetPassword(any(), any());
+        verify(passwordService, never()).resetPassword(any(), any());
         mvc.perform(post("/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                         {"token":"reset-token","newPassword":" NewPassword2 "}
                         """))
                 .andExpect(status().isNoContent());
-        verify(passwords).resetPassword("reset-token", " NewPassword2 ");
+        verify(passwordService).resetPassword("reset-token", " NewPassword2 ");
     }
 
     @Test
@@ -126,12 +126,14 @@ class UserControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"jamie@u.nus.edu\"}"))
                 .andExpect(status().isTooManyRequests());
-        doThrow(new InvalidEmailTokenException()).when(emailChange).confirmChange("invalid");
+        doThrow(new InvalidEmailTokenException()).when(emailChangeService).confirmChange("invalid");
         mvc.perform(post("/users/email-change/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"invalid\"}"))
                 .andExpect(status().isBadRequest());
-        doThrow(new InvalidPasswordResetTokenException()).when(passwords).resetPassword("invalid", "NewPassword2");
+        doThrow(new InvalidPasswordResetTokenException())
+                .when(passwordService)
+                .resetPassword("invalid", "NewPassword2");
         mvc.perform(post("/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"invalid\",\"newPassword\":\"NewPassword2\"}"))
@@ -368,18 +370,18 @@ class UserControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnauthorized());
-        verifyNoInteractions(emailChange);
+        verifyNoInteractions(emailChangeService);
         mvc.perform(post("/users/me/email-change")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNoContent());
-        verify(emailChange).requestChange(userId, "new@nus.edu.sg");
+        verify(emailChangeService).requestChange(userId, "new@nus.edu.sg");
         mvc.perform(post("/users/email-change/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"change-token\"}"))
                 .andExpect(status().isNoContent());
-        verify(emailChange).confirmChange("change-token");
+        verify(emailChangeService).confirmChange("change-token");
     }
 
     @Configuration

@@ -63,7 +63,7 @@ class UserEventPublicationPersistenceTests {
             "publication_" + UUID.randomUUID().toString().replace("-", "");
 
     @Autowired
-    private UserService users;
+    private UserService userService;
 
     @Autowired
     private UserCreatedEventPublisher publisher;
@@ -88,9 +88,9 @@ class UserEventPublicationPersistenceTests {
     }
 
     private UUID register() {
-        return UUID.fromString(
-                users.registerUser(new RegisterUserRequest(UUID.randomUUID() + "@u.nus.edu", "Test", "password123"))
-                        .id());
+        return UUID.fromString(userService
+                .registerUser(new RegisterUserRequest(UUID.randomUUID() + "@u.nus.edu", "Test", "password123"))
+                .id());
     }
 
     private void awaitState(String state) {

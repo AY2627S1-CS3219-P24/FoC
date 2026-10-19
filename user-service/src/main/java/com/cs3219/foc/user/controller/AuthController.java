@@ -20,18 +20,18 @@ public class AuthController {
     private final AuthService authService;
     private final AuthCookieFactory authCookieFactory;
     private final EmailVerificationService emailVerification;
-    private final PasswordService passwords;
+    private final PasswordService passwordService;
 
     @PostMapping("/auth/password-reset/request")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void requestPasswordReset(@Valid @RequestBody RequestPasswordResetRequest request) {
-        passwords.requestPasswordReset(request.email());
+        passwordService.requestPasswordReset(request.email());
     }
 
     @PostMapping("/auth/password-reset/confirm")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        passwords.resetPassword(request.token(), request.newPassword());
+        passwordService.resetPassword(request.token(), request.newPassword());
     }
 
     @PostMapping("/auth/email-verification/confirm")

@@ -92,8 +92,8 @@ class SettlementMessagingTests {
             UUID recoveryId;
             try {
                 try (var context = start(args, executor)) {
-                    var accounts = context.getBean(CreditAccountService.class);
-                    accounts.initializeAccount(owner);
+                    var creditAccountService = context.getBean(CreditAccountService.class);
+                    creditAccountService.initializeAccount(owner);
                     sql.update("UPDATE credit_accounts SET total_balance=100 WHERE user_id=?", owner);
                     var reserve = context.getBean(CreditReservationService.class);
                     var a = cancelled(reserve, owner, 20);
@@ -128,7 +128,8 @@ class SettlementMessagingTests {
                                     channel.queueDeclarePassive(cancelled + ".credit-settlements.dlq")
                                             .getMessageCount())
                             .isEqualTo(invalidAmounts.size()));
-                    assertThat(accounts.getBalance(owner).reservedBalance()).isEqualTo(80);
+                    assertThat(creditAccountService.getBalance(owner).reservedBalance())
+                            .isEqualTo(80);
                     assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
                             .isEqualTo(3);
                     publish(channel, cancelled, a);
@@ -142,17 +143,18 @@ class SettlementMessagingTests {
                                         .getMessageCount())
                                 .isEqualTo(1);
                     });
-                    assertThat(accounts.getBalance(owner).reservedBalance()).isEqualTo(40);
+                    assertThat(creditAccountService.getBalance(owner).reservedBalance())
+                            .isEqualTo(40);
                     assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
                             .isEqualTo(5);
-                    accounts.initializeAccount(courier);
+                    creditAccountService.initializeAccount(courier);
                     var parked = channel.basicGet(completed + ".credit-settlements.dlq", false);
                     assertThat(parked).isNotNull();
                     channel.basicPublish(completed, completed, parked.getProps(), parked.getBody());
                     channel.waitForConfirmsOrDie(5000);
                     channel.basicAck(parked.getEnvelope().getDeliveryTag(), false);
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
-                                    accounts.getBalance(courier).availableBalance())
+                                    creditAccountService.getBalance(courier).availableBalance())
                             .isEqualTo(55));
                     publish(channel, completed, c); // Acknowledging a duplicate must not transfer credits again.
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
@@ -167,7 +169,8 @@ class SettlementMessagingTests {
                     try {
                         assertThatThrownBy(() -> service.releaseReservedCredits(d))
                                 .isInstanceOf(RuntimeException.class);
-                        assertThat(accounts.getBalance(owner).reservedBalance()).isEqualTo(10);
+                        assertThat(creditAccountService.getBalance(owner).reservedBalance())
+                                .isEqualTo(10);
                         assertThat(sql.queryForObject(
                                         "SELECT count(*) FROM credit_transaction_log WHERE operation_id=?",
                                         Long.class,
@@ -187,7 +190,8 @@ class SettlementMessagingTests {
                                     Long.class,
                                     recoveryId.toString()))
                             .isEqualTo(1));
-                    assertThat(accounts.getBalance(owner).reservedBalance()).isZero();
+                    assertThat(creditAccountService.getBalance(owner).reservedBalance())
+                            .isZero();
                 }
                 broker.online();
                 try (var context = start(args, executor)) {

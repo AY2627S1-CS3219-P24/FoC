@@ -50,7 +50,7 @@ class CreditProvisioningPersistenceTests {
     @Qualifier("userCreated") private Consumer<UserCreatedEvent> provisioning;
 
     @Autowired
-    private CreditAccountService accounts;
+    private CreditAccountService creditAccountService;
 
     @Autowired
     private CreditAccountRepository accountRepository;
@@ -91,7 +91,8 @@ class CreditProvisioningPersistenceTests {
                         Long.class,
                         event.payload().userId()))
                 .isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -103,7 +104,8 @@ class CreditProvisioningPersistenceTests {
                 event.payload().userId());
         provisioning.accept(event);
         provisioning.accept(event(event.payload().userId()));
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(35, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(35, 0));
         assertThat(accountRepository.count()).isEqualTo(1);
     }
 
@@ -137,7 +139,7 @@ class CreditProvisioningPersistenceTests {
                 .isEqualTo(new UserCreatedEvent(
                         eventId, "UserCreatedEvent", 1, occurredAt, new UserCreatedEvent.Payload(userId)));
         provisioning.accept(received);
-        assertThat(accounts.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -159,7 +161,8 @@ class CreditProvisioningPersistenceTests {
             assertThat(second.get(20, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(accountRepository.count()).isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @TestConfiguration

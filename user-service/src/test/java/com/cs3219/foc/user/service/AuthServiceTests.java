@@ -22,9 +22,9 @@ class AuthServiceTests {
     @Test
     void correctCredentialsForAnUnverifiedAccountCannotIssueEitherToken() {
         var manager = mock(AuthenticationManager.class);
-        var tokens = mock(TokenService.class);
-        var users = mock(UserRepository.class);
-        var service = new AuthService(manager, tokens, users);
+        var tokenService = mock(TokenService.class);
+        var userRepository = mock(UserRepository.class);
+        var service = new AuthService(manager, tokenService, userRepository);
         var user = CustomUserDetails.from(User.builder()
                 .id(UUID.randomUUID())
                 .email("jamie@u.nus.edu")
@@ -37,6 +37,6 @@ class AuthServiceTests {
         assertThatThrownBy(() -> service.login(new LoginRequest("jamie@u.nus.edu", "password123")))
                 .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
                         .isEqualTo(HttpStatus.FORBIDDEN));
-        verifyNoInteractions(tokens);
+        verifyNoInteractions(tokenService);
     }
 }

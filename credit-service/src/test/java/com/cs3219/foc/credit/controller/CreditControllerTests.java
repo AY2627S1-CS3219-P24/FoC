@@ -43,13 +43,13 @@ class CreditControllerTests {
     private JwtDecoder decoder;
 
     @Autowired
-    private CreditReservationService reservations;
+    private CreditReservationService creditReservationService;
 
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder, reservations);
+        reset(service, decoder, creditReservationService);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -116,7 +116,7 @@ class CreditControllerTests {
         var operation = UUID.randomUUID();
         var errand = UUID.randomUUID();
         var body = "{\"operationId\":\"" + operation + "\",\"errandId\":\"" + errand + "\",\"amount\":80}";
-        when(reservations.reserve(eq(owner), any())).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(eq(owner), any())).thenReturn(new CreditReservationResponse("RESERVED"));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .param("userId", UUID.randomUUID().toString())
@@ -124,7 +124,7 @@ class CreditControllerTests {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("RESERVED"));
-        verify(reservations).reserve(owner, new ReserveCreditRequest(operation, errand, 80));
+        verify(creditReservationService).reserve(owner, new ReserveCreditRequest(operation, errand, 80));
         mvc.perform(post("/credits/reservations")
                         .contentType("application/json")
                         .content(body))
@@ -139,7 +139,7 @@ class CreditControllerTests {
                         .contentType("application/json")
                         .content("{\"amount\":80}"))
                 .andExpect(status().isBadRequest());
-        verifyNoMoreInteractions(reservations);
+        verifyNoMoreInteractions(creditReservationService);
     }
 
     @ParameterizedTest
@@ -147,14 +147,14 @@ class CreditControllerTests {
     void reservationAcceptsIntegerAmountsWithoutChangingThem(long amount) throws Exception {
         var owner = UUID.randomUUID();
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
-        when(reservations.reserve(owner, request)).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(owner, request)).thenReturn(new CreditReservationResponse("RESERVED"));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .contentType("application/json")
                         .content("{\"operationId\":\"" + request.operationId() + "\",\"errandId\":\""
                                 + request.errandId() + "\",\"amount\":" + amount + "}"))
                 .andExpect(status().isOk());
-        verify(reservations).reserve(owner, request);
+        verify(creditReservationService).reserve(owner, request);
     }
 
     @ParameterizedTest
@@ -166,7 +166,7 @@ class CreditControllerTests {
                         .content("{\"operationId\":\"" + UUID.randomUUID() + "\",\"errandId\":\"" + UUID.randomUUID()
                                 + "\",\"amount\":" + amount + "}"))
                 .andExpect(status().isBadRequest());
-        verifyNoInteractions(reservations);
+        verifyNoInteractions(creditReservationService);
     }
 
     @TestConfiguration
@@ -179,7 +179,7 @@ class CreditControllerTests {
     })
     static class TestConfig {
         @Bean
-        CreditReservationService reservations() {
+        CreditReservationService creditReservationService() {
             return mock(CreditReservationService.class);
         }
 

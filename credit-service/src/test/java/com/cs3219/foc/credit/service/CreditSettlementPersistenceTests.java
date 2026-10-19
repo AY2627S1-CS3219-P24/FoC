@@ -45,7 +45,7 @@ class CreditSettlementPersistenceTests {
     private CreditSettlementService settlement;
 
     @Autowired
-    private CreditAccountService accounts;
+    private CreditAccountService creditAccountService;
 
     @Autowired
     private DataSource dataSource;
@@ -71,7 +71,7 @@ class CreditSettlementPersistenceTests {
 
     private UUID fund(long amount) {
         var user = UUID.randomUUID();
-        accounts.initializeAccount(user);
+        creditAccountService.initializeAccount(user);
         jdbc.update("UPDATE credit_accounts SET total_balance = ? WHERE user_id = ?", amount, user);
         return user;
     }
@@ -165,7 +165,7 @@ class CreditSettlementPersistenceTests {
                 () -> settlement.releaseReservedCredits(cancel),
                 () -> settlement.releaseReservedCredits(expired(user, r)));
         settlement.releaseReservedCredits(cancel);
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
         assertThat(jdbc.queryForList("SELECT transaction_type FROM credit_transaction_log", String.class))
                 .containsExactlyInAnyOrder("RESERVE", "REFUND");
@@ -189,9 +189,9 @@ class CreditSettlementPersistenceTests {
         assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
         settlement.releaseReservedCredits(cancelled(user, r));
         assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
-        assertThat(accounts.getBalance(courier)).isEqualTo(new CreditBalanceResponse(87, 0));
-        assertThat(accounts.getBalance(other)).isEqualTo(new CreditBalanceResponse(0, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
+        assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(87, 0));
+        assertThat(creditAccountService.getBalance(other)).isEqualTo(new CreditBalanceResponse(0, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
     }
 
@@ -205,10 +205,10 @@ class CreditSettlementPersistenceTests {
                 .isInstanceOf(CreditAccountPendingException.class);
         assertThat(results.events).isEmpty();
         assertThat(count("credit_transaction_log")).isEqualTo(1);
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
-        accounts.initializeAccount(courier);
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+        creditAccountService.initializeAccount(courier);
         settlement.transferReservedCredits(paid);
-        assertThat(accounts.getBalance(courier)).isEqualTo(new CreditBalanceResponse(95, 0));
+        assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(95, 0));
     }
 
     @Test
@@ -224,7 +224,7 @@ class CreditSettlementPersistenceTests {
         reserve.reserve(user, rejected);
         settlement.releaseReservedCredits(cancelled(user, rejected));
         assertThat(outcome()).isEqualTo("NO_RESERVATION");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
     }
 
@@ -241,7 +241,7 @@ class CreditSettlementPersistenceTests {
         }
         settlement.releaseReservedCredits(cancelled(UUID.randomUUID(), r));
         assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         assertThat(count("credit_transaction_log")).isEqualTo(1);
     }
 
@@ -260,7 +260,7 @@ class CreditSettlementPersistenceTests {
         settlement.releaseReservedCredits(rejected);
         var rejectedResult = results.events.getLast();
         assertThat(rejectedResult.payload().outcome()).isEqualTo("RESERVATION_MISMATCH");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
 
         settlement.releaseReservedCredits(corrected);
         var correctedResult = results.events.getLast();
@@ -269,7 +269,7 @@ class CreditSettlementPersistenceTests {
         assertThat(correctedResult.payload().operationId())
                 .isEqualTo(rejectedResult.payload().operationId());
         assertThat(correctedResult.eventId()).isNotEqualTo(rejectedResult.eventId());
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
     }
 
@@ -296,7 +296,7 @@ class CreditSettlementPersistenceTests {
                 new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
         assertThatThrownBy(() -> settlement.releaseReservedCredits(changedAmount))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));
     }
 
     @Test
@@ -308,8 +308,8 @@ class CreditSettlementPersistenceTests {
                 + "'::uuid OR total_balance=0)");
         try {
             assertThatThrownBy(() -> settlement.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
-            assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
-            assertThat(accounts.getBalance(courier)).isEqualTo(new CreditBalanceResponse(0, 0));
+            assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+            assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(0, 0));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
             assertThat(results.events).isEmpty();
         } finally {
@@ -326,13 +326,13 @@ class CreditSettlementPersistenceTests {
         jdbc.execute("ALTER TABLE credit_transaction_log ADD CONSTRAINT fail_refund CHECK(transaction_type='RESERVE')");
         try {
             assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel)).isInstanceOf(RuntimeException.class);
-            assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+            assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_refund");
         }
         settlement.releaseReservedCredits(cancel);
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
     }
 
     @Test
@@ -345,9 +345,9 @@ class CreditSettlementPersistenceTests {
                 () -> settlement.transferReservedCredits(completed(user, r, courier)));
         assertThat(results.events.stream().map(e -> e.payload().outcome()).toList())
                 .contains("TERMINAL_CONFLICT");
-        assertThat(accounts.getBalance(user).reservedBalance()).isZero();
-        assertThat(accounts.getBalance(user).availableBalance()
-                        + accounts.getBalance(courier).availableBalance())
+        assertThat(creditAccountService.getBalance(user).reservedBalance()).isZero();
+        assertThat(creditAccountService.getBalance(user).availableBalance()
+                        + creditAccountService.getBalance(courier).availableBalance())
                 .isEqualTo(100);
         assertThat(count("credit_transaction_log")).isEqualTo(2);
     }
@@ -361,8 +361,8 @@ class CreditSettlementPersistenceTests {
         concurrent(
                 () -> settlement.transferReservedCredits(completed(a, r, b)),
                 () -> settlement.transferReservedCredits(completed(b, s, a)));
-        assertThat(accounts.getBalance(a)).isEqualTo(new CreditBalanceResponse(50, 0));
-        assertThat(accounts.getBalance(b)).isEqualTo(new CreditBalanceResponse(150, 0));
+        assertThat(creditAccountService.getBalance(a)).isEqualTo(new CreditBalanceResponse(50, 0));
+        assertThat(creditAccountService.getBalance(b)).isEqualTo(new CreditBalanceResponse(150, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(4);
     }
 

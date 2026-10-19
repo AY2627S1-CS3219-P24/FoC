@@ -105,7 +105,7 @@ class UserProfilePersistenceTests {
     private TokenService tokenService;
 
     @Autowired
-    private RefreshTokenRepository refreshTokens;
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -117,10 +117,10 @@ class UserProfilePersistenceTests {
     private EmailVerificationService verification;
 
     @Autowired
-    private EmailChangeService emailChange;
+    private EmailChangeService emailChangeService;
 
     @Autowired
-    private EmailTokenRepository emailTokens;
+    private EmailTokenRepository emailTokenRepository;
 
     @Autowired
     private JavaMailSender mailSender;
@@ -205,13 +205,13 @@ class UserProfilePersistenceTests {
         assertThatThrownBy(() -> authService.login(credentials))
                 .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
                         .isEqualTo(HttpStatus.FORBIDDEN));
-        assertThat(refreshTokens.count()).isZero();
+        assertThat(refreshTokenRepository.count()).isZero();
 
         verification.verifyEmail(token);
 
         assertThat(repository.findByEmail("jamie@u.nus.edu").orElseThrow().isEmailVerified())
                 .isTrue();
-        assertThat(emailTokens.count()).isZero();
+        assertThat(emailTokenRepository.count()).isZero();
         assertThat(authService.login(credentials).accessToken()).isNotBlank();
         assertThatThrownBy(() -> verification.verifyEmail(token)).isInstanceOf(InvalidEmailTokenException.class);
     }
@@ -220,14 +220,14 @@ class UserProfilePersistenceTests {
     void emailChangeVerifiesTheNewAddressAndKeepsTheExistingSession() {
         var user = createPasswordUser("original@u.nus.edu");
         var session = authService.login(new LoginRequest(user.getEmail(), "CurrentPassword1"));
-        emailChange.requestChange(user.getId(), "updated@nus.edu.sg");
+        emailChangeService.requestChange(user.getId(), "updated@nus.edu.sg");
         var token = capturedEmailChangeToken("updated@nus.edu.sg");
         assertThat(repository.findById(user.getId()).orElseThrow().getEmail()).isEqualTo("original@u.nus.edu");
-        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getEmail())
+        assertThat(emailTokenRepository.findAll()).singleElement().satisfies(stored -> assertThat(stored.getEmail())
                 .isEqualTo("updated@nus.edu.sg"));
 
         assertThatThrownBy(() -> verification.verifyEmail(token)).isInstanceOf(InvalidEmailTokenException.class);
-        emailChange.confirmChange(token);
+        emailChangeService.confirmChange(token);
         var messages = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender, timeout(5000).times(2)).send(messages.capture());
         var notification = messages.getAllValues().get(1);
@@ -238,7 +238,7 @@ class UserProfilePersistenceTests {
         var updated = repository.findById(user.getId()).orElseThrow();
         assertThat(updated.getEmail()).isEqualTo("updated@nus.edu.sg");
         assertThat(updated.isEmailVerified()).isTrue();
-        assertThat(emailTokens.count()).isZero();
+        assertThat(emailTokenRepository.count()).isZero();
         assertThat(authService.refreshAccessToken(session.refreshToken()).accessToken())
                 .isNotBlank();
         assertThat(authService
@@ -253,19 +253,19 @@ class UserProfilePersistenceTests {
     void emailChangeRejectsAnAddressClaimedBeforeRequestOrBeforeConfirmation() {
         var user = createPasswordUser("original@u.nus.edu");
         createUser("taken@nus.edu.sg");
-        assertThatThrownBy(() -> emailChange.requestChange(user.getId(), "taken@nus.edu.sg"))
+        assertThatThrownBy(() -> emailChangeService.requestChange(user.getId(), "taken@nus.edu.sg"))
                 .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
                         .isEqualTo(HttpStatus.CONFLICT));
         verifyNoInteractions(mailSender);
 
-        emailChange.requestChange(user.getId(), "available@nus.edu.sg");
+        emailChangeService.requestChange(user.getId(), "available@nus.edu.sg");
         var token = capturedEmailChangeToken("available@nus.edu.sg");
         createUser("available@nus.edu.sg");
-        assertThatThrownBy(() -> emailChange.confirmChange(token))
+        assertThatThrownBy(() -> emailChangeService.confirmChange(token))
                 .isInstanceOfSatisfying(EmailVerificationException.class, error -> assertThat(error.getStatus())
                         .isEqualTo(HttpStatus.CONFLICT));
         assertThat(repository.findById(user.getId()).orElseThrow().getEmail()).isEqualTo("original@u.nus.edu");
-        assertThat(emailTokens.count()).isEqualTo(1);
+        assertThat(emailTokenRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -275,15 +275,15 @@ class UserProfilePersistenceTests {
         user.setEmailVerified(false);
         repository.saveAndFlush(user);
         passwordService.requestPasswordReset(user.getEmail());
-        var originalTokenHash = emailTokens.findAll().getFirst().getTokenHash();
+        var originalTokenHash = emailTokenRepository.findAll().getFirst().getTokenHash();
         passwordService.requestPasswordReset(user.getEmail());
         passwordService.requestPasswordReset("missing@u.nus.edu");
-        assertThat(emailTokens.findAll()).singleElement().satisfies(stored -> assertThat(stored.getTokenHash())
+        assertThat(emailTokenRepository.findAll()).singleElement().satisfies(stored -> assertThat(stored.getTokenHash())
                 .isEqualTo(originalTokenHash));
         // The repeated request succeeds without replacing the link or sending another email.
         var token = capturedPasswordResetToken(user.getEmail());
         reset(mailSender);
-        emailChange.requestChange(user.getId(), "pending@nus.edu.sg");
+        emailChangeService.requestChange(user.getId(), "pending@nus.edu.sg");
         var changeToken = capturedEmailChangeToken("pending@nus.edu.sg");
         assertThat(passwordEncoder.matches(
                         "CurrentPassword1",
@@ -300,7 +300,8 @@ class UserProfilePersistenceTests {
         assertThat(notice.getSubject()).isEqualTo("Your FoC password has been reset");
         assertThat(notice.getText()).doesNotContain("NewPassword2", "reset-password?token=");
 
-        assertThatThrownBy(() -> emailChange.confirmChange(changeToken)).isInstanceOf(InvalidEmailTokenException.class);
+        assertThatThrownBy(() -> emailChangeService.confirmChange(changeToken))
+                .isInstanceOf(InvalidEmailTokenException.class);
 
         assertThat(authService
                         .login(new LoginRequest(user.getEmail(), " NewPassword2 "))
@@ -320,8 +321,8 @@ class UserProfilePersistenceTests {
         passwordService.requestPasswordReset(user.getEmail());
         var resetToken = capturedPasswordResetToken(user.getEmail());
         reset(mailSender);
-        emailChange.requestChange(user.getId(), "updated@nus.edu.sg");
-        emailChange.confirmChange(capturedEmailChangeToken("updated@nus.edu.sg"));
+        emailChangeService.requestChange(user.getId(), "updated@nus.edu.sg");
+        emailChangeService.confirmChange(capturedEmailChangeToken("updated@nus.edu.sg"));
 
         assertThatThrownBy(() -> passwordService.resetPassword(resetToken, "NewPassword2"))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
@@ -330,7 +331,7 @@ class UserProfilePersistenceTests {
                         .accessToken())
                 .isNotBlank();
         // A failed reset rolls back token consumption along with the password update.
-        assertThat(emailTokens.count()).isEqualTo(1);
+        assertThat(emailTokenRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -339,14 +340,15 @@ class UserProfilePersistenceTests {
         passwordService.requestPasswordReset(user.getEmail());
         var resetToken = capturedPasswordResetToken(user.getEmail());
         reset(mailSender);
-        emailChange.requestChange(user.getId(), "pending@nus.edu.sg");
+        emailChangeService.requestChange(user.getId(), "pending@nus.edu.sg");
         var changeToken = capturedEmailChangeToken("pending@nus.edu.sg");
 
         passwordService.changePassword(user.getId(), new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
 
         assertThatThrownBy(() -> passwordService.resetPassword(resetToken, "AnotherPassword3"))
                 .isInstanceOf(InvalidPasswordResetTokenException.class);
-        assertThatThrownBy(() -> emailChange.confirmChange(changeToken)).isInstanceOf(InvalidEmailTokenException.class);
+        assertThatThrownBy(() -> emailChangeService.confirmChange(changeToken))
+                .isInstanceOf(InvalidEmailTokenException.class);
         assertThat(authService
                         .login(new LoginRequest(user.getEmail(), "NewPassword2"))
                         .accessToken())
@@ -409,7 +411,7 @@ class UserProfilePersistenceTests {
                 .filter(line -> line.startsWith("http://localhost:3000/verify-email?"))
                 .findFirst()
                 .orElseThrow();
-        emailChange.confirmChange(UriComponentsBuilder.fromUriString(changeLink)
+        emailChangeService.confirmChange(UriComponentsBuilder.fromUriString(changeLink)
                 .build()
                 .getQueryParams()
                 .getFirst("token"));
@@ -437,7 +439,7 @@ class UserProfilePersistenceTests {
                 }))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(repository.findByEmail("rollback@u.nus.edu")).isEmpty();
-        assertThat(emailTokens.count()).isZero();
+        assertThat(emailTokenRepository.count()).isZero();
         verifyNoInteractions(mailSender);
     }
 
@@ -447,7 +449,7 @@ class UserProfilePersistenceTests {
         service.registerUser(new RegisterUserRequest("delivery@u.nus.edu", "Jamie", "password123"));
         verify(mailSender, timeout(5000)).send(any(SimpleMailMessage.class));
         assertThat(repository.findByEmail("delivery@u.nus.edu")).isPresent();
-        assertThat(emailTokens.count()).isEqualTo(1);
+        assertThat(emailTokenRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -547,7 +549,7 @@ class UserProfilePersistenceTests {
             });
             var rotated = refresh.get(20, TimeUnit.SECONDS);
             assertThat(change.get(20, TimeUnit.SECONDS)).isTrue();
-            assertThat(refreshTokens.findAll()).isEmpty();
+            assertThat(refreshTokenRepository.findAll()).isEmpty();
             if (rotated != null) {
                 assertThatThrownBy(() -> authService.refreshAccessToken(rotated.refreshToken()))
                         .isInstanceOf(InvalidRefreshTokenException.class);
@@ -778,17 +780,18 @@ class UserProfilePersistenceTests {
 
         @Bean
         PasswordService passwordService(
-                UserRepository users,
-                RefreshTokenRepository tokens,
+                UserRepository userRepository,
+                RefreshTokenRepository refreshTokenRepository,
                 PasswordEncoder encoder,
-                EmailTokenService emailTokens,
+                EmailTokenService emailTokenService,
                 EmailTokenRepository emailTokenRepository,
                 ApplicationEventPublisher events) {
-            return new PasswordService(users, tokens, encoder, emailTokens, emailTokenRepository, events);
+            return new PasswordService(
+                    userRepository, refreshTokenRepository, encoder, emailTokenService, emailTokenRepository, events);
         }
 
         @Bean
-        TokenService tokenService(RefreshTokenRepository tokens, UserRepository users) {
+        TokenService tokenService(RefreshTokenRepository refreshTokenRepository, UserRepository userRepository) {
             var properties = new AuthProperties(
                     Duration.ofMinutes(5),
                     Duration.ofDays(30),
@@ -801,15 +804,15 @@ class UserProfilePersistenceTests {
                     .header("alg", "ES256")
                     .subject("test-user")
                     .build();
-            return new TokenService(tokens, users, Clock.systemUTC(), properties, encoder);
+            return new TokenService(refreshTokenRepository, userRepository, Clock.systemUTC(), properties, encoder);
         }
 
         @Bean
-        AuthService authService(UserRepository users, TokenService tokens, PasswordEncoder encoder) {
-            var provider = new DaoAuthenticationProvider(new CustomUserDetailsService(users));
+        AuthService authService(UserRepository userRepository, TokenService tokenService, PasswordEncoder encoder) {
+            var provider = new DaoAuthenticationProvider(new CustomUserDetailsService(userRepository));
             provider.setPasswordEncoder(encoder);
             AuthenticationManager manager = new ProviderManager(provider);
-            return new AuthService(manager, tokens, users);
+            return new AuthService(manager, tokenService, userRepository);
         }
 
         @Bean
@@ -850,7 +853,9 @@ class UserProfilePersistenceTests {
 
         @Bean
         UserService userService(
-                UserRepository repository, EmailVerificationService verification, EmailChangeService emailChange) {
+                UserRepository repository,
+                EmailVerificationService verification,
+                EmailChangeService emailChangeService) {
             var avatarStorageService = mock(AvatarStorageService.class);
             when(avatarStorageService.createPresignedUrl(any()))
                     .thenAnswer(call ->
@@ -861,7 +866,7 @@ class UserProfilePersistenceTests {
                     TestMappers.mapper(),
                     mock(ApplicationEventPublisher.class),
                     verification,
-                    emailChange,
+                    emailChangeService,
                     avatarStorageService);
         }
     }

@@ -13,22 +13,23 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class EmailVerificationService {
-    private final UserRepository users;
-    private final EmailTokenService tokens;
+    private final UserRepository userRepository;
+    private final EmailTokenService emailTokenService;
 
     public void createRegistrationVerification(User user) {
-        tokens.issue(user, user.getEmail(), EmailTokenPurpose.REGISTRATION);
+        emailTokenService.issue(user, user.getEmail(), EmailTokenPurpose.REGISTRATION);
     }
 
     public void resendRegistrationVerification(String email) {
-        users.findForUpdateByEmail(email)
+        userRepository
+                .findForUpdateByEmail(email)
                 .filter(user -> !user.isEmailVerified())
                 .ifPresent(this::createRegistrationVerification);
     }
 
     public void verifyEmail(String token) {
-        var stored = tokens.consume(token, EmailTokenPurpose.REGISTRATION);
-        var user = users.findById(stored.getUserId()).orElseThrow();
+        var stored = emailTokenService.consume(token, EmailTokenPurpose.REGISTRATION);
+        var user = userRepository.findById(stored.getUserId()).orElseThrow();
         if (!stored.getEmail().equals(user.getEmail())) {
             throw new EmailVerificationException(HttpStatus.BAD_REQUEST, "This verification link is no longer valid.");
         }

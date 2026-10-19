@@ -37,18 +37,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
-    private final EmailChangeService emailChange;
+    private final EmailChangeService emailChangeService;
 
     @PostMapping("/email-change/confirm")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void confirmEmailChange(@Valid @RequestBody VerifyEmailRequest request) {
-        emailChange.confirmChange(request.token());
+        emailChangeService.confirmChange(request.token());
     }
 
     @PostMapping("/me/email-change")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void requestEmailChange(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody UpdateEmailRequest request) {
-        emailChange.requestChange(UUID.fromString(jwt.getSubject()), request.email());
+        emailChangeService.requestChange(UUID.fromString(jwt.getSubject()), request.email());
     }
 
     @GetMapping

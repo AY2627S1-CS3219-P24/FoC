@@ -44,7 +44,7 @@ class CreditReservationPersistenceTests {
     private CreditSettlementService settlement;
 
     @Autowired
-    private CreditAccountService accounts;
+    private CreditAccountService creditAccountService;
 
     @Autowired
     private DataSource dataSource;
@@ -70,7 +70,7 @@ class CreditReservationPersistenceTests {
 
     private UUID fund(long amount) {
         var user = UUID.randomUUID();
-        accounts.initializeAccount(user);
+        creditAccountService.initializeAccount(user);
         jdbc.update("UPDATE credit_accounts SET total_balance = ? WHERE user_id = ?", amount, user);
         return user;
     }
@@ -105,7 +105,7 @@ class CreditReservationPersistenceTests {
     void concurrentReservationsCannotOverspend() throws Exception {
         var user = fund(100);
         concurrent(() -> reserve.reserve(user, request(80)), () -> reserve.reserve(user, request(80)));
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         assertThat(jdbc.queryForList("SELECT state FROM credit_reservations", String.class))
                 .containsExactlyInAnyOrder("RESERVED", "INSUFFICIENT_BALANCE");
         assertThat(count("credit_transaction_log")).isEqualTo(1);
@@ -119,7 +119,7 @@ class CreditReservationPersistenceTests {
         var request = request(80);
         concurrent(() -> reserve.reserve(user, request), () -> reserve.reserve(user, request));
         assertThat(reserve.reserve(user, request).outcome()).isEqualTo("RESERVED");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         assertThat(count("credit_reservations")).isEqualTo(1);
         assertThat(count("credit_transaction_log")).isEqualTo(1);
     }
@@ -150,7 +150,7 @@ class CreditReservationPersistenceTests {
         assertThat(reserve.reserve(user, request).outcome()).isEqualTo("INSUFFICIENT_BALANCE");
         jdbc.update("UPDATE credit_accounts SET total_balance=100 WHERE user_id=?", user);
         assertThat(reserve.reserve(user, request).outcome()).isEqualTo("INSUFFICIENT_BALANCE");
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isZero();
     }
 
@@ -160,7 +160,7 @@ class CreditReservationPersistenceTests {
         var request = request(10);
         assertThatThrownBy(() -> reserve.reserve(user, request)).isInstanceOf(CreditAccountPendingException.class);
         assertThat(count("credit_reservations")).isZero();
-        accounts.initializeAccount(user);
+        creditAccountService.initializeAccount(user);
         jdbc.update("UPDATE credit_accounts SET total_balance=20 WHERE user_id=?", user);
         assertThat(reserve.reserve(user, request).outcome()).isEqualTo("RESERVED");
     }
@@ -173,7 +173,7 @@ class CreditReservationPersistenceTests {
         try {
             assertThatThrownBy(() -> reserve.reserve(user, request)).isInstanceOf(RuntimeException.class);
             assertThat(count("credit_reservations")).isZero();
-            assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+            assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_audit");
         }
@@ -188,14 +188,14 @@ class CreditReservationPersistenceTests {
         reserve.reserve(user, first);
         reserve.reserve(user, second);
         reserve.reserve(user, request(90));
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
         settlement.releaseReservedCredits(new ErrandCancelledEvent(
                 UUID.randomUUID(),
                 "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(first.errandId(), user, 20)));
-        assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(70, 30));
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(70, 30));
         assertThat(reserve.reserve(user, first).outcome()).isEqualTo("RESERVED");
         assertThat(count("credit_transaction_log")).isEqualTo(3);
     }

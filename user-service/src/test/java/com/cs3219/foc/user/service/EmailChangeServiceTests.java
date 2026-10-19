@@ -22,22 +22,23 @@ class EmailChangeServiceTests {
     @ParameterizedTest
     @ValueSource(strings = {"users_email_key", "other_constraint"})
     void mapsOnlyTheEmailUniqueConstraintToAnEmailConflict(String constraint) {
-        var users = mock(UserRepository.class);
-        var tokens = mock(EmailTokenService.class);
+        var userRepository = mock(UserRepository.class);
+        var emailTokenService = mock(EmailTokenService.class);
         var user = User.builder().id(UUID.randomUUID()).email("old@u.nus.edu").build();
         var stored = new EmailToken();
         stored.setUserId(user.getId());
         stored.setEmail("new@nus.edu.sg");
-        when(tokens.consume("token", EmailTokenPurpose.EMAIL_CHANGE)).thenReturn(stored);
-        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        when(emailTokenService.consume("token", EmailTokenPurpose.EMAIL_CHANGE)).thenReturn(stored);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         var failure = new DataIntegrityViolationException(
                 "Database constraint",
                 new ConstraintViolationException(
                         "Constraint violation", new SQLException("Constraint violation", "23505"), constraint));
-        when(users.saveAndFlush(user)).thenThrow(failure);
+        when(userRepository.saveAndFlush(user)).thenThrow(failure);
 
-        var thrown = catchThrowable(() ->
-                new EmailChangeService(users, tokens, mock(ApplicationEventPublisher.class)).confirmChange("token"));
+        var thrown = catchThrowable(
+                () -> new EmailChangeService(userRepository, emailTokenService, mock(ApplicationEventPublisher.class))
+                        .confirmChange("token"));
 
         if (constraint.equals("users_email_key")) {
             assertThat(thrown)

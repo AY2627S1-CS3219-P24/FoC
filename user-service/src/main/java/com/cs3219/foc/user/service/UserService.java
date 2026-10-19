@@ -43,7 +43,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
     private final EmailVerificationService emailVerification;
-    private final EmailChangeService emailChange;
+    private final EmailChangeService emailChangeService;
     private final AvatarStorageService avatarStorageService;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
@@ -135,7 +135,7 @@ public class UserService {
         validateRoleChange(user.getRoles(), request.roles());
 
         if (!request.email().equals(user.getEmail())) {
-            emailChange.requestChange(id, request.email());
+            emailChangeService.requestChange(id, request.email());
         }
 
         userMapper.updateUser(request, user);
