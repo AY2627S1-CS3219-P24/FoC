@@ -185,13 +185,12 @@ class CreditReservationPersistenceTests {
         reserve.reserve(user, second);
         reserve.reserve(user, request(90));
         assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
-        settlement.releaseReservedCredits(new ErrandSettlementEvent(
+        settlement.releaseReservedCredits(new ErrandCancelledEvent(
                 UUID.randomUUID(),
                 "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
-                new ErrandSettlementEvent.Payload(
-                        UUID.randomUUID(), first.operationId(), first.errandId(), user, 20, null)));
+                new ErrandCancelledEvent.Payload(first.errandId(), user, 20)));
         assertThat(accounts.getBalance(user)).isEqualTo(new CreditBalanceResponse(70, 30));
         assertThat(reserve.reserve(user, first).outcome()).isEqualTo("RESERVED");
         assertThat(count("credit_transaction_log")).isEqualTo(3);

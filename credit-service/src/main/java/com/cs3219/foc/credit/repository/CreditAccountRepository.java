@@ -17,7 +17,8 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
             SELECT new com.cs3219.foc.credit.model.dto.CreditBalanceResponse(
                 a.totalBalance - COALESCE(SUM(r.amount), 0), COALESCE(SUM(r.amount), 0))
             FROM CreditAccount a
-            LEFT JOIN CreditReservation r ON r.userId = a.userId AND r.state = 'RESERVED'
+            LEFT JOIN CreditReservation r ON r.userId = a.userId
+                AND r.state = com.cs3219.foc.credit.model.entity.ReservationState.RESERVED
             WHERE a.userId = :userId
             GROUP BY a.userId, a.totalBalance
             """)

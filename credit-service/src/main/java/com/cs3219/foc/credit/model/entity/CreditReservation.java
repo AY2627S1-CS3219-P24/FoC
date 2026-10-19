@@ -26,7 +26,8 @@ public class CreditReservation {
     private long amount;
 
     @Column(name = "state")
-    private String state;
+    @Enumerated(EnumType.STRING)
+    private ReservationState state;
 
     @Column(name = "created_at")
     private OffsetDateTime createdAt;

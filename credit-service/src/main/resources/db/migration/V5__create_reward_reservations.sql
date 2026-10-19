@@ -3,8 +3,7 @@ CREATE TABLE credit_reservations (
     operation_id UUID NOT NULL UNIQUE,
     user_id UUID NOT NULL REFERENCES credit_accounts(user_id),
     amount BIGINT NOT NULL CHECK (amount > 0),
-    state VARCHAR(20) NOT NULL DEFAULT 'RESERVED'
-        CHECK (state IN ('RESERVED', 'INSUFFICIENT_BALANCE', 'REFUNDED', 'PAID')),
+    state VARCHAR(20) NOT NULL DEFAULT 'RESERVED',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     settled_at TIMESTAMPTZ,
     courier_id UUID REFERENCES credit_accounts(user_id),

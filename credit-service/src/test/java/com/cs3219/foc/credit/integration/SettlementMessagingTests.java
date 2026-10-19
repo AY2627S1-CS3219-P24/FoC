@@ -5,7 +5,9 @@ import static org.awaitility.Awaitility.await;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
-import com.cs3219.foc.credit.model.dto.event.ErrandSettlementEvent;
+import com.cs3219.foc.credit.model.dto.event.ErrandCancelledEvent;
+import com.cs3219.foc.credit.model.dto.event.ErrandCompletedEvent;
+import com.cs3219.foc.credit.model.dto.event.ErrandExpiredEvent;
 import com.cs3219.foc.credit.service.*;
 import com.rabbitmq.client.*;
 import java.nio.charset.StandardCharsets;
@@ -94,9 +96,19 @@ class SettlementMessagingTests {
                     accounts.initializeAccount(owner);
                     sql.update("UPDATE credit_accounts SET total_balance=100 WHERE user_id=?", owner);
                     var reserve = context.getBean(CreditReservationService.class);
-                    var a = reserved(reserve, owner, 20, "ErrandCancelledEvent", null);
-                    var b = reserved(reserve, owner, 20, "ErrandExpiredEvent", null);
-                    var c = reserved(reserve, owner, 40, "ErrandCompletedEvent", courier);
+                    var a = cancelled(reserve, owner, 20);
+                    var b = new ErrandExpiredEvent(
+                            UUID.randomUUID(),
+                            "ErrandExpiredEvent",
+                            1,
+                            OffsetDateTime.now(),
+                            new ErrandExpiredEvent.Payload(reserved(reserve, owner, 20), owner, 20));
+                    var c = new ErrandCompletedEvent(
+                            UUID.randomUUID(),
+                            "ErrandCompletedEvent",
+                            1,
+                            OffsetDateTime.now(),
+                            new ErrandCompletedEvent.Payload(reserved(reserve, owner, 40), owner, 40, courier));
                     channel.confirmSelect();
                     var invalidAmounts = List.of("1.9", "1.0", "1e2", "9223372036854775808", "-9223372036854775809");
                     var body = JsonMapper.builder().build().writeValueAsString(a);
@@ -149,7 +161,7 @@ class SettlementMessagingTests {
                     assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
                             .isEqualTo(6);
                     // Registry writes are part of the same transaction as settlement and its audit row.
-                    var d = reserved(reserve, owner, 10, "ErrandCancelledEvent", null);
+                    var d = cancelled(reserve, owner, 10);
                     var service = context.getBean(CreditSettlementService.class);
                     sql.execute("ALTER TABLE event_publication ADD CONSTRAINT fail_publication CHECK(FALSE) NOT VALID");
                     try {
@@ -159,7 +171,7 @@ class SettlementMessagingTests {
                         assertThat(sql.queryForObject(
                                         "SELECT count(*) FROM credit_transaction_log WHERE operation_id=?",
                                         Long.class,
-                                        d.payload().operationId()))
+                                        d.eventId()))
                                 .isZero();
                     } finally {
                         sql.execute("ALTER TABLE event_publication DROP CONSTRAINT fail_publication");
@@ -169,7 +181,7 @@ class SettlementMessagingTests {
                     recoveryId = UUID.fromString(sql.queryForObject(
                             "SELECT serialized_event::jsonb->>'eventId' FROM event_publication WHERE serialized_event::jsonb->'payload'->>'operationId'=?",
                             String.class,
-                            d.payload().operationId().toString()));
+                            d.eventId().toString()));
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
                                     "SELECT count(*) FROM event_publication WHERE serialized_event::jsonb->>'eventId'=? AND completion_date IS NULL",
                                     Long.class,
@@ -219,20 +231,22 @@ class SettlementMessagingTests {
         }
     }
 
-    private ErrandSettlementEvent reserved(
-            CreditReservationService service, UUID owner, long amount, String type, UUID courier) {
+    private UUID reserved(CreditReservationService service, UUID owner, long amount) {
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
         assertThat(service.reserve(owner, request).outcome()).isEqualTo("RESERVED");
-        return new ErrandSettlementEvent(
-                UUID.randomUUID(),
-                type,
-                1,
-                OffsetDateTime.now(),
-                new ErrandSettlementEvent.Payload(
-                        UUID.randomUUID(), request.operationId(), request.errandId(), owner, amount, courier));
+        return request.errandId();
     }
 
-    private void publish(Channel channel, String destination, ErrandSettlementEvent event) throws Exception {
+    private ErrandCancelledEvent cancelled(CreditReservationService service, UUID owner, long amount) {
+        return new ErrandCancelledEvent(
+                UUID.randomUUID(),
+                "ErrandCancelledEvent",
+                1,
+                OffsetDateTime.now(),
+                new ErrandCancelledEvent.Payload(reserved(service, owner, amount), owner, amount));
+    }
+
+    private void publish(Channel channel, String destination, Object event) throws Exception {
         channel.basicPublish(
                 destination,
                 destination,

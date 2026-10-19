@@ -1,6 +1,7 @@
 package com.cs3219.foc.credit.repository;
 
 import com.cs3219.foc.credit.model.entity.CreditReservation;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.*;
@@ -13,15 +14,15 @@ public interface CreditReservationRepository extends JpaRepository<CreditReserva
     @Modifying
     @Query(
             value =
-                    "UPDATE credit_reservations SET state = :state, courier_id = :courier, settled_at = CURRENT_TIMESTAMP WHERE errand_id = :errand",
+                    "UPDATE credit_reservations SET state = :#{#state.name()}, courier_id = :courier, settled_at = CURRENT_TIMESTAMP WHERE errand_id = :errand",
             nativeQuery = true)
-    int settle(@Param("errand") UUID errand, @Param("state") String state, @Param("courier") UUID courier);
+    int settle(@Param("errand") UUID errand, @Param("state") ReservationState state, @Param("courier") UUID courier);
 
     @Modifying
     @Query(value = """
         INSERT INTO credit_reservations(errand_id, operation_id, user_id, amount, state, settled_at)
-        VALUES (:errand, :operation, :user, :amount, :state,
-                CASE WHEN :state = 'INSUFFICIENT_BALANCE' THEN CURRENT_TIMESTAMP ELSE NULL END)
+        VALUES (:errand, :operation, :user, :amount, :#{#state.name()},
+                CASE WHEN :#{#state.name()} = 'INSUFFICIENT_BALANCE' THEN CURRENT_TIMESTAMP ELSE NULL END)
         ON CONFLICT DO NOTHING
         """, nativeQuery = true)
     int reserve(
@@ -29,5 +30,5 @@ public interface CreditReservationRepository extends JpaRepository<CreditReserva
             @Param("operation") UUID operation,
             @Param("user") UUID user,
             @Param("amount") long amount,
-            @Param("state") String state);
+            @Param("state") ReservationState state);
 }

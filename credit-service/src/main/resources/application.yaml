@@ -109,6 +109,9 @@ spring:
               dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.credit-provisioning.dlq
   modulith:
     events:
+      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
       jdbc:
         schema-initialization:
           enabled: false
