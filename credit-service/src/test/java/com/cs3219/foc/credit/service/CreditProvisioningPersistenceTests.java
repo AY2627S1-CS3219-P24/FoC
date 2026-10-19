@@ -2,6 +2,7 @@ package com.cs3219.foc.credit.service;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.infrastructure.messaging.consumer.UserCreatedConsumer;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -32,11 +34,13 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringJUnitConfig(CreditProvisioningPersistenceTests.TestConfig.class)
+@TestPropertySource(properties = "credits.initial-allocation=15")
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
 class CreditProvisioningPersistenceTests {
     private static final String SCHEMA =
@@ -159,6 +163,7 @@ class CreditProvisioningPersistenceTests {
     }
 
     @TestConfiguration
+    @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
     @Import({UserCreatedConsumer.class, CreditAccountService.class})

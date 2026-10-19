@@ -2,6 +2,7 @@ package com.cs3219.foc.credit.service;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
@@ -21,7 +22,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,12 +35,14 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Uses real PostgreSQL migrations and service transactions in an isolated schema. */
 @SpringJUnitConfig(CreditAccountPersistenceTests.TestConfig.class)
+@TestPropertySource(properties = "credits.initial-allocation=20")
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
 class CreditAccountPersistenceTests {
     private static final String SCHEMA =
@@ -74,10 +80,10 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void initializesAtFifteenAndPreservesExistingBalancesAndTimestamps() {
+    void initializesWithConfiguredAllocationAndPreservesExistingBalancesAndTimestamps() {
         var owner = UUID.randomUUID();
         assertThat(service.initializeAccount(owner)).isTrue();
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
         var initial = repository.findById(owner).orElseThrow();
         assertThat(initial.getCreatedAt()).isNotNull();
         assertThat(initial.getUpdatedAt()).isNotNull();
@@ -91,7 +97,7 @@ class CreditAccountPersistenceTests {
     }
 
     @Test
-    void concurrentInitializationAllocatesFifteenCreditsOnce() throws Exception {
+    void concurrentInitializationGrantsConfiguredAllocationOnce() throws Exception {
         var owner = UUID.randomUUID();
         int workers = 8;
         var barrier = new CyclicBarrier(workers);
@@ -110,7 +116,7 @@ class CreditAccountPersistenceTests {
             assertThat(created).isEqualTo(1);
         }
         assertThat(repository.count()).isEqualTo(1);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
     }
 
     @Test
@@ -126,9 +132,9 @@ class CreditAccountPersistenceTests {
         var second = UUID.randomUUID();
         service.initializeAccount(first);
         service.initializeAccount(second);
-        jdbc.update("UPDATE credit_accounts SET total_balance = 20 WHERE user_id = ?", first);
-        assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(20, 0));
-        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(15, 0));
+        jdbc.update("UPDATE credit_accounts SET total_balance = 35 WHERE user_id = ?", first);
+        assertThat(service.getBalance(first)).isEqualTo(new CreditBalanceResponse(35, 0));
+        assertThat(service.getBalance(second)).isEqualTo(new CreditBalanceResponse(20, 0));
     }
 
     @Test
@@ -140,7 +146,47 @@ class CreditAccountPersistenceTests {
         service.initializeAccount(owner);
         assertThatThrownBy(() -> jdbc.update("UPDATE credit_accounts SET total_balance = -1 WHERE user_id = ?", owner))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
+    }
+
+    @Test
+    void databaseRequiresAnExplicitInitialBalance() {
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO credit_accounts (user_id) VALUES (?)", UUID.randomUUID()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void negativeInitialAllocationFailsConfigurationBinding() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfig.class)
+                .withPropertyValues("credits.initial-allocation=-1")
+                .run(context -> assertThat(context)
+                        .hasFailed()
+                        .getFailure()
+                        .hasRootCauseInstanceOf(BindValidationException.class));
+    }
+
+    @Test
+    void missingInitialAllocationFailsConfigurationBinding() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfig.class)
+                .run(context -> assertThat(context)
+                        .hasFailed()
+                        .getFailure()
+                        .hasRootCauseInstanceOf(BindValidationException.class));
+    }
+
+    @Test
+    void zeroInitialAllocationIsValid() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfig.class)
+                .withPropertyValues("credits.initial-allocation=0")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(CreditProperties.class).initialAllocation())
+                            .isZero();
+                });
     }
 
     @Test
@@ -157,7 +203,7 @@ class CreditAccountPersistenceTests {
     @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import(CreditAccountService.class)
+    @Import({CreditAccountService.class, PropertiesConfig.class})
     static class TestConfig {
         @Bean
         DataSource dataSource() {
@@ -192,4 +238,8 @@ class CreditAccountPersistenceTests {
             return new JpaTransactionManager(factory);
         }
     }
+
+    @TestConfiguration
+    @EnableConfigurationProperties(CreditProperties.class)
+    static class PropertiesConfig {}
 }
