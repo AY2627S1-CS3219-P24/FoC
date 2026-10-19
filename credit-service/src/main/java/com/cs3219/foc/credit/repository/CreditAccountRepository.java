@@ -39,8 +39,10 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
     int creditTotal(@Param("userId") UUID userId, @Param("amount") long amount);
 
     @Modifying
-    @Query(
-            value = "INSERT INTO credit_accounts (user_id) VALUES (:userId) ON CONFLICT (user_id) DO NOTHING",
-            nativeQuery = true)
-    int initializeIfAbsent(@Param("userId") UUID userId);
+    @Query(value = """
+                    INSERT INTO credit_accounts (user_id, total_balance)
+                    VALUES (:userId, :initialAllocation)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """, nativeQuery = true)
+    int initializeIfAbsent(@Param("userId") UUID userId, @Param("initialAllocation") long initialAllocation);
 }

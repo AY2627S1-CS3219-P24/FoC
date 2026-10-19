@@ -1,5 +1,6 @@
 package com.cs3219.foc.credit.service;
 
+import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
@@ -12,11 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CreditAccountService {
     private final CreditAccountRepository repository;
+    private final CreditProperties properties;
 
     /** Returns true only when this call creates the account with its initial credit allocation. */
     @Transactional
     public boolean initializeAccount(UUID userId) {
-        return repository.initializeIfAbsent(userId) == 1;
+        return repository.initializeIfAbsent(userId, properties.initialAllocation()) == 1;
     }
 
     @Transactional(readOnly = true)

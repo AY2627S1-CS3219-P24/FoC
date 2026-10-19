@@ -134,6 +134,8 @@ spring:
         jwt:
           jwk-set-uri: http://localhost:8080/api/.well-known/jwks.json
           jws-algorithms: ES256
+credits:
+  initial-allocation: 15
 server:
   servlet:
     context-path: /api
