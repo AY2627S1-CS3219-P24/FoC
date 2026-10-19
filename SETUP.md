@@ -111,6 +111,19 @@ frontend. The link confirms the email automatically; then follow **Log in** and
 sign in with the registered password. A `201` registration response alone does
 not confirm that the email was delivered.
 
+### Load supplier data
+
+At beginning, the supplier data is empty. After the supplier service has started once
+(Flyway created supplier table), then will load the suppliers' data from `data/csv`:
+
+```bash
+docker cp docker/postgres/seed-suppliers.sh foc-postgres-1:/tmp/seed-suppliers.sh
+docker cp data/csv/. foc-postgres-1:/tmp/seed
+docker exec -e PGUSER=foc -e PGDATABASE=foc foc-postgres-1 sh /tmp/seed-suppliers.sh /tmp/seed
+```
+
+The script will only add suppliers that are not in database, so run it again is safe.
+
 ## Stop
 
 Stop the frontend dev server and services in IntelliJ, then stop Postgres and RabbitMQ:
