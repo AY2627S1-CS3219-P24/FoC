@@ -10,10 +10,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @RequiredArgsConstructor
 public class UserCreatedConsumer {
-    private final CreditAccountService accounts;
+    private final CreditAccountService creditAccountService;
 
     @Bean
     Consumer<UserCreatedEvent> userCreated() {
-        return event -> accounts.initializeAccount(event.payload().userId());
+        return event -> creditAccountService.initializeAccount(event.payload().userId());
     }
 }

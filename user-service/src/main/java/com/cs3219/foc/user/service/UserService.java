@@ -16,6 +16,7 @@ import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.repository.UserSpecifications;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,8 +44,9 @@ public class UserService {
     private final UserMapper userMapper;
     private final ApplicationEventPublisher events;
     private final EmailVerificationService emailVerification;
-    private final EmailChangeService emailChange;
+    private final EmailChangeService emailChangeService;
     private final AvatarStorageService avatarStorageService;
+    private final CurrentUserService currentUserService;
 
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
@@ -135,7 +137,7 @@ public class UserService {
         validateRoleChange(user.getRoles(), request.roles());
 
         if (!request.email().equals(user.getEmail())) {
-            emailChange.requestChange(id, request.email());
+            emailChangeService.requestChange(id, request.email());
         }
 
         userMapper.updateUser(request, user);
@@ -158,6 +160,12 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public UserProfileDto getUserProfile() {
+        var userId = currentUserService.requireCurrentUserId();
+        return getUserProfile(userId);
+    }
+
+    @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
     public UserDto getUserDto(UUID userId) {
         return buildUserDto(getUser(userId));
@@ -171,6 +179,12 @@ public class UserService {
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
         userMapper.updateUserProfile(request, user);
         return buildUserProfileDto(userRepository.saveAndFlush(user));
+    }
+
+    @Transactional
+    public UserProfileDto updateUserProfile(UpdateUserProfileRequest request) {
+        var userId = currentUserService.requireCurrentUserId();
+        return updateUserProfile(userId, request);
     }
 
     @Transactional(readOnly = true)

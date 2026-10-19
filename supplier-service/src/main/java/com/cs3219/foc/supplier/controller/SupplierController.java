@@ -12,7 +12,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,10 +32,9 @@ public class SupplierController {
             @RequestParam(required = false) String q,
             @RequestParam(name = "category", required = false) List<SupplierCategory> categories,
             @RequestParam(defaultValue = "false") boolean openNow,
-            @RequestParam(defaultValue = "false") boolean includeInactive,
-            Authentication authentication) {
-        var criteria = new SupplierSearchCriteria(
-                q, categories == null ? List.of() : categories, openNow, includeInactive && isAdmin(authentication));
+            @RequestParam(defaultValue = "false") boolean includeInactive) {
+        var criteria =
+                new SupplierSearchCriteria(q, categories == null ? List.of() : categories, openNow, includeInactive);
         return supplierService.listSuppliers(criteria);
     }
 
@@ -47,8 +45,8 @@ public class SupplierController {
     }
 
     @GetMapping("/{id}")
-    public SupplierDto getSupplier(@PathVariable UUID id, Authentication authentication) {
-        return supplierService.getSupplier(id, isAdmin(authentication));
+    public SupplierDto getSupplier(@PathVariable UUID id) {
+        return supplierService.getSupplier(id);
     }
 
     @PutMapping("/{id}")
@@ -74,10 +72,5 @@ public class SupplierController {
     @DeleteMapping("/{id}/image")
     public SupplierDto removeSupplierImage(@PathVariable UUID id) {
         return supplierImageService.removeSupplierImage(id);
-    }
-
-    private static boolean isAdmin(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
     }
 }

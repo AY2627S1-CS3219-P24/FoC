@@ -7,6 +7,9 @@ import com.cs3219.foc.credit.infrastructure.messaging.consumer.UserCreatedConsum
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
+import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
+import com.cs3219.foc.credit.security.AuthenticationContextService;
+import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -50,7 +53,7 @@ class CreditProvisioningPersistenceTests {
     @Qualifier("userCreated") private Consumer<UserCreatedEvent> provisioning;
 
     @Autowired
-    private CreditAccountService accounts;
+    private CreditAccountService creditAccountService;
 
     @Autowired
     private CreditAccountRepository accountRepository;
@@ -91,7 +94,8 @@ class CreditProvisioningPersistenceTests {
                         Long.class,
                         event.payload().userId()))
                 .isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -103,7 +107,8 @@ class CreditProvisioningPersistenceTests {
                 event.payload().userId());
         provisioning.accept(event);
         provisioning.accept(event(event.payload().userId()));
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(35, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(35, 0));
         assertThat(accountRepository.count()).isEqualTo(1);
     }
 
@@ -137,7 +142,7 @@ class CreditProvisioningPersistenceTests {
                 .isEqualTo(new UserCreatedEvent(
                         eventId, "UserCreatedEvent", 1, occurredAt, new UserCreatedEvent.Payload(userId)));
         provisioning.accept(received);
-        assertThat(accounts.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
@@ -159,14 +164,21 @@ class CreditProvisioningPersistenceTests {
             assertThat(second.get(20, TimeUnit.SECONDS)).isTrue();
         }
         assertThat(accountRepository.count()).isEqualTo(1);
-        assertThat(accounts.getBalance(event.payload().userId())).isEqualTo(new CreditBalanceResponse(15, 0));
+        assertThat(creditAccountService.getBalance(event.payload().userId()))
+                .isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @TestConfiguration
     @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({UserCreatedConsumer.class, CreditAccountService.class})
+    @Import({
+        UserCreatedConsumer.class,
+        CreditAccountService.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
     static class TestConfig {
         @Bean
         DataSource dataSource() {

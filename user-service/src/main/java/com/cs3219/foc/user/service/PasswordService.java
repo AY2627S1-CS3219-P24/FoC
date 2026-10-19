@@ -13,6 +13,7 @@ import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -27,15 +28,16 @@ public class PasswordService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    private final EmailTokenService emailTokens;
+    private final EmailTokenService emailTokenService;
     private final EmailTokenRepository emailTokenRepository;
     private final ApplicationEventPublisher events;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public void requestPasswordReset(String email) {
         userRepository.findForUpdateByEmail(email).ifPresent(user -> {
             try {
-                emailTokens.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+                emailTokenService.issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
             } catch (EmailRateLimitException exception) {
                 // Keep the public response generic without issuing or sending another link.
             }
@@ -47,7 +49,7 @@ public class PasswordService {
         // consume holds the user lock; deleting the token and saving the password commit together.
         EmailToken stored;
         try {
-            stored = emailTokens.consume(token, EmailTokenPurpose.PASSWORD_RESET);
+            stored = emailTokenService.consume(token, EmailTokenPurpose.PASSWORD_RESET);
         } catch (InvalidEmailTokenException exception) {
             throw new InvalidPasswordResetTokenException();
         }
@@ -71,6 +73,12 @@ public class PasswordService {
             throw new InvalidPasswordException("newPassword", "New password must differ from the current password");
         }
         savePassword(user, request.newPassword());
+    }
+
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        var userId = currentUserService.requireCurrentUserId();
+        changePassword(userId, request);
     }
 
     private void savePassword(User user, String newPassword) {

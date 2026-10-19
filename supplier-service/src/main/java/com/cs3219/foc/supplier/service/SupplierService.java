@@ -8,6 +8,7 @@ import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
 import com.cs3219.foc.supplier.repository.SupplierSpecifications;
+import com.cs3219.foc.supplier.security.CurrentUserService;
 import java.time.Clock;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -27,12 +28,14 @@ public class SupplierService {
     private final SupplierMapper supplierMapper;
     private final Clock clock;
     private final SupplierImageStorageService supplierImageStorageService;
+    private final CurrentUserService currentUserService;
 
     /** list suppliers that match filters in {@code criteria}, sorted by name. */
     @Transactional(readOnly = true)
     public List<SupplierDto> listSuppliers(SupplierSearchCriteria criteria) {
         var filters = new ArrayList<Specification<Supplier>>();
-        if (!criteria.includeInactive()) {
+        var includeInactive = criteria.includeInactive() && currentUserService.hasRole("ADMIN");
+        if (!includeInactive) {
             filters.add(SupplierSpecifications.isActive());
         }
         if (criteria.query() != null && !criteria.query().isBlank()) {
@@ -53,7 +56,8 @@ public class SupplierService {
     }
 
     @Transactional(readOnly = true)
-    public SupplierDto getSupplier(UUID id, boolean includeInactive) {
+    public SupplierDto getSupplier(UUID id) {
+        var includeInactive = currentUserService.hasRole("ADMIN");
         var supplier = includeInactive ? supplierRepository.findById(id) : supplierRepository.findByIdAndActiveTrue(id);
         return supplier.map(this::buildSupplierDto).orElseThrow(() -> new SupplierNotFoundException(id));
     }

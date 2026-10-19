@@ -6,6 +6,9 @@ import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
+import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
+import com.cs3219.foc.credit.security.AuthenticationContextService;
+import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.util.ArrayList;
@@ -203,7 +206,13 @@ class CreditAccountPersistenceTests {
     @TestConfiguration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({CreditAccountService.class, PropertiesConfig.class})
+    @Import({
+        CreditAccountService.class,
+        PropertiesConfig.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
     static class TestConfig {
         @Bean
         DataSource dataSource() {

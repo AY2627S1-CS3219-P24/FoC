@@ -15,6 +15,7 @@ import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.support.TestMappers;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -40,15 +41,17 @@ class UserServiceTests {
     private final ApplicationEventPublisher provisioning = mock(ApplicationEventPublisher.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
-    private final EmailChangeService emailChange = mock(EmailChangeService.class);
+    private final EmailChangeService emailChangeService = mock(EmailChangeService.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserService service = new UserService(
             repository,
             mock(PasswordEncoder.class),
             TestMappers.mapper(),
             provisioning,
             verification,
-            emailChange,
-            avatarStorageService);
+            emailChangeService,
+            avatarStorageService,
+            currentUserService);
     private final UUID userId = UUID.randomUUID();
     private User user;
 
@@ -64,6 +67,26 @@ class UserServiceTests {
         when(avatarStorageService.createPresignedUrl(any()))
                 .thenAnswer(
                         call -> call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
+    }
+
+    @Test
+    void readsCurrentUserProfileFromAuthentication() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(userId);
+        when(repository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThat(service.getUserProfile().id()).isEqualTo(userId.toString());
+    }
+
+    @Test
+    void updatesCurrentUserProfileFromAuthentication() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(userId);
+        when(repository.findForUpdateById(userId)).thenReturn(Optional.of(user));
+        when(repository.saveAndFlush(user)).thenReturn(user);
+
+        var result = service.updateUserProfile(new UpdateUserProfileRequest("Jamie Tan", null, null));
+
+        assertThat(result.name()).isEqualTo("Jamie Tan");
+        assertThat(user.getEmail()).isEqualTo("alex@u.nus.edu");
     }
 
     @Test
@@ -205,7 +228,7 @@ class UserServiceTests {
         when(repository.saveAndFlush(user)).thenReturn(user);
         var result = service.updateUser(
                 userId, new UpdateUserRequest("Updated name", "new@nus.edu.sg", List.of(UserRole.USER), null, null));
-        verify(emailChange).requestChange(userId, "new@nus.edu.sg");
+        verify(emailChangeService).requestChange(userId, "new@nus.edu.sg");
         assertThat(result.email()).isEqualTo("alex@u.nus.edu");
         assertThat(result.name()).isEqualTo("Updated name");
     }

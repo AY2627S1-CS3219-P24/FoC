@@ -4,12 +4,9 @@ import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.service.AuthCookieFactory;
 import com.cs3219.foc.user.service.PasswordService;
 import jakarta.validation.Valid;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,9 +20,8 @@ public class PasswordController {
     private final AuthCookieFactory authCookieFactory;
 
     @PutMapping
-    public ResponseEntity<Void> changePassword(
-            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody ChangePasswordRequest request) {
-        passwordService.changePassword(UUID.fromString(jwt.getSubject()), request);
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        passwordService.changePassword(request);
         return ResponseEntity.noContent()
                 .header(
                         HttpHeaders.SET_COOKIE,

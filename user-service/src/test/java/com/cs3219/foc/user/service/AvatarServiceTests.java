@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,13 +26,15 @@ class AvatarServiceTests {
     private final TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
     private final AvatarStorageService storage = mock(AvatarStorageService.class);
     private final AvatarImageProcessor processor = mock(AvatarImageProcessor.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final AvatarService service = new AvatarService(
             repository,
             mock(UserMapper.class),
             storage,
             processor,
             transactionTemplate,
-            mock(ApplicationEventPublisher.class));
+            mock(ApplicationEventPublisher.class),
+            currentUserService);
     private final UUID ownerId = UUID.randomUUID();
     private final MockMultipartFile file = new MockMultipartFile("file", new byte[] {1});
     private final byte[] bytes = {1, 2};
@@ -41,6 +44,27 @@ class AvatarServiceTests {
     void setup() {
         when(processor.processAvatar(file)).thenReturn(bytes);
         when(storage.createAvatarKey(ownerId)).thenReturn(key);
+    }
+
+    @Test
+    void uploadAvatarUsesAuthenticatedId() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(ownerId);
+        when(transactionTemplate.execute(any())).thenReturn(null);
+
+        service.uploadAvatar(file);
+
+        verify(storage).createAvatarKey(ownerId);
+        verify(storage).storeAvatar(key, bytes);
+    }
+
+    @Test
+    void removeAvatarUsesAuthenticatedId() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(ownerId);
+        when(repository.findForUpdateById(ownerId)).thenReturn(Optional.of(mock(User.class)));
+
+        service.removeAvatar();
+
+        verify(repository).findForUpdateById(ownerId);
     }
 
     @Test

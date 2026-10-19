@@ -27,8 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(propagation = Propagation.MANDATORY)
 public class EmailTokenService {
     private static final SecureRandom RANDOM = new SecureRandom();
-    private final EmailTokenRepository tokens;
-    private final UserRepository users;
+    private final EmailTokenRepository emailTokenRepository;
+    private final UserRepository userRepository;
     private final AccountMailProperties properties;
     private final Clock clock;
     private final ApplicationEventPublisher events;
@@ -37,7 +37,9 @@ public class EmailTokenService {
     @Transactional(propagation = Propagation.MANDATORY, noRollbackFor = EmailRateLimitException.class)
     public void issue(User user, String email, EmailTokenPurpose purpose) {
         var now = OffsetDateTime.now(clock);
-        var stored = tokens.findByUserIdAndPurpose(user.getId(), purpose).orElseGet(EmailToken::new);
+        var stored = emailTokenRepository
+                .findByUserIdAndPurpose(user.getId(), purpose)
+                .orElseGet(EmailToken::new);
         if (stored.getIssuedAt() != null
                 && stored.getIssuedAt().plus(properties.resendInterval()).isAfter(now)) {
             throw new EmailRateLimitException();
@@ -52,21 +54,21 @@ public class EmailTokenService {
         stored.setTokenHash(hash(token));
         stored.setIssuedAt(now);
         stored.setExpiresAt(now.plus(properties.tokenTtl()));
-        tokens.save(stored);
+        emailTokenRepository.save(stored);
         events.publishEvent(new EmailTokenCreatedEvent(user.getId(), email, purpose, token));
     }
 
     public EmailToken consume(String token, EmailTokenPurpose purpose) {
         var digest = hash(token);
-        var userId = tokens.findUserIdByTokenHash(digest).orElseThrow(EmailTokenService::invalidLink);
+        var userId = emailTokenRepository.findUserIdByTokenHash(digest).orElseThrow(EmailTokenService::invalidLink);
         // Serialize confirmation and resending on the account, then re-read the token.
-        users.findForUpdateById(userId).orElseThrow(EmailTokenService::invalidLink);
-        var stored = tokens.findByTokenHash(digest).orElseThrow(EmailTokenService::invalidLink);
+        userRepository.findForUpdateById(userId).orElseThrow(EmailTokenService::invalidLink);
+        var stored = emailTokenRepository.findByTokenHash(digest).orElseThrow(EmailTokenService::invalidLink);
         if (stored.getPurpose() != purpose || !stored.getExpiresAt().isAfter(OffsetDateTime.now(clock))) {
             throw invalidLink();
         }
 
-        tokens.delete(stored);
+        emailTokenRepository.delete(stored);
         return stored;
     }
 
