@@ -10,6 +10,7 @@
       <env name="FOC_SUPPLIER_BUCKET" value="foc-dev-supplier" />
     </envs>
     <module name="foc.supplier-service.main" />
+    <option name="SHORTEN_COMMAND_LINE" value="ARGS_FILE" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.cs3219.foc.supplier.SupplierServiceApplication" />
     <method v="2">
       <option name="Make" enabled="true" />

@@ -9,8 +9,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface CreditAccountRepository extends JpaRepository<CreditAccount, UUID> {
     @Modifying
-    @Query(
-            value = "INSERT INTO credit_accounts (user_id) VALUES (:userId) ON CONFLICT (user_id) DO NOTHING",
-            nativeQuery = true)
-    int initializeIfAbsent(@Param("userId") UUID userId);
+    @Query(value = """
+                    INSERT INTO credit_accounts (user_id, total_balance)
+                    VALUES (:userId, :initialAllocation)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """, nativeQuery = true)
+    int initializeIfAbsent(@Param("userId") UUID userId, @Param("initialAllocation") long initialAllocation);
 }
