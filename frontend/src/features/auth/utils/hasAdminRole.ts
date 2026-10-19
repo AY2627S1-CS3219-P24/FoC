@@ -2,7 +2,11 @@ import { getAccessToken } from '../lib/accessTokenStore'
 import { decodeAccessToken } from './decodeAccessToken'
 
 export const hasAdminRole = () => {
-  const token = getAccessToken()
-  const claims = decodeAccessToken(token)
-  return claims?.roles?.includes('ADMIN') ?? false
+  try {
+    const claims = decodeAccessToken(getAccessToken())
+    return claims?.roles?.includes('ADMIN') ?? false
+  } catch {
+    // if a token cannot be decoded, then just treat as not admin users
+    return false
+  }
 }
