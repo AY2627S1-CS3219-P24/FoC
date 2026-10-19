@@ -23,6 +23,9 @@ import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.AuthenticatedUserResolver;
+import com.cs3219.foc.user.security.AuthenticationContextService;
+import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
 import com.cs3219.foc.user.support.TestMappers;
 import jakarta.persistence.EntityManagerFactory;
@@ -743,7 +746,10 @@ class UserProfilePersistenceTests {
         EmailVerificationService.class,
         EmailChangeService.class,
         EmailTokenService.class,
-        AccountMailListener.class
+        AccountMailListener.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
     })
     static class TestConfig {
         @Bean
@@ -787,7 +793,13 @@ class UserProfilePersistenceTests {
                 EmailTokenRepository emailTokenRepository,
                 ApplicationEventPublisher events) {
             return new PasswordService(
-                    userRepository, refreshTokenRepository, encoder, emailTokenService, emailTokenRepository, events);
+                    userRepository,
+                    refreshTokenRepository,
+                    encoder,
+                    emailTokenService,
+                    emailTokenRepository,
+                    events,
+                    mock(CurrentUserService.class));
         }
 
         @Bean
@@ -867,7 +879,8 @@ class UserProfilePersistenceTests {
                     mock(ApplicationEventPublisher.class),
                     verification,
                     emailChangeService,
-                    avatarStorageService);
+                    avatarStorageService,
+                    mock(CurrentUserService.class));
         }
     }
 }

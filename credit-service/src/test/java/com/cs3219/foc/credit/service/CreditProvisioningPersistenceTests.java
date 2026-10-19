@@ -7,6 +7,9 @@ import com.cs3219.foc.credit.infrastructure.messaging.consumer.UserCreatedConsum
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
+import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
+import com.cs3219.foc.credit.security.AuthenticationContextService;
+import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -169,7 +172,13 @@ class CreditProvisioningPersistenceTests {
     @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({UserCreatedConsumer.class, CreditAccountService.class})
+    @Import({
+        UserCreatedConsumer.class,
+        CreditAccountService.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
     static class TestConfig {
         @Bean
         DataSource dataSource() {

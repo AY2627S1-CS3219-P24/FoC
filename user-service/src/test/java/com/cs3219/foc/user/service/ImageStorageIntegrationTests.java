@@ -13,6 +13,9 @@ import com.cs3219.foc.user.model.dto.event.AvatarDeletionRequestedEvent;
 import com.cs3219.foc.user.model.dto.event.EmailTokenCreatedEvent;
 import com.cs3219.foc.user.model.entity.*;
 import com.cs3219.foc.user.repository.*;
+import com.cs3219.foc.user.security.AuthenticatedUserResolver;
+import com.cs3219.foc.user.security.AuthenticationContextService;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -126,7 +129,10 @@ class ImageStorageIntegrationTests {
         AvatarStorageService.class,
         UserMapperImpl.class,
         AvatarService.class,
-        AvatarImageProcessor.class
+        AvatarImageProcessor.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
     })
     static class Config {
         @Bean

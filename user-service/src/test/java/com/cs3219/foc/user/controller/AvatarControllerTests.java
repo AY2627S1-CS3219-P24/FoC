@@ -61,7 +61,7 @@ class AvatarControllerTests {
                 null,
                 null,
                 "/api/users/" + userId + "/avatar?v=test.png");
-        when(avatarService.uploadAvatar(eq(userId), any())).thenReturn(profile);
+        when(avatarService.uploadAvatar(any())).thenReturn(profile);
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .param("userId", UUID.randomUUID().toString())
@@ -69,7 +69,7 @@ class AvatarControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.avatarUrl").value(profile.avatarUrl()))
                 .andExpect(jsonPath("$.avatarKey").doesNotExist());
-        verify(avatarService).uploadAvatar(eq(userId), any());
+        verify(avatarService).uploadAvatar(any());
     }
 
     @Test
@@ -83,7 +83,7 @@ class AvatarControllerTests {
         mvc.perform(delete("/users/me/avatar").with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
-        verify(avatarService).removeAvatar(userId);
+        verify(avatarService).removeAvatar();
     }
 
     @Test
@@ -113,7 +113,7 @@ class AvatarControllerTests {
     @ParameterizedTest
     @ValueSource(ints = {400, 413, 415, 503})
     void mapsUploadErrorsToHttpResponses(int status) throws Exception {
-        when(avatarService.uploadAvatar(any(), any()))
+        when(avatarService.uploadAvatar(any()))
                 .thenThrow(new AvatarException(HttpStatus.valueOf(status), "Upload failed"));
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
@@ -124,8 +124,7 @@ class AvatarControllerTests {
 
     @Test
     void reportsStorageUnavailable() throws Exception {
-        when(avatarService.uploadAvatar(any(), any()))
-                .thenThrow(new StorageException(new RuntimeException("S3 failed")));
+        when(avatarService.uploadAvatar(any())).thenThrow(new StorageException(new RuntimeException("S3 failed")));
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
@@ -135,7 +134,7 @@ class AvatarControllerTests {
 
     @Test
     void mapsMultipartLimitException() throws Exception {
-        when(avatarService.uploadAvatar(any(), any())).thenThrow(new MaxUploadSizeExceededException(2097152));
+        when(avatarService.uploadAvatar(any())).thenThrow(new MaxUploadSizeExceededException(2097152));
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .file(file)
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))

@@ -58,14 +58,14 @@ class CreditControllerTests {
     @Test
     void readsOnlyTheJwtOwnersBalanceEvenWithAnotherUserParameter() throws Exception {
         var owner = UUID.randomUUID();
-        when(service.getBalance(owner)).thenReturn(new CreditBalanceResponse(70, 30));
+        when(service.getBalance()).thenReturn(new CreditBalanceResponse(70, 30));
         mvc.perform(get("/credits/me")
                         .param("userId", UUID.randomUUID().toString())
                         .with(jwt().jwt(token -> token.subject(owner.toString()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.availableBalance").value(70))
                 .andExpect(jsonPath("$.reservedBalance").value(30));
-        verify(service).getBalance(owner);
+        verify(service).getBalance();
         verifyNoMoreInteractions(service);
     }
 
@@ -84,21 +84,14 @@ class CreditControllerTests {
     }
 
     @Test
-    void rejectsMalformedSubject() throws Exception {
-        mvc.perform(get("/credits/me").with(jwt().jwt(token -> token.subject("not-a-uuid"))))
-                .andExpect(status().isUnauthorized());
-        verifyNoInteractions(service);
-    }
-
-    @Test
     void reportsPendingAccountWithoutInitializingIt() throws Exception {
         var owner = UUID.randomUUID();
-        when(service.getBalance(owner)).thenThrow(new CreditAccountPendingException());
+        when(service.getBalance()).thenThrow(new CreditAccountPendingException());
         mvc.perform(get("/credits/me").with(jwt().jwt(token -> token.subject(owner.toString()))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CREDIT_ACCOUNT_PENDING"))
                 .andExpect(jsonPath("$.message").value("Credit account setup is pending. Please try again later."));
-        verify(service).getBalance(owner);
+        verify(service).getBalance();
         verifyNoMoreInteractions(service);
     }
 
@@ -116,7 +109,7 @@ class CreditControllerTests {
         var operation = UUID.randomUUID();
         var errand = UUID.randomUUID();
         var body = "{\"operationId\":\"" + operation + "\",\"errandId\":\"" + errand + "\",\"amount\":80}";
-        when(creditReservationService.reserve(eq(owner), any())).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(any())).thenReturn(new CreditReservationResponse("RESERVED"));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .param("userId", UUID.randomUUID().toString())
@@ -124,7 +117,7 @@ class CreditControllerTests {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("RESERVED"));
-        verify(creditReservationService).reserve(owner, new ReserveCreditRequest(operation, errand, 80));
+        verify(creditReservationService).reserve(new ReserveCreditRequest(operation, errand, 80));
         mvc.perform(post("/credits/reservations")
                         .contentType("application/json")
                         .content(body))
@@ -147,14 +140,14 @@ class CreditControllerTests {
     void reservationAcceptsIntegerAmountsWithoutChangingThem(long amount) throws Exception {
         var owner = UUID.randomUUID();
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
-        when(creditReservationService.reserve(owner, request)).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(request)).thenReturn(new CreditReservationResponse("RESERVED"));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .contentType("application/json")
                         .content("{\"operationId\":\"" + request.operationId() + "\",\"errandId\":\""
                                 + request.errandId() + "\",\"amount\":" + amount + "}"))
                 .andExpect(status().isOk());
-        verify(creditReservationService).reserve(owner, request);
+        verify(creditReservationService).reserve(request);
     }
 
     @ParameterizedTest

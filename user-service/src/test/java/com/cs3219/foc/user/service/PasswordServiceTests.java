@@ -16,6 +16,7 @@ import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,13 +33,15 @@ class PasswordServiceTests {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final EmailTokenService emailTokenService = mock(EmailTokenService.class);
     private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final PasswordService service = new PasswordService(
             userRepository,
             refreshTokenRepository,
             encoder,
             emailTokenService,
             emailTokenRepository,
-            mock(ApplicationEventPublisher.class));
+            mock(ApplicationEventPublisher.class),
+            currentUserService);
     private final UUID userId = UUID.randomUUID();
     private User user;
     private String previousHash;
@@ -56,6 +59,16 @@ class PasswordServiceTests {
                 .passwordHash(previousHash)
                 .build();
         when(userRepository.findForUpdateById(userId)).thenReturn(Optional.of(user));
+    }
+
+    @Test
+    void changePasswordUsesAuthenticatedId() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(userId);
+
+        service.changePassword(new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+
+        verify(userRepository).findForUpdateById(userId);
+        verify(userRepository).saveAndFlush(user);
     }
 
     @Test

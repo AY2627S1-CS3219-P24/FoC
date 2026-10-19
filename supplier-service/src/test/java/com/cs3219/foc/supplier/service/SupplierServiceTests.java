@@ -14,6 +14,7 @@ import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.model.entity.SupplierOpeningHours;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
+import com.cs3219.foc.supplier.security.CurrentUserService;
 import com.cs3219.foc.supplier.support.TestMappers;
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -34,13 +35,16 @@ class SupplierServiceTests {
     // SG 23:00
     private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T15:00:00Z"), ZoneId.of("Asia/Singapore"));
     private SupplierRepository repository;
+    private CurrentUserService currentUserService;
     private SupplierService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(SupplierRepository.class);
+        currentUserService = mock(CurrentUserService.class);
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new SupplierService(repository, TestMappers.mapper(), clock, mock(SupplierImageStorageService.class));
+        service = new SupplierService(
+                repository, TestMappers.mapper(), clock, mock(SupplierImageStorageService.class), currentUserService);
     }
 
     private static SupplierRequest request(String name, String building) {
@@ -121,7 +125,25 @@ class SupplierServiceTests {
     @Test
     void inactiveSupplierIsHiddenFromNonAdmins() {
         when(repository.findByIdAndActiveTrue(supplierId)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.getSupplier(supplierId, false)).isInstanceOf(SupplierNotFoundException.class);
+        assertThatThrownBy(() -> service.getSupplier(supplierId)).isInstanceOf(SupplierNotFoundException.class);
+        verify(repository).findByIdAndActiveTrue(supplierId);
+        verify(repository, never()).findById(supplierId);
+    }
+
+    @Test
+    void adminCanReadAnInactiveSupplier() {
+        when(currentUserService.hasRole("ADMIN")).thenReturn(true);
+        when(repository.findById(supplierId)).thenReturn(Optional.of(existingSupplier()));
+        assertThat(service.getSupplier(supplierId).id()).isEqualTo(supplierId);
+        verify(repository).findById(supplierId);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void nonAdminIncludeInactiveRequestStillChecksTheAdminRole() {
+        when(repository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of());
+        service.listSuppliers(new SupplierSearchCriteria(null, List.of(), false, true));
+        verify(currentUserService).hasRole("ADMIN");
     }
 
     @Test

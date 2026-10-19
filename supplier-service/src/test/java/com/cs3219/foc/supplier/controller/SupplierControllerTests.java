@@ -105,7 +105,7 @@ class SupplierControllerTests {
     }
 
     @Test
-    void userListsOnlyActiveSuppliersEvenWhenAskingForInactive() throws Exception {
+    void forwardsIncludeInactiveRequestToTheService() throws Exception {
         when(service.listSuppliers(any())).thenReturn(List.of(supplier));
         mvc.perform(get("/suppliers").param("includeInactive", "true").with(user()))
                 .andExpect(status().isOk())
@@ -114,7 +114,7 @@ class SupplierControllerTests {
                 .andExpect(jsonPath("$[0].openingHours[0].opensAt").value("09:00:00"))
                 .andExpect(jsonPath("$[0].openingHours[0].closingDifferentFromOpening")
                         .doesNotExist());
-        verify(service).listSuppliers(new SupplierSearchCriteria(null, List.of(), false, false));
+        verify(service).listSuppliers(new SupplierSearchCriteria(null, List.of(), false, true));
     }
 
     @Test
@@ -151,7 +151,7 @@ class SupplierControllerTests {
 
     @Test
     void returnsNotFoundForMissingSupplier() throws Exception {
-        when(service.getSupplier(supplierId, false)).thenThrow(new SupplierNotFoundException(supplierId));
+        when(service.getSupplier(supplierId)).thenThrow(new SupplierNotFoundException(supplierId));
         mvc.perform(get("/suppliers/{id}", supplierId).with(user()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Supplier not found: " + supplierId));

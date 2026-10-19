@@ -1,7 +1,6 @@
 package com.cs3219.foc.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -142,7 +141,7 @@ class UserControllerTests {
 
     @Test
     void readsOnlyAuthenticatedUsersProfile() throws Exception {
-        when(service.getUserProfile(userId)).thenReturn(profile);
+        when(service.getUserProfile()).thenReturn(profile);
         mvc.perform(get("/users/me")
                         .param("userId", UUID.randomUUID().toString())
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
@@ -154,7 +153,7 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.roles[0]").value("USER"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.refreshToken").doesNotExist());
-        verify(service).getUserProfile(userId);
+        verify(service).getUserProfile();
     }
 
     @Test
@@ -213,14 +212,14 @@ class UserControllerTests {
 
     @Test
     void updatesUsingJwtIdentityAndNormalizedBody() throws Exception {
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\" Alex Tan \",\"email\":\" ALEX@EXAMPLE.COM \"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("alex@example.com"));
-        verify(service).updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", null, null));
+        verify(service).updateUserProfile(new UpdateUserProfileRequest("Alex Tan", null, null));
     }
 
     @Test
@@ -235,7 +234,7 @@ class UserControllerTests {
 
     @Test
     void normalizesOptionalProfileDetails() throws Exception {
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -246,8 +245,7 @@ class UserControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.phoneNumber").value("+6591235436"));
         verify(service)
-                .updateUserProfile(
-                        userId, new UpdateUserProfileRequest("Alex Tan", "+6591235436", "School of Computing"));
+                .updateUserProfile(new UpdateUserProfileRequest("Alex Tan", "+6591235436", "School of Computing"));
     }
 
     @ParameterizedTest
@@ -258,13 +256,13 @@ class UserControllerTests {
         var fields = optionalFields.substring(1, optionalFields.length() - 1);
         var body =
                 "{\"name\":\"Alex Tan\",\"email\":\"alex@example.com\"" + (fields.isEmpty() ? "" : "," + fields) + "}";
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
-        verify(service).updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", null, null));
+        verify(service).updateUserProfile(new UpdateUserProfileRequest("Alex Tan", null, null));
     }
 
     @ParameterizedTest
@@ -330,7 +328,7 @@ class UserControllerTests {
 
     @Test
     void returnsNotFoundForMissingUser() throws Exception {
-        when(service.getUserProfile(userId)).thenThrow(new UserNotFoundException("User not found"));
+        when(service.getUserProfile()).thenThrow(new UserNotFoundException("User not found"));
         mvc.perform(get("/users/me").with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("User not found"));
@@ -376,7 +374,7 @@ class UserControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNoContent());
-        verify(emailChangeService).requestChange(userId, "new@nus.edu.sg");
+        verify(emailChangeService).requestChange("new@nus.edu.sg");
         mvc.perform(post("/users/email-change/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"change-token\"}"))

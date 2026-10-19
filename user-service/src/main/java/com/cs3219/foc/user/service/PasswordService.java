@@ -13,6 +13,7 @@ import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class PasswordService {
     private final EmailTokenService emailTokenService;
     private final EmailTokenRepository emailTokenRepository;
     private final ApplicationEventPublisher events;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public void requestPasswordReset(String email) {
@@ -71,6 +73,12 @@ public class PasswordService {
             throw new InvalidPasswordException("newPassword", "New password must differ from the current password");
         }
         savePassword(user, request.newPassword());
+    }
+
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        var userId = currentUserService.requireCurrentUserId();
+        changePassword(userId, request);
     }
 
     private void savePassword(User user, String newPassword) {

@@ -64,7 +64,7 @@ class PasswordControllerTests {
                 .andExpect(cookie().path("refreshToken", "/api/auth"))
                 .andExpect(cookie().httpOnly("refreshToken", true))
                 .andExpect(cookie().secure("refreshToken", true));
-        verify(service).changePassword(userId, new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+        verify(service).changePassword(new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
     }
 
     @Test
@@ -131,14 +131,14 @@ class PasswordControllerTests {
                         .content(
                                 BODY.replace("CurrentPassword1", "a".repeat(72)).replace("NewPassword2", password)))
                 .andExpect(status().isNoContent());
-        verify(service).changePassword(userId, new ChangePasswordRequest("a".repeat(72), password));
+        verify(service).changePassword(new ChangePasswordRequest("a".repeat(72), password));
     }
 
     @Test
     void reportsIncorrectPasswordWithoutClearingCookie() throws Exception {
         doThrow(new InvalidPasswordException("currentPassword", "Current password is incorrect"))
                 .when(service)
-                .changePassword(any(), any());
+                .changePassword(any());
         mvc.perform(put("/users/me/password")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -150,7 +150,7 @@ class PasswordControllerTests {
 
     @Test
     void returnsNotFoundForDeletedAccount() throws Exception {
-        doThrow(new UserNotFoundException("User not found")).when(service).changePassword(any(), any());
+        doThrow(new UserNotFoundException("User not found")).when(service).changePassword(any());
         mvc.perform(put("/users/me/password")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)

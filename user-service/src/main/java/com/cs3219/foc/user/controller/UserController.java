@@ -19,8 +19,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,8 +45,8 @@ public class UserController {
 
     @PostMapping("/me/email-change")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void requestEmailChange(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody UpdateEmailRequest request) {
-        emailChangeService.requestChange(UUID.fromString(jwt.getSubject()), request.email());
+    public void requestEmailChange(@Valid @RequestBody UpdateEmailRequest request) {
+        emailChangeService.requestChange(request.email());
     }
 
     @GetMapping
@@ -76,13 +74,12 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public UserProfileDto getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
-        return userService.getUserProfile(UUID.fromString(jwt.getSubject()));
+    public UserProfileDto getCurrentUser() {
+        return userService.getUserProfile();
     }
 
     @PutMapping("/me")
-    public UserProfileDto updateCurrentUser(
-            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody UpdateUserProfileRequest request) {
-        return userService.updateUserProfile(UUID.fromString(jwt.getSubject()), request);
+    public UserProfileDto updateCurrentUser(@Valid @RequestBody UpdateUserProfileRequest request) {
+        return userService.updateUserProfile(request);
     }
 }

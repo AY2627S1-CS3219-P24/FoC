@@ -7,6 +7,9 @@ import com.cs3219.foc.credit.exception.*;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
+import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
+import com.cs3219.foc.credit.security.AuthenticationContextService;
+import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -370,7 +373,14 @@ class CreditSettlementPersistenceTests {
     @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({CreditReservationService.class, CreditAccountService.class, CreditSettlementService.class})
+    @Import({
+        CreditReservationService.class,
+        CreditAccountService.class,
+        CreditSettlementService.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
     static class TestConfig {
         @Bean
         Results results() {

@@ -6,6 +6,7 @@ import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.event.EmailChangedEvent;
 import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
@@ -22,7 +23,9 @@ public class EmailChangeService {
     private final UserRepository userRepository;
     private final EmailTokenService emailTokenService;
     private final ApplicationEventPublisher events;
+    private final CurrentUserService currentUserService;
 
+    @Transactional
     public void requestChange(UUID userId, String email) {
         var user =
                 userRepository.findForUpdateById(userId).orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -36,6 +39,13 @@ public class EmailChangeService {
         emailTokenService.issue(user, email, EmailTokenPurpose.EMAIL_CHANGE);
     }
 
+    @Transactional
+    public void requestChange(String email) {
+        var userId = currentUserService.requireCurrentUserId();
+        requestChange(userId, email);
+    }
+
+    @Transactional
     public void confirmChange(String token) {
         var stored = emailTokenService.consume(token, EmailTokenPurpose.EMAIL_CHANGE);
         var user = userRepository.findById(stored.getUserId()).orElseThrow();

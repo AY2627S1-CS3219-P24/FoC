@@ -8,6 +8,7 @@ import com.cs3219.foc.credit.model.dto.CreditReservationResponse;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.credit.model.entity.CreditReservation;
 import com.cs3219.foc.credit.repository.*;
+import com.cs3219.foc.credit.security.CurrentUserService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class CreditReservationService {
     private final CreditAccountRepository creditAccountRepository;
     private final CreditReservationRepository creditReservationRepository;
     private final CreditTransactionLogRepository creditTransactionLogRepository;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public CreditReservationResponse reserve(UUID user, ReserveCreditRequest request) {
@@ -39,6 +41,12 @@ public class CreditReservationService {
                     request.operationId(), request.errandId(), user, null, request.amount(), "RESERVE");
         }
         return result;
+    }
+
+    @Transactional
+    public CreditReservationResponse reserve(ReserveCreditRequest request) {
+        var userId = currentUserService.requireCurrentUserId();
+        return reserve(userId, request);
     }
 
     private CreditReservationResponse response(CreditReservation stored, UUID user, ReserveCreditRequest request) {

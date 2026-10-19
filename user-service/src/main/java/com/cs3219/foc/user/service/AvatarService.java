@@ -6,6 +6,7 @@ import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.event.AvatarDeletionRequestedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,12 @@ public class AvatarService {
     private final AvatarImageProcessor avatarImageProcessor;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final CurrentUserService currentUserService;
+
+    public UserProfileDto uploadAvatar(MultipartFile file) {
+        var userId = currentUserService.requireCurrentUserId();
+        return uploadAvatar(userId, file);
+    }
 
     public UserProfileDto uploadAvatar(UUID userId, MultipartFile file) {
         var bytes = avatarImageProcessor.processAvatar(file);
@@ -49,6 +56,12 @@ public class AvatarService {
     @Transactional
     public void removeAvatar(UUID userId) {
         changeAvatar(userId, null);
+    }
+
+    @Transactional
+    public void removeAvatar() {
+        var userId = currentUserService.requireCurrentUserId();
+        removeAvatar(userId);
     }
 
     private String storeAvatar(UUID userId, byte[] bytes) {

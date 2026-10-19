@@ -10,6 +10,7 @@ import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.Duration;
@@ -201,7 +202,8 @@ class UserEventPublicationPersistenceTests {
                     events,
                     mock(EmailVerificationService.class),
                     mock(EmailChangeService.class),
-                    mock(AvatarStorageService.class));
+                    mock(AvatarStorageService.class),
+                    mock(CurrentUserService.class));
         }
 
         @Bean
