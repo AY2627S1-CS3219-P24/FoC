@@ -143,27 +143,3 @@ Java domain packages use singular domain names:
 ```text
 com.cs3219.foc.user
 ```
-
-## Local runtime
-
-`SETUP.md` is the local setup guide. Cloud Agents start Docker, then `docker compose up -d` from the repository root, which runs Postgres and FLoCI. Copy `.env.example` to `.env` before Compose. User Service needs the JWT key pair described in `SETUP.md`.
-
-| Process | Port |
-| ------- | ---: |
-| User Service | 8080 |
-| Supplier Service | 8081 |
-| Order Service | 8082 |
-| Credit Service | 8083 |
-| Frontend (`npm run dev` in `frontend/`) | 3000 |
-
-Each service uses the `dev` Spring profile and the `SPRING_DATASOURCE_*` values in `docs/run-configs`.
-
-`./gradlew check` uses Testcontainers, which needs a readable Docker socket. `UserProfilePersistenceTests` also needs a `foc_test` database and:
-
-```text
-FOC_TEST_DATABASE_URL=jdbc:postgresql://localhost:5432/foc_test
-FOC_TEST_DATABASE_USERNAME=foc
-FOC_TEST_DATABASE_PASSWORD=pass
-```
-
-`FOC_TEST_DATABASE_PASSWORD` matches `POSTGRES_PASSWORD` in `.env.example`.
