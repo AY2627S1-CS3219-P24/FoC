@@ -2,6 +2,7 @@ package com.cs3219.foc.credit.service;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
@@ -17,6 +18,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
@@ -24,10 +26,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.*;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 @SpringJUnitConfig(CreditReservationPersistenceTests.TestConfig.class)
+@TestPropertySource(properties = "credits.initial-allocation=15")
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
 class CreditReservationPersistenceTests {
     private static final String SCHEMA =
@@ -197,6 +201,7 @@ class CreditReservationPersistenceTests {
     }
 
     @TestConfiguration
+    @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
     @Import({CreditReservationService.class, CreditAccountService.class, CreditSettlementService.class})
