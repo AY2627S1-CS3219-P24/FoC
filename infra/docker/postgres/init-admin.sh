@@ -8,7 +8,7 @@ psql -X --set ON_ERROR_STOP=1 <<'SQL'
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-INSERT INTO users.users (id, email, name, roles, password_hash, email_verified, created_at, updated_at)
+INSERT INTO users (id, email, name, roles, password_hash, email_verified, created_at, updated_at)
 VALUES (
     gen_random_uuid(),
     lower(btrim(:'initial_admin_email')),

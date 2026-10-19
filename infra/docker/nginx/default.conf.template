@@ -1,8 +1,44 @@
+resolver ${NGINX_LOCAL_RESOLVERS} valid=5s ipv6=off;
+resolver_timeout 2s;
+
+upstream user_backend {
+    zone user_backend 64k;
+    server ${FOC_USER_UPSTREAM} resolve;
+    keepalive 8;
+}
+
+upstream supplier_backend {
+    zone supplier_backend 64k;
+    server ${FOC_SUPPLIER_UPSTREAM} resolve;
+    keepalive 8;
+}
+
+upstream order_backend {
+    zone order_backend 64k;
+    server ${FOC_ORDER_UPSTREAM} resolve;
+    keepalive 8;
+}
+
+upstream credit_backend {
+    zone credit_backend 64k;
+    server ${FOC_CREDIT_UPSTREAM} resolve;
+    keepalive 8;
+}
+
 server {
     listen 80;
     server_name _;
+    server_tokens off;
 
     include /etc/nginx/snippets/security-headers.conf;
+
+    location = /healthz {
+        return 200 'ok';
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+    }
 
     location / {
         return 308 https://$host$request_uri;
@@ -13,6 +49,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name _;
+    server_tokens off;
 
     include /etc/nginx/snippets/security-headers.conf;
 
@@ -43,24 +80,28 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto https;
 
+    location = /api/.well-known/jwks.json {
+        proxy_pass http://user_backend;
+    }
+
     location ~ ^/api/users(/|$) {
-        proxy_pass http://user-service:8080;
+        proxy_pass http://user_backend;
     }
 
     location ~ ^/api/auth(/|$) {
-        proxy_pass http://user-service:8080;
+        proxy_pass http://user_backend;
     }
 
     location ~ ^/api/orders(/|$) {
-        proxy_pass http://order-service:8082;
+        proxy_pass http://order_backend;
     }
 
     location ~ ^/api/credits(/|$) {
-        proxy_pass http://credit-service:8083;
+        proxy_pass http://credit_backend;
     }
 
     location ~ ^/api/suppliers(/|$) {
-        proxy_pass http://supplier-service:8081;
+        proxy_pass http://supplier_backend;
     }
 
     location = /api {
@@ -75,13 +116,13 @@ server {
 
     location /assets/ {
         include /etc/nginx/snippets/security-headers.conf;
+        include /etc/nginx/snippets/cache-headers.conf;
         try_files $uri =404;
-        add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
     location = /index.html {
         include /etc/nginx/snippets/security-headers.conf;
-        add_header Cache-Control "no-cache";
+        include /etc/nginx/snippets/nocache-headers.conf;
     }
 
     location / {

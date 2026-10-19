@@ -41,7 +41,7 @@ CREATE TEMP TABLE seed_opening_hours (
 
 -- Existing suppliers and their entire schedules are left untouched.
 WITH inserted_suppliers AS (
-    INSERT INTO suppliers.suppliers (
+    INSERT INTO suppliers (
         id, name, category, building, floor, location_description,
         latitude, longitude, active, created_at, updated_at
     )
@@ -52,7 +52,7 @@ WITH inserted_suppliers AS (
     ON CONFLICT (id) DO NOTHING
     RETURNING id
 )
-INSERT INTO suppliers.supplier_opening_hours (id, supplier_id, day_of_week, opens_at, closes_at)
+INSERT INTO supplier_opening_hours (id, supplier_id, day_of_week, opens_at, closes_at)
 SELECT gen_random_uuid(), h.supplier_id, h.day_of_week, h.opens_at, h.closes_at
 FROM seed_opening_hours h
 JOIN inserted_suppliers s ON s.id = h.supplier_id;

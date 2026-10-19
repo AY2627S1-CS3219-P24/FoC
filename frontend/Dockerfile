@@ -9,15 +9,23 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM nginx:alpine AS runtime
+FROM nginx:1.28-alpine AS runtime
 RUN apk add --no-cache curl openssl \
     && rm -rf /usr/share/nginx/html/*
 
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    FOC_USER_UPSTREAM=user-service:8080 \
+    FOC_SUPPLIER_UPSTREAM=supplier-service:8081 \
+    FOC_ORDER_UPSTREAM=order-service:8082 \
+    FOC_CREDIT_UPSTREAM=credit-service:8083
+
 COPY --from=build /app/dist/ /usr/share/nginx/html/
-COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
-COPY docker/nginx/entrypoint.sh /entrypoint.sh
-COPY docker/nginx/generate-certs.sh /generate-certs.sh
+COPY infra/docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY infra/docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY infra/docker/nginx/cache-headers.conf /etc/nginx/snippets/cache-headers.conf
+COPY infra/docker/nginx/nocache-headers.conf /etc/nginx/snippets/nocache-headers.conf
+COPY infra/docker/nginx/entrypoint.sh /entrypoint.sh
+COPY infra/docker/nginx/generate-certs.sh /generate-certs.sh
 
 EXPOSE 80 443
 ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
