@@ -1,0 +1,93 @@
+#!/bin/bash
+set -euo pipefail
+exec > >(tee -a /var/log/host-bootstrap.log) 2>&1
+cat >> /etc/ecs/ecs.config <<'ECS'
+ECS_CLUSTER=${cluster}
+ECS_INSTANCE_ATTRIBUTES={"capacity.pool":"${pool}"}
+ECS_RESERVED_MEMORY=512
+ECS_ENABLE_TASK_IAM_ROLE=true
+ECS_ENABLE_AWSLOGS_EXECUTIONROLE_OVERRIDE=true
+ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=10m
+ECS_IMAGE_CLEANUP_INTERVAL=10m
+ECS_IMAGE_MINIMUM_CLEANUP_AGE=30m
+ECS_NUM_IMAGES_DELETE_PER_CYCLE=5
+ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"]
+ECS
+# Persistently prevent bridge tasks from obtaining the EC2 host role.
+cat > /etc/systemd/system/metadata-firewall.service <<'UNIT'
+[Unit]
+After=docker.service
+Requires=docker.service
+Before=ecs.service
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP || /usr/sbin/iptables -I DOCKER-USER 1 -d 169.254.169.254/32 -j DROP'
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'DOCKER'
+{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"2"}}
+DOCKER
+systemctl enable metadata-firewall.service
+dnf install -y awscli2
+if [ '${pool}' = core ]; then
+  dnf install -y python3-pip
+  python3 -m venv /opt/acme
+  /opt/acme/bin/pip install 'certbot>=3,<6'
+  mkdir -p /var/lib/runtime/{jwt,tls,acme}
+  chmod 700 /var/lib/runtime/jwt
+  # Retry also handles IAM propagation and parameters created after the first boot.
+  cat > /usr/local/bin/host-prepare <<'PREPARE'
+${prepare_core}
+PREPARE
+  chmod 700 /usr/local/bin/host-prepare
+  cat > /etc/systemd/system/host-prepare.service <<'UNIT'
+[Unit]
+After=network-online.target
+Wants=network-online.target
+Before=ecs.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/host-prepare
+Restart=on-failure
+RestartSec=30
+[Install]
+WantedBy=multi-user.target
+UNIT
+  mkdir -p /etc/systemd/system/ecs.service.d
+  printf '[Unit]\nRequires=host-prepare.service metadata-firewall.service\nAfter=host-prepare.service metadata-firewall.service\n' > /etc/systemd/system/ecs.service.d/host-prepare.conf
+  cat > /usr/local/bin/renew-certificate <<'RENEW'
+${renew_certificate}
+RENEW
+  chmod 700 /usr/local/bin/renew-certificate
+  cat > /etc/systemd/system/renew-certificate.service <<'UNIT'
+[Unit]
+After=ecs.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/renew-certificate
+UNIT
+  cat > /etc/systemd/system/renew-certificate.timer <<'UNIT'
+[Unit]
+Description=Issue or renew the TLS certificate
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+RandomizedDelaySec=60
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl enable host-prepare.service renew-certificate.timer
+fi
+# Avoid waiting for ECS during cloud-init (the ECS unit itself waits for cloud-init).
+mkdir -p /etc/systemd/system/ecs.service.d
+printf '[Unit]\nRequires=metadata-firewall.service\nAfter=metadata-firewall.service\n' > /etc/systemd/system/ecs.service.d/firewall.conf
+systemctl daemon-reload
+systemctl restart docker
+systemctl start --no-block metadata-firewall.service
+if [ '${pool}' = core ]; then
+  systemctl start --no-block host-prepare.service renew-certificate.timer
+fi
+systemctl enable --now --no-block ecs
