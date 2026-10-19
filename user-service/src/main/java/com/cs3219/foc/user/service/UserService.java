@@ -11,16 +11,19 @@ import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
+import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.repository.UserSpecifications;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -38,6 +41,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
     private final UserMapper userMapper;
+    private final ApplicationEventPublisher events;
     private final EmailVerificationService emailVerification;
     private final EmailChangeService emailChange;
     private final AvatarStorageService avatarStorageService;
@@ -196,6 +200,7 @@ public class UserService {
                 .build();
 
         var savedUser = userRepository.save(user);
+        events.publishEvent(UserCreatedEvent.of(UUID.randomUUID(), savedUser.getId(), OffsetDateTime.now()));
         emailVerification.createRegistrationVerification(savedUser);
         return buildUserProfileDto(savedUser);
     }

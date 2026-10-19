@@ -41,6 +41,13 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    // End-to-end tests boot both services; production modules remain independent.
+    testImplementation platform('io.awspring.cloud:spring-cloud-aws-dependencies:4.1.1')
+    testImplementation platform('org.springframework.modulith:spring-modulith-bom:2.1.1')
+    testImplementation project(':user-service')
+    testImplementation 'org.springframework.boot:spring-boot-starter-mail'
+    testImplementation 'org.awaitility:awaitility'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
@@ -52,4 +59,5 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty "foc.root", rootProject.projectDir.absolutePath
 }

@@ -1,6 +1,33 @@
 spring:
   application:
     name: credit-service
+  cloud:
+    function:
+      definition: userCreated
+    stream:
+      bindings:
+        userCreated-in-0:
+          destination: foc.user-created.v1
+          group: credit-provisioning
+          content-type: application/json
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+            back-off-max-interval: 2000
+      rabbit:
+        bindings:
+          userCreated-in-0:
+            consumer:
+              acknowledge-mode: AUTO
+              prefetch: 10
+              exchange-durable: true
+              exchange-auto-delete: false
+              auto-bind-dlq: true
+              republish-to-dlq: false
+              requeue-rejected: false
+              dead-letter-exchange: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.dlx
+              dead-letter-routing-key: credit-provisioning
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.userCreated-in-0.destination}.credit-provisioning.dlq
   jpa:
     hibernate:
       ddl-auto: validate

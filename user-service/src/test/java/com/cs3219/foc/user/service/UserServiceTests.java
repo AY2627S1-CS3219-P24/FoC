@@ -11,6 +11,7 @@ import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
+import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 class UserServiceTests {
     private final UserRepository repository = mock(UserRepository.class);
+    private final ApplicationEventPublisher provisioning = mock(ApplicationEventPublisher.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
     private final EmailChangeService emailChange = mock(EmailChangeService.class);
@@ -42,6 +45,7 @@ class UserServiceTests {
             repository,
             mock(PasswordEncoder.class),
             TestMappers.mapper(),
+            provisioning,
             verification,
             emailChange,
             avatarStorageService);
@@ -217,6 +221,9 @@ class UserServiceTests {
         var result = service.registerUser(new RegisterUserRequest(email, "Jamie", "password123"));
         assertThat(result.email()).isEqualTo(email);
         verify(repository).save(any(User.class));
+        verify(provisioning)
+                .publishEvent(ArgumentMatchers.<Object>argThat(event -> event instanceof UserCreatedEvent created
+                        && created.payload().userId().equals(userId)));
         verify(verification).createRegistrationVerification(argThat(saved -> !saved.isEmailVerified()));
     }
 
