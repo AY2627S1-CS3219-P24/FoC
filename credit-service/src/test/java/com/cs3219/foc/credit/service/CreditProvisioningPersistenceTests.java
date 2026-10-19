@@ -63,7 +63,7 @@ class CreditProvisioningPersistenceTests {
     @BeforeEach
     void clean() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE credit_accounts");
+        jdbc.execute("TRUNCATE credit_accounts CASCADE");
     }
 
     @AfterAll

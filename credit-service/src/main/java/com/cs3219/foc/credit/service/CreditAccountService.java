@@ -23,8 +23,6 @@ public class CreditAccountService {
 
     @Transactional(readOnly = true)
     public CreditBalanceResponse getBalance(UUID userId) {
-        var account = repository.findById(userId).orElseThrow(CreditAccountPendingException::new);
-        // Reservations are introduced by the separate reward feature.
-        return new CreditBalanceResponse(account.getTotalBalance(), 0);
+        return repository.findBalanceByUserId(userId).orElseThrow(CreditAccountPendingException::new);
     }
 }
