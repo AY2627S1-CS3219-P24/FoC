@@ -104,11 +104,11 @@ class ImageStorageIntegrationTests {
                             .build())
                     .build());
         }
-        registry.add("spring.datasource.url", () -> POSTGRES.getJdbcUrl() + "&currentSchema=users");
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("storage.s3.bucket", () -> BUCKET);
-        registry.add("spring.cloud.aws.s3.region", () -> "ap-southeast-2");
+        registry.add("spring.cloud.aws.s3.region", () -> "ap-southeast-1");
         registry.add("spring.cloud.aws.s3.endpoint", endpoint::toString);
     }
 

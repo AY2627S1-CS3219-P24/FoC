@@ -1,19 +1,20 @@
 spring:
   datasource:
-    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?currentSchema=orders
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
-  rabbitmq:
-    host: rabbitmq
-    port: 5672
-    username: ${RABBITMQ_DEFAULT_USER}
-    password: ${RABBITMQ_DEFAULT_PASS}
+    url: ${FOC_DATABASE_URL}
+    username: ${FOC_DATABASE_USERNAME}
+    password: ${FOC_DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
   security:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: http://user-service:8080/api/.well-known/jwks.json
-  flyway:
-    default-schema: orders
+          jwk-set-uri: ${FOC_JWKS_URI}
 server:
   forward-headers-strategy: framework
+management:
+  opentelemetry:
+    resource-attributes:
+      "[service.instance.id]": ${HOSTNAME}

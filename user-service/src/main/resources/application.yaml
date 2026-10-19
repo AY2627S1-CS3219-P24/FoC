@@ -2,7 +2,6 @@ spring:
   cloud:
     aws:
       s3:
-        region: ${AWS_REGION:ap-southeast-2}
         endpoint: ${FOC_S3_ENDPOINT:}
         path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
   modulith:
@@ -34,8 +33,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-  flyway:
-    default-schema: users
   threads:
     virtual:
       enabled: true
@@ -57,6 +54,10 @@ account-mail:
   resend-interval: 60s
 # Email delivery does not determine whether the API can serve requests.
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
   health:
     mail:
       enabled: false
