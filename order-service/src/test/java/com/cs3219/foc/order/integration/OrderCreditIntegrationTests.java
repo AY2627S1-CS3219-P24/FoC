@@ -209,23 +209,45 @@ class OrderCreditIntegrationTests {
         assertThat(balance(requester, "reserved_balance")).isZero();
         assertThat(balance(requester, "total_balance")).isEqualTo(95);
 
-        // Credit can commit before Order's final transaction fails. Preserve the original record for investigation.
+        // Retry the original operation after Credit commits but Order finalization fails.
         var uncertainKey = UUID.randomUUID();
+        UUID uncertainId;
         orders.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
         try {
             request("POST", "", requester, creationBody(uncertainKey, 1), 500);
-            var pending = request("POST", "", requester, creationBody(uncertainKey, 1), 202);
-            var uncertainId = UUID.fromString(pending.get("errandId").asText());
+            uncertainId =
+                    orders.queryForObject("SELECT id FROM errands WHERE create_request_id=?", UUID.class, uncertainKey);
             awaitOrder(uncertainId, "CREATING", null);
             assertThat(credits.queryForObject(
                             "SELECT state FROM credit_reservations WHERE errand_id=?", String.class, uncertainId))
                     .isEqualTo("RESERVED");
-            assertThat(credits.queryForObject(
-                            "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, uncertainId))
-                    .isEqualTo(1);
         } finally {
             orders.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
         }
+        var simultaneous = new CyclicBarrier(2);
+        Callable<JsonNode> retry = () -> {
+            simultaneous.await(10, TimeUnit.SECONDS);
+            return request("POST", "", requester, creationBody(uncertainKey, 1), 200);
+        };
+        var retryA = executor.submit(retry);
+        var retryB = executor.submit(retry);
+        assertThat(retryA.get(20, TimeUnit.SECONDS).get("errandId").asText()).isEqualTo(uncertainId.toString());
+        assertThat(retryB.get(20, TimeUnit.SECONDS).get("errandId").asText()).isEqualTo(uncertainId.toString());
+        awaitOrder(uncertainId, "OPEN", "RESERVED");
+        assertThat(orders.queryForObject(
+                        "SELECT count(*) FROM errands WHERE create_request_id=?", Long.class, uncertainKey))
+                .isEqualTo(1);
+        assertThat(credits.queryForObject(
+                        "SELECT count(*) FROM credit_reservations WHERE errand_id=?", Long.class, uncertainId))
+                .isEqualTo(1);
+        assertThat(credits.queryForObject(
+                        "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, uncertainId))
+                .isEqualTo(1);
+        assertThat(balance(requester, "total_balance")).isEqualTo(95);
+        assertThat(balance(requester, "reserved_balance")).isEqualTo(1);
+        request("POST", "/" + uncertainId + "/cancel", requester, null, 200);
+        awaitOrder(uncertainId, "CANCELLED", "RELEASED");
+        assertThat(balance(requester, "reserved_balance")).isZero();
         request("POST", "", requester, body.replace("\"creditReward\":5", "\"creditReward\":1.5"), 400);
         assertNoPendingPublicationsOrDeadLetters();
     }

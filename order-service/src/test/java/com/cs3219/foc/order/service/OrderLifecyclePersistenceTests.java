@@ -28,6 +28,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
@@ -106,8 +107,9 @@ class OrderLifecyclePersistenceTests {
                     .isFalse();
             ReserveCreditRequest request = call.getArgument(0);
             assertThat(request.operationId()).isEqualTo(request.errandId());
-            assertThat(jdbc.queryForObject("SELECT status FROM errands WHERE id=?", String.class, request.errandId()))
-                    .isEqualTo("CREATING");
+            assertThat(jdbc.queryForObject(
+                            "SELECT credit_reward FROM errands WHERE id=?", Long.class, request.errandId()))
+                    .isEqualTo(request.amount());
             return new CreditReservationResponse("RESERVED");
         });
         when(suppliers.get(any()))
@@ -240,7 +242,7 @@ class OrderLifecyclePersistenceTests {
     }
 
     @Test
-    void simultaneousSameRequestInsertsAndReservesOnce() throws Exception {
+    void simultaneousSameRequestCreatesOneOrderAndReusesTheReservationOperation() throws Exception {
         var barrier = new CyclicBarrier(2);
         when(suppliers.get(any())).thenAnswer(call -> {
             barrier.await(10, TimeUnit.SECONDS);
@@ -259,7 +261,10 @@ class OrderLifecyclePersistenceTests {
         }
         assertThat(jdbc.queryForObject("SELECT count(*) FROM errands", Long.class))
                 .isEqualTo(1);
-        verify(credit, times(1)).reserve(any());
+        UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
+        var calls = ArgumentCaptor.forClass(ReserveCreditRequest.class);
+        verify(credit, atLeastOnce()).reserve(calls.capture());
+        assertThat(calls.getAllValues()).containsOnly(new ReserveCreditRequest(id, id, req.creditReward()));
     }
 
     @Test
@@ -631,45 +636,194 @@ class OrderLifecyclePersistenceTests {
         assertThat(facts.events).isEmpty();
     }
 
-    @Test
-    void uncertainHttpResultRemainsCreatingAndReplayDoesNotReserveAgain() {
-        doThrow(new RestClientException("Response lost")).when(credit).reserve(any());
+    @ParameterizedTest
+    @ValueSource(strings = {"RESERVED", "INSUFFICIENT_BALANCE"})
+    void uncertainHttpResultCanRecoverUsingTheOriginalRequestWithoutRevalidatingAdmission(String outcome) {
+        doThrow(new RestClientException("Response lost"))
+                .doReturn(new CreditReservationResponse(outcome))
+                .when(credit)
+                .reserve(any());
         var req = request();
         assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
-        var pending = service.create(req);
-        assertThat(pending.status().name()).isEqualTo("CREATING");
-        assertThat(service.get(pending.errandId()).creditState()).isNull();
-        assertThat(pending.creationFailureCode()).isNull();
-        verify(credit, times(1)).reserve(any());
+        UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
+        var original = service.get(id);
+        assertThat(original.status().name()).isEqualTo("CREATING");
+        doThrow(new AssertionError("Retry must not check readiness again"))
+                .when(credit)
+                .requireAccountReady();
+        doThrow(new AssertionError("Retry must retain the original supplier snapshot"))
+                .when(suppliers)
+                .get(any());
+
+        assertThatThrownBy(() -> service.create(new CreateErrandRequest(
+                        req.createRequestId(),
+                        req.supplierId(),
+                        "Changed",
+                        req.description(),
+                        req.notes(),
+                        req.creditReward(),
+                        req.expiryMinutes())))
+                .isInstanceOf(OrderConflictException.class);
+        var recovered = service.create(req);
+        assertThat(recovered.errandId()).isEqualTo(id);
+        assertThat(recovered.status().name()).isEqualTo(outcome.equals("RESERVED") ? "OPEN" : "CREATE_FAILED");
+        assertThat(recovered.creationFailureCode()).isEqualTo(outcome.equals("RESERVED") ? null : outcome);
+        assertThat(service.get(id).expiresAt()).isEqualTo(original.expiresAt());
+        assertThat(service.get(id).createdAt()).isEqualTo(original.createdAt());
+        verify(credit, times(2)).reserve(new ReserveCreditRequest(id, id, req.creditReward()));
+        assertThat(service.create(req)).isEqualTo(recovered);
+        verify(credit).requireAccountReady();
+        verifyNoMoreInteractions(credit);
         assertThat(facts.events).isEmpty();
     }
 
     @Test
-    void successfulReservationFollowedByDatabaseFailureIsNotMistakenForADuplicate() {
+    void persistentHttpFailureKeepsTheOriginalRecordAvailableForAnotherRetry() {
+        doThrow(new RestClientException("Credit unavailable")).when(credit).reserve(any());
         var req = request();
-        jdbc.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
-        try {
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(DataIntegrityViolationException.class);
-            assertThat(service.create(req).status().name()).isEqualTo("CREATING");
-            verify(credit, times(1)).reserve(any());
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM errands", Long.class))
-                    .isEqualTo(1);
-        } finally {
-            jdbc.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
-        }
+        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
+        assertThat(service.get(id).status().name()).isEqualTo("CREATING");
+        assertThat(service.get(id).creditState()).isNull();
+        verify(credit, times(2)).reserve(new ReserveCreditRequest(id, id, req.creditReward()));
+        assertThat(facts.events).isEmpty();
     }
 
     @Test
-    void invalidReservationResponseDoesNotDeclareCreationFailed() {
+    void successfulReservationFollowedByDatabaseFailureCanBeFinalizedByTheOriginalRequest() {
+        var req = request();
+        jdbc.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
+        UUID id;
+        try {
+            assertThatThrownBy(() -> service.create(req)).isInstanceOf(DataIntegrityViolationException.class);
+            id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
+            assertThat(service.get(id).status().name()).isEqualTo("CREATING");
+        } finally {
+            jdbc.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
+        }
+        var recovered = service.create(req);
+        assertThat(recovered.errandId()).isEqualTo(id);
+        assertThat(recovered.status().name()).isEqualTo("OPEN");
+        verify(credit, times(2)).reserve(new ReserveCreditRequest(id, id, req.creditReward()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM errands", Long.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void retryAfterExpiryReleasesTheConfirmedReservationOnce() {
+        doThrow(new RestClientException("Response lost"))
+                .doReturn(new CreditReservationResponse("RESERVED"))
+                .when(credit)
+                .reserve(any());
+        var req = request();
+        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        clock.time.set(START.plusSeconds(61));
+        var recovered = service.create(req);
+        assertThat(recovered.status().name()).isEqualTo("EXPIRED");
+        assertThat(service.get(recovered.errandId()).creditState().name()).isEqualTo("RELEASE_PENDING");
+        assertThat(service.create(req)).isEqualTo(recovered);
+        verify(credit, times(2))
+                .reserve(new ReserveCreditRequest(recovered.errandId(), recovered.errandId(), req.creditReward()));
+        assertThat(count(ErrandExpiredEvent.class)).isEqualTo(1);
+    }
+
+    @Test
+    void invalidReservationResponsesLeaveTheOriginalCreationAvailableForRetry() {
         var responses =
                 Arrays.asList(null, new CreditReservationResponse(null), new CreditReservationResponse("UNKNOWN"));
         for (CreditReservationResponse response : responses) {
             doReturn(response).when(credit).reserve(any());
             var req = request();
             assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
-            assertThat(service.create(req).status().name()).isEqualTo("CREATING");
+            UUID id = jdbc.queryForObject(
+                    "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId());
+            assertThat(service.get(id).status().name()).isEqualTo("CREATING");
+            doReturn(new CreditReservationResponse("RESERVED")).when(credit).reserve(any());
+            assertThat(service.create(req).errandId()).isEqualTo(id);
+            assertThat(service.get(id).status().name()).isEqualTo("OPEN");
         }
         assertThat(facts.events).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCEPTED", "COMPLETED", "CANCELLED", "EXPIRED"})
+    void lateOriginalCreationDoesNotOverwriteTheStateReachedAfterRetry(String targetStatus) throws Exception {
+        var firstWaiting = new CountDownLatch(1);
+        var releaseFirst = new CountDownLatch(1);
+        var attempts = new AtomicInteger();
+        doAnswer(call -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    if (attempts.incrementAndGet() == 1) {
+                        firstWaiting.countDown();
+                        assertThat(releaseFirst.await(10, TimeUnit.SECONDS)).isTrue();
+                    }
+                    return new CreditReservationResponse("RESERVED");
+                })
+                .when(credit)
+                .reserve(any());
+        var req = request();
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            Future<CreateErrandResponse> original = executor.submit(() -> {
+                as(requester);
+                try {
+                    return service.create(req);
+                } finally {
+                    SecurityContextHolder.clearContext();
+                }
+            });
+            try {
+                assertThat(firstWaiting.await(10, TimeUnit.SECONDS)).isTrue();
+                var recovered = service.create(req);
+                UUID id = recovered.errandId();
+                assertThat(recovered.status().name()).isEqualTo("OPEN");
+                UUID courier = null;
+                if (targetStatus.equals("ACCEPTED") || targetStatus.equals("COMPLETED")) {
+                    courier = UUID.randomUUID();
+                    as(courier);
+                    service.accept(id);
+                    if (targetStatus.equals("COMPLETED")) {
+                        service.pickUp(id);
+                        as(requester);
+                        service.complete(id);
+                    }
+                } else if (targetStatus.equals("CANCELLED")) {
+                    service.cancel(id);
+                } else {
+                    clock.time.set(START.plusSeconds(61));
+                    service.expireOpenOrders();
+                }
+                if (!targetStatus.equals("ACCEPTED")) {
+                    boolean payout = targetStatus.equals("COMPLETED");
+                    UUID operation =
+                            jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
+                    service.handleSettlementResult(new CreditSettlementResultEvent(
+                            UUID.randomUUID(),
+                            "CreditSettlementResultEvent",
+                            1,
+                            OffsetDateTime.now(clock),
+                            new CreditSettlementResultEvent.Payload(
+                                    operation,
+                                    id,
+                                    requester,
+                                    req.creditReward(),
+                                    payout ? "PAID" : "REFUNDED",
+                                    payout ? "PAYOUT" : "REFUND",
+                                    courier)));
+                }
+                as(requester);
+                ErrandDto advanced = service.get(id);
+                assertThat(advanced.status().name()).isEqualTo(targetStatus);
+                releaseFirst.countDown();
+                assertThat(original.get(10, TimeUnit.SECONDS).status().name()).isEqualTo(targetStatus);
+                assertThat(service.get(id)).isEqualTo(advanced);
+                verify(credit, times(2)).reserve(new ReserveCreditRequest(id, id, req.creditReward()));
+                assertThat(facts.events).hasSize(targetStatus.equals("ACCEPTED") ? 0 : 1);
+            } finally {
+                releaseFirst.countDown();
+            }
+        }
     }
 
     @Test

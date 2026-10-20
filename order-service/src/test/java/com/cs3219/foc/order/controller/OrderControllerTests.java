@@ -26,6 +26,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
@@ -117,6 +118,28 @@ class OrderControllerTests {
                         .content(body(5)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.creationFailureCode").value("INSUFFICIENT_BALANCE"));
+    }
+
+    @Test
+    void creationRetryReturnsItsResolvedOutcomeAndRetainsTheLocation() throws Exception {
+        String request = body(5);
+        when(service.create(any()))
+                .thenThrow(new RestClientException("Reservation response lost"))
+                .thenReturn(new CreateErrandResponse(id, ErrandStatus.OPEN, null, "/api/orders/" + id));
+        mvc.perform(post("/orders")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
+        mvc.perform(post("/orders")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Location", "/api/orders/" + id))
+                .andExpect(jsonPath("$.errandId").value(id.toString()))
+                .andExpect(jsonPath("$.status").value("OPEN"));
     }
 
     @Test

@@ -1,7 +1,6 @@
 package com.cs3219.foc.order.controller;
 
 import com.cs3219.foc.order.model.dto.*;
-import com.cs3219.foc.order.model.entity.ErrandStatus;
 import com.cs3219.foc.order.service.OrderService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -22,9 +21,7 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<CreateErrandResponse> create(@Valid @RequestBody CreateErrandRequest request) {
         CreateErrandResponse result = orderService.create(request);
-        return ResponseEntity.status(result.status() == ErrandStatus.CREATING ? 202 : 200)
-                .location(URI.create(result.queryUrl()))
-                .body(result);
+        return ResponseEntity.ok().location(URI.create(result.queryUrl())).body(result);
     }
 
     @GetMapping

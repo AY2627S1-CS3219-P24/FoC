@@ -75,7 +75,7 @@ public class OrderService {
         UUID actor = currentUserService.requireCurrentUserId();
         Optional<Errand> existing = transactions.execute(
                 tx -> repository.findByRequesterIdAndCreateRequestId(actor, request.createRequestId()));
-        if (existing.isPresent()) return creationResponse(matching(existing.get(), request));
+        if (existing.isPresent()) return reserveAndFinalize(matching(existing.get(), request));
 
         // Account and supplier HTTP run before the write transaction, only for a new request.
         creditClient.requireAccountReady();
@@ -116,20 +116,28 @@ public class OrderService {
             Optional<Errand> original = transactions.execute(
                     tx -> repository.findByRequesterIdAndCreateRequestId(actor, request.createRequestId()));
             if (original.isEmpty()) throw conflict;
-            return creationResponse(matching(original.get(), request));
+            return reserveAndFinalize(matching(original.get(), request));
         }
 
-        // The durable record commits before HTTP. Concurrent repeats return it without reserving again.
+        return reserveAndFinalize(created);
+    }
+
+    private CreateErrandResponse reserveAndFinalize(Errand pending) {
+        if (pending.getStatus() != CREATING) return creationResponse(pending);
+
+        // HTTP runs after the record commits. Credit reuses the same decision for this operation ID.
         try {
             CreditReservationResponse reservation = creditClient.reserve(
-                    new ReserveCreditRequest(created.getId(), created.getId(), created.getCreditReward()));
+                    new ReserveCreditRequest(pending.getId(), pending.getId(), pending.getCreditReward()));
             if (reservation == null
                     || reservation.outcome() == null
                     || !Set.of("RESERVED", "INSUFFICIENT_BALANCE").contains(reservation.outcome())) {
                 throw new RestClientException("Credit returned an invalid reservation outcome");
             }
             Errand finalized = transactions.execute(tx -> {
-                Errand errand = locked(created.getId());
+                Errand errand = locked(pending.getId());
+                // Another creation attempt may already have finalized and the order may have advanced.
+                if (errand.getStatus() != CREATING) return errand;
                 if ("INSUFFICIENT_BALANCE".equals(reservation.outcome())) {
                     errand.setStatus(CREATE_FAILED);
                     errand.setCreationFailureCode(reservation.outcome());
@@ -150,10 +158,10 @@ public class OrderService {
         } catch (RuntimeException failure) {
             // HTTP failure cannot establish whether Credit committed. Never mark an unknown result as failed.
             log.error(
-                    "Order creation needs investigation errandId={} requesterId={} createRequestId={}",
-                    created.getId(),
-                    actor,
-                    request.createRequestId(),
+                    "Order creation attempt failed; retry with the original request errandId={} requesterId={} createRequestId={}",
+                    pending.getId(),
+                    pending.getRequesterId(),
+                    pending.getCreateRequestId(),
                     failure);
             throw failure;
         }
