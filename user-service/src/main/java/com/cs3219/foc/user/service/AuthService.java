@@ -1,5 +1,6 @@
 package com.cs3219.foc.user.service;
 
+import com.cs3219.foc.user.exception.EmailVerificationException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.model.dto.AuthTokens;
 import com.cs3219.foc.user.model.dto.LoginRequest;
@@ -7,6 +8,7 @@ import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,10 @@ public class AuthService {
 
         if (!(authentication.getPrincipal() instanceof CustomUserDetails user)) {
             throw new RuntimeException("Authentication failed");
+        }
+
+        if (!user.isEmailVerified()) {
+            throw new EmailVerificationException(HttpStatus.FORBIDDEN, "Please verify your email before logging in.");
         }
 
         var userId = user.getUserId();

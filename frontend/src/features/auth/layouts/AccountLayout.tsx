@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { UserLayout } from '#/layouts/UserLayout'
+import { UserLayout } from '#/layouts/UserLayout/UserLayout'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useAuth } from '../providers/AuthProvider'
 
@@ -11,10 +11,15 @@ export const AccountLayout = () => {
     <UserLayout
       name={data?.name ?? 'Your account'}
       avatarUrl={data?.avatarUrl}
-      brand={<Link to="/app">FoC</Link>}
+      brand={<Link to="/home">FoC</Link>}
       navigation={
         <>
-          <Link to="/app">Home</Link>
+          <Link
+            to="/home"
+            activeOptions={{ exact: false, includeSearch: false }}
+          >
+            Home
+          </Link>
           <span aria-disabled="true">Locations</span>
           <Link to="/errands" search={{ tab: 'active', participation: 'all' }}>
             My Errands

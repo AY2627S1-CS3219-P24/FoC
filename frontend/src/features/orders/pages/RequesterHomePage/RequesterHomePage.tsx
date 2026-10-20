@@ -4,7 +4,7 @@ import { Dialog } from '@base-ui/react/dialog'
 import { categories, favouriteLocations } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
 import { Link } from '@tanstack/react-router'
-import { OrderModeSwitcher } from '../../components/OrderModeSwitcher/OrderModeSwitcher'
+import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import {
   OrderPreviewNotice,
@@ -31,7 +31,7 @@ export const RequesterHomePage = () => {
   } | null>(null)
   return (
     <div className={`${common.page} ${styles.page}`}>
-      <OrderModeSwitcher mode="requester" />
+      <RoleSwitcher activeMode="requestor" />
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
         {categories.map((category) => (

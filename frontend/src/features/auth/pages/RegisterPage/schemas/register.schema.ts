@@ -1,33 +1,15 @@
 import { z } from 'zod'
 
-const emailPattern = /^\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b$/
+import { nusEmailSchema } from '#/features/auth/schemas/nusEmail.schema'
+import { passwordSchema } from '#/features/auth/schemas/password.schema'
 
 export const registerSchema = z
   .object({
     name: z.string().trim().min(1, 'Please enter your name.'),
 
-    email: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .min(1, 'Please enter your email.')
-      .regex(emailPattern, 'Please enter a valid email address.')
-      .pipe(
-        z
-          .string()
-          .refine(
-            (email) =>
-              ['u.nus.edu', 'nus.edu.sg'].includes(email.split('@')[1]),
-            'Please use your NUS email address.',
-          ),
-      ),
+    email: nusEmailSchema,
 
-    password: z
-      .string()
-      .refine((value) => value.trim().length > 0, {
-        message: 'Please enter your password.',
-      })
-      .min(8, 'Password must contain at least 8 characters.'),
+    password: passwordSchema,
 
     confirmPassword: z.string().refine((value) => value.trim().length > 0, {
       message: 'Please confirm your password.',

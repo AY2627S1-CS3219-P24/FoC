@@ -28,6 +28,9 @@ public class User {
     private String email;
 
     @Column(nullable = false)
+    private boolean emailVerified;
+
+    @Column(nullable = false)
     private String name;
 
     @Column(length = 16)
@@ -36,7 +39,7 @@ public class User {
     @Column(length = 255)
     private String faculty;
 
-    @Column(length = 40)
+    @Column(length = 255)
     private String avatarKey;
 
     @Column(nullable = false)

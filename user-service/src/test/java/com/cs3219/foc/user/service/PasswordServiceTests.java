@@ -4,13 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.exception.EmailRateLimitException;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
+import com.cs3219.foc.user.model.entity.EmailTokenPurpose;
 import com.cs3219.foc.user.model.entity.User;
 import com.cs3219.foc.user.model.entity.UserRole;
+import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.CurrentUserService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,13 +24,24 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class PasswordServiceTests {
-    private final UserRepository users = mock(UserRepository.class);
-    private final RefreshTokenRepository tokens = mock(RefreshTokenRepository.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
+    private final RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
-    private final PasswordService service = new PasswordService(users, tokens, encoder);
+    private final EmailTokenService emailTokenService = mock(EmailTokenService.class);
+    private final EmailTokenRepository emailTokenRepository = mock(EmailTokenRepository.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+    private final PasswordService service = new PasswordService(
+            userRepository,
+            refreshTokenRepository,
+            encoder,
+            emailTokenService,
+            emailTokenRepository,
+            mock(ApplicationEventPublisher.class),
+            currentUserService);
     private final UUID userId = UUID.randomUUID();
     private User user;
     private String previousHash;
@@ -41,7 +58,17 @@ class PasswordServiceTests {
                 .roles(List.of(UserRole.USER))
                 .passwordHash(previousHash)
                 .build();
-        when(users.findForUpdateById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findForUpdateById(userId)).thenReturn(Optional.of(user));
+    }
+
+    @Test
+    void changePasswordUsesAuthenticatedId() {
+        when(currentUserService.requireCurrentUserId()).thenReturn(userId);
+
+        service.changePassword(new ChangePasswordRequest("CurrentPassword1", "NewPassword2"));
+
+        verify(userRepository).findForUpdateById(userId);
+        verify(userRepository).saveAndFlush(user);
     }
 
     @Test
@@ -56,9 +83,42 @@ class PasswordServiceTests {
         assertThat(user.getPhoneNumber()).isEqualTo("+6591235436");
         assertThat(user.getFaculty()).isEqualTo("Computing");
         assertThat(user.getRoles()).containsExactly(UserRole.USER);
-        verify(users).saveAndFlush(user);
-        verify(tokens).deleteAllByUserId(userId);
-        verifyNoMoreInteractions(tokens);
+        verify(userRepository).saveAndFlush(user);
+        verify(refreshTokenRepository).deleteAllByUserId(userId);
+        verifyNoMoreInteractions(refreshTokenRepository);
+        verify(emailTokenRepository)
+                .deleteAllByUserIdAndPurposeIn(
+                        userId, List.of(EmailTokenPurpose.PASSWORD_RESET, EmailTokenPurpose.EMAIL_CHANGE));
+    }
+
+    @Test
+    void resetRequestsAllowUnverifiedAccountsButIgnoreUnknownAccounts() {
+        when(userRepository.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        service.requestPasswordReset("missing@u.nus.edu");
+        service.requestPasswordReset(user.getEmail());
+        verify(emailTokenService).issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        verifyNoMoreInteractions(emailTokenService);
+        verifyNoInteractions(refreshTokenRepository);
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void unavailableResetLinkThrowsExplicitExceptionWithoutChangingCredentials() {
+        when(emailTokenService.consume("invalid-token", EmailTokenPurpose.PASSWORD_RESET))
+                .thenThrow(new InvalidEmailTokenException());
+        assertThatThrownBy(() -> service.resetPassword("invalid-token", "NewPassword2"))
+                .isInstanceOf(InvalidPasswordResetTokenException.class);
+        assertUnchanged();
+    }
+
+    @Test
+    void resetRequestKeepsGenericResponseDuringCooldown() {
+        when(userRepository.findForUpdateByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        doThrow(new EmailRateLimitException())
+                .when(emailTokenService)
+                .issue(user, user.getEmail(), EmailTokenPurpose.PASSWORD_RESET);
+        service.requestPasswordReset(user.getEmail());
+        assertUnchanged();
     }
 
     @ParameterizedTest
@@ -72,7 +132,7 @@ class PasswordServiceTests {
 
     @Test
     void rejectsMissingUser() {
-        when(users.findForUpdateById(userId)).thenReturn(Optional.empty());
+        when(userRepository.findForUpdateById(userId)).thenReturn(Optional.empty());
         assertThatThrownBy(() ->
                         service.changePassword(userId, new ChangePasswordRequest("CurrentPassword1", "NewPassword2")))
                 .isInstanceOf(UserNotFoundException.class);
@@ -104,7 +164,7 @@ class PasswordServiceTests {
 
     private void assertUnchanged() {
         assertThat(user.getPasswordHash()).isEqualTo(previousHash);
-        verify(users, never()).saveAndFlush(any());
-        verifyNoInteractions(tokens);
+        verify(userRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(refreshTokenRepository, emailTokenRepository);
     }
 }

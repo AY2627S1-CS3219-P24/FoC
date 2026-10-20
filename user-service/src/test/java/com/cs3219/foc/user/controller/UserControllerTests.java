@@ -1,7 +1,6 @@
 package com.cs3219.foc.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -10,8 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.config.SecurityConfig;
-import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
+import com.cs3219.foc.user.exception.EmailRateLimitException;
 import com.cs3219.foc.user.exception.GlobalExceptionHandler;
+import com.cs3219.foc.user.exception.InvalidEmailTokenException;
+import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
@@ -22,6 +23,8 @@ import com.cs3219.foc.user.security.JsonAuthenticationEntryPoint;
 import com.cs3219.foc.user.service.AuthCookieFactory;
 import com.cs3219.foc.user.service.AuthService;
 import com.cs3219.foc.user.service.AvatarService;
+import com.cs3219.foc.user.service.EmailChangeService;
+import com.cs3219.foc.user.service.EmailVerificationService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
 import java.time.OffsetDateTime;
@@ -59,6 +62,15 @@ class UserControllerTests {
     private UserService service;
 
     @Autowired
+    private EmailVerificationService verification;
+
+    @Autowired
+    private EmailChangeService emailChangeService;
+
+    @Autowired
+    private PasswordService passwordService;
+
+    @Autowired
     private JwtDecoder decoder;
 
     private MockMvc mvc;
@@ -67,7 +79,7 @@ class UserControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, decoder);
+        reset(service, decoder, verification, emailChangeService, passwordService);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -82,8 +94,54 @@ class UserControllerTests {
     }
 
     @Test
+    void passwordResetEndpointsArePublicAndValidateNewPasswords() throws Exception {
+        mvc.perform(post("/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"email":" JAMIE@U.NUS.EDU "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwordService).requestPasswordReset("jamie@u.nus.edu");
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":"short"}
+                        """))
+                .andExpect(status().isBadRequest());
+        verify(passwordService, never()).resetPassword(any(), any());
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"token":"reset-token","newPassword":" NewPassword2 "}
+                        """))
+                .andExpect(status().isNoContent());
+        verify(passwordService).resetPassword("reset-token", " NewPassword2 ");
+    }
+
+    @Test
+    void emailTokenFailuresKeepTheirHttpResponses() throws Exception {
+        doThrow(new EmailRateLimitException()).when(verification).resendRegistrationVerification("jamie@u.nus.edu");
+        mvc.perform(post("/auth/email-verification/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"jamie@u.nus.edu\"}"))
+                .andExpect(status().isTooManyRequests());
+        doThrow(new InvalidEmailTokenException()).when(emailChangeService).confirmChange("invalid");
+        mvc.perform(post("/users/email-change/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"invalid\"}"))
+                .andExpect(status().isBadRequest());
+        doThrow(new InvalidPasswordResetTokenException())
+                .when(passwordService)
+                .resetPassword("invalid", "NewPassword2");
+        mvc.perform(post("/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"invalid\",\"newPassword\":\"NewPassword2\"}"))
+                .andExpect(status().isGone());
+    }
+
+    @Test
     void readsOnlyAuthenticatedUsersProfile() throws Exception {
-        when(service.getUserProfile(userId)).thenReturn(profile);
+        when(service.getUserProfile()).thenReturn(profile);
         mvc.perform(get("/users/me")
                         .param("userId", UUID.randomUUID().toString())
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
@@ -95,7 +153,7 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.roles[0]").value("USER"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.refreshToken").doesNotExist());
-        verify(service).getUserProfile(userId);
+        verify(service).getUserProfile();
     }
 
     @Test
@@ -142,12 +200,11 @@ class UserControllerTests {
 
     @Test
     void unsupportedEmailDomainReturnsBadRequest() throws Exception {
-        when(service.updateUserProfile(eq(userId), any())).thenThrow(new UnsupportedEmailDomainException());
-        mvc.perform(put("/users/me")
-                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+        when(service.registerUser(any())).thenThrow(new UnsupportedEmailDomainException());
+        mvc.perform(post("/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Jamie","email":"jamie@gmail.com"}
+                                {"name":"Jamie","email":"jamie@gmail.com","password":"password123"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Please use your NUS email address."));
@@ -155,15 +212,14 @@ class UserControllerTests {
 
     @Test
     void updatesUsingJwtIdentityAndNormalizedBody() throws Exception {
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\" Alex Tan \",\"email\":\" ALEX@EXAMPLE.COM \"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("alex@example.com"));
-        verify(service)
-                .updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
+        verify(service).updateUserProfile(new UpdateUserProfileRequest("Alex Tan", null, null));
     }
 
     @Test
@@ -178,7 +234,7 @@ class UserControllerTests {
 
     @Test
     void normalizesOptionalProfileDetails() throws Exception {
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -189,10 +245,7 @@ class UserControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.phoneNumber").value("+6591235436"));
         verify(service)
-                .updateUserProfile(
-                        userId,
-                        new UpdateUserProfileRequest(
-                                "Alex Tan", "alex@example.com", "+6591235436", "School of Computing"));
+                .updateUserProfile(new UpdateUserProfileRequest("Alex Tan", "+6591235436", "School of Computing"));
     }
 
     @ParameterizedTest
@@ -203,14 +256,13 @@ class UserControllerTests {
         var fields = optionalFields.substring(1, optionalFields.length() - 1);
         var body =
                 "{\"name\":\"Alex Tan\",\"email\":\"alex@example.com\"" + (fields.isEmpty() ? "" : "," + fields) + "}";
-        when(service.updateUserProfile(eq(userId), any())).thenReturn(profile);
+        when(service.updateUserProfile(any())).thenReturn(profile);
         mvc.perform(put("/users/me")
                         .with(jwt().jwt(token -> token.subject(userId.toString())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
-        verify(service)
-                .updateUserProfile(userId, new UpdateUserProfileRequest("Alex Tan", "alex@example.com", null, null));
+        verify(service).updateUserProfile(new UpdateUserProfileRequest("Alex Tan", null, null));
     }
 
     @ParameterizedTest
@@ -263,18 +315,6 @@ class UserControllerTests {
         verifyNoInteractions(service);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"not-an-email", "", "   "})
-    void rejectsInvalidEmail(String email) throws Exception {
-        mvc.perform(put("/users/me")
-                        .with(jwt().jwt(token -> token.subject(userId.toString())))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Alex\",\"email\":\"" + email + "\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.email").exists());
-        verifyNoInteractions(service);
-    }
-
     @Test
     void rejectsOversizedName() throws Exception {
         mvc.perform(put("/users/me")
@@ -288,22 +328,10 @@ class UserControllerTests {
 
     @Test
     void returnsNotFoundForMissingUser() throws Exception {
-        when(service.getUserProfile(userId)).thenThrow(new UserNotFoundException("User not found"));
+        when(service.getUserProfile()).thenThrow(new UserNotFoundException("User not found"));
         mvc.perform(get("/users/me").with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("User not found"));
-    }
-
-    @Test
-    void preservesExistingDuplicateErrorContract() throws Exception {
-        when(service.updateUserProfile(eq(userId), any()))
-                .thenThrow(new EntityAlreadyExistsException("Email is already associated with another account"));
-        mvc.perform(put("/users/me")
-                        .with(jwt().jwt(token -> token.subject(userId.toString())))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Alex\",\"email\":\"taken@example.com\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Email is already associated with another account"));
     }
 
     @Test
@@ -317,6 +345,41 @@ class UserControllerTests {
                 .andExpect(jsonPath("$.fieldErrors.email").exists())
                 .andExpect(jsonPath("$.fieldErrors.password").exists());
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void emailVerificationEndpointsArePublicAndResendNormalizesTheAddress() throws Exception {
+        mvc.perform(post("/auth/email-verification/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"mail-token\"}"))
+                .andExpect(status().isNoContent());
+        verify(verification).verifyEmail("mail-token");
+        mvc.perform(post("/auth/email-verification/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\" JAMIE@U.NUS.EDU \"}"))
+                .andExpect(status().isNoContent());
+        verify(verification).resendRegistrationVerification("jamie@u.nus.edu");
+    }
+
+    @Test
+    void emailChangeRequiresLoginButConfirmationOnlyRequiresTheLink() throws Exception {
+        var body = "{\"email\":\" NEW@NUS.EDU.SG \"}";
+        mvc.perform(post("/users/me/email-change")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(emailChangeService);
+        mvc.perform(post("/users/me/email-change")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNoContent());
+        verify(emailChangeService).requestChange("new@nus.edu.sg");
+        mvc.perform(post("/users/email-change/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"change-token\"}"))
+                .andExpect(status().isNoContent());
+        verify(emailChangeService).confirmChange("change-token");
     }
 
     @Configuration
@@ -333,6 +396,16 @@ class UserControllerTests {
         JsonAccessDeniedHandler.class
     })
     static class TestConfig {
+        @Bean
+        EmailChangeService emailChangeService() {
+            return mock(EmailChangeService.class);
+        }
+
+        @Bean
+        EmailVerificationService emailVerificationService() {
+            return mock(EmailVerificationService.class);
+        }
+
         @Bean
         AuthService authService() {
             return mock(AuthService.class);

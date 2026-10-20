@@ -1,0 +1,14 @@
+package com.cs3219.foc.user.model.dto.event;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/** Version 1 integration contract; deliberately excludes profile data and credentials. */
+public record UserCreatedEvent(
+        UUID eventId, String eventType, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
+    public static UserCreatedEvent of(UUID eventId, UUID userId, OffsetDateTime occurredAt) {
+        return new UserCreatedEvent(eventId, "UserCreatedEvent", 1, occurredAt, new Payload(userId));
+    }
+
+    public record Payload(UUID userId) {}
+}

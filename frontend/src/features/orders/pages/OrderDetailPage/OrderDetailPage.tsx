@@ -65,7 +65,7 @@ export const OrderDetailPage = () => {
             user={query.user}
             now={now}
           />
-          <Link to="/courier" className={styles.back}>
+          <Link to="/home" search={{ mode: 'courier' }} className={styles.back}>
             Browse other errands →
           </Link>
         </>

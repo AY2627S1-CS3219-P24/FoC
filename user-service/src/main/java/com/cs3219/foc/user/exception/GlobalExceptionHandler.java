@@ -16,6 +16,32 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(EmailRateLimitException.class)
+    ResponseEntity<ErrorResponse> handleEmailRateLimit(EmailRateLimitException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidEmailTokenException.class)
+    ResponseEntity<ErrorResponse> handleInvalidEmailToken(InvalidEmailTokenException exception) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException exception) {
+        return ResponseEntity.status(HttpStatus.GONE).body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(StorageException.class)
+    ResponseEntity<ErrorResponse> handleStorage(StorageException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("Object storage operation failed"));
+    }
+
+    @ExceptionHandler(EmailVerificationException.class)
+    ResponseEntity<ErrorResponse> handleEmailVerification(EmailVerificationException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(new ErrorResponse(exception.getMessage()));
+    }
+
     @ExceptionHandler(InvalidPasswordException.class)
     ResponseEntity<ValidationErrorResponse> handleInvalidPassword(InvalidPasswordException exception) {
         return ResponseEntity.badRequest()
@@ -40,7 +66,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ErrorResponse> handleUploadSize(MaxUploadSizeExceededException ex) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(new ErrorResponse("Upload exceeds the allowed size"));
     }
 

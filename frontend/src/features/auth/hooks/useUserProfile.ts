@@ -3,6 +3,7 @@ import {
   changePassword,
   getUserProfile,
   removeAvatar,
+  requestEmailChange,
   updateUserProfile,
   uploadAvatar,
 } from '../api/userProfile.api'
@@ -14,7 +15,7 @@ export const useUserProfile = () =>
   useQuery({
     queryKey: profileKey,
     queryFn: ({ signal }) => getUserProfile(signal),
-    retry: false,
+    refetchInterval: 5 * 60_000,
   })
 
 export const useProfileActions = () => {
@@ -53,3 +54,11 @@ export const useProfileActions = () => {
   })
   return { update, password, upload, remove }
 }
+
+export const useEmailChange = () =>
+  useMutation({
+    mutationFn: requestEmailChange,
+    retry: false,
+    networkMode: 'always',
+    gcTime: 0,
+  })

@@ -34,7 +34,7 @@ export const CreateErrandPage = () => {
   }
   return (
     <div className={`${styles.page} ${styles.narrow}`}>
-      <Link to="/app" className={styles.back}>
+      <Link to="/home" search={{ mode: 'requestor' }} className={styles.back}>
         ← Back to home
       </Link>
       <h1>{review ? 'Review request' : 'Create an Errand'}</h1>

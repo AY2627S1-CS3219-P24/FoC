@@ -10,7 +10,7 @@ import type { OrderListSearch } from '../../types/errand.types'
 import styles from '../../styles/order.module.scss'
 
 export const MyErrandsPage = () => {
-  const search = useSearch({ from: '/protected/account/errands' })
+  const search = useSearch({ from: '/authenticated/user/errands' })
   const navigate = useNavigate()
   const query = useOrders()
   const now = useOrderClock()
@@ -91,8 +91,14 @@ export const MyErrandsPage = () => {
                 No {search.tab === 'history' ? 'past' : 'active'} errands match
                 this view.
               </p>
-              <Link to="/app">Request a pickup</Link> or{' '}
-              <Link to="/courier">find an errand</Link>.
+              <Link to="/home" search={{ mode: 'requestor' }}>
+                Request a pickup
+              </Link>{' '}
+              or{' '}
+              <Link to="/home" search={{ mode: 'courier' }}>
+                find an errand
+              </Link>
+              .
             </div>
           )}
         </>

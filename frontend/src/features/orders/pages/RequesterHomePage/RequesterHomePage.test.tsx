@@ -1,12 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { RequesterHomePage } from './RequesterHomePage'
 
-const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => navigate,
   Link: ({
     to,
     children,
@@ -31,7 +29,6 @@ vi.mock('../../hooks/useOrders', () => ({
   }),
   useOrderClock: () => 0,
 }))
-beforeEach(() => navigate.mockClear())
 
 describe('RequesterHomePage', () => {
   it('shows the existing dashboard sections and creation link', () => {
@@ -61,13 +58,5 @@ describe('RequesterHomePage', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Drinks' })).toHaveFocus()
-  })
-  it('requests a switch to courier view', async () => {
-    const user = userEvent.setup()
-    render(<RequesterHomePage />)
-    screen.getByRole('button', { name: 'Switch view: Requester' }).focus()
-    await user.keyboard('{ArrowDown}')
-    await user.click(await screen.findByRole('menuitem', { name: 'Courier' }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/courier' })
   })
 })

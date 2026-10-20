@@ -1,0 +1,2 @@
+user_bucket_name     = "YOUR-GLOBALLY-UNIQUE-FOC-USER-BUCKET"
+supplier_bucket_name = "YOUR-GLOBALLY-UNIQUE-FOC-SUPPLIER-BUCKET"

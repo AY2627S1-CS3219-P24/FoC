@@ -37,6 +37,14 @@ services:
       target: user-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      FOC_USER_BUCKET: ${FOC_USER_BUCKET}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
+      FOC_FRONTEND_URL: ${FOC_FRONTEND_URL:-https://localhost}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -57,6 +65,28 @@ services:
       retries: 12
       start_period: 40s
 
+  admin-init:
+    profiles: ["setup"]
+    restart: "no"
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-System Administrator}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+    volumes:
+      - ./docker/postgres/init-admin.sh:/scripts/init-admin.sh:ro
+    command: ["/bin/sh", "/scripts/init-admin.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+
   supplier-service:
     restart: unless-stopped
     build:
@@ -64,13 +94,13 @@ services:
       target: supplier-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-    volumes:
-      - supplier_images_prod:/data/supplier-images
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +114,26 @@ services:
       timeout: 3s
       retries: 12
       start_period: 40s
+
+  supplier-seed:
+    profiles: ["setup"]
+    restart: "no"
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
+      - ./data/csv:/seed:ro
+    command: ["/bin/sh", "/scripts/seed-suppliers.sh", "/seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      supplier-service:
+        condition: service_healthy
 
   order-service:
     restart: unless-stopped
@@ -168,7 +218,6 @@ services:
 volumes:
   pg_data_prod:
   rabbitmq_data_prod:
-  supplier_images_prod:
 
 secrets:
   jwt_private_key:

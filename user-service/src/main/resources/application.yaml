@@ -1,6 +1,56 @@
 spring:
+  modulith:
+    events:
+      registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
+      staleness:
+        published: 1m
+        processing: 1m
+        resubmitted: 1m
+        check-interval: 30s
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
   application:
     name: user-service
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    connection-timeout: 5s
+  cloud:
+    aws:
+      s3:
+        region: ${AWS_REGION:ap-southeast-2}
+        endpoint: ${FOC_S3_ENDPOINT:}
+        path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
+    stream:
+      bindings:
+        userCreated-out-0:
+          destination: foc.user-created.v1
+          content-type: application/json
+          producer:
+            error-channel-enabled: true
+      rabbit:
+        bindings:
+          userCreated-out-0:
+            producer:
+              use-confirm-header: true
+              delivery-mode: PERSISTENT
+              exchange-durable: true
+              exchange-auto-delete: false
   servlet:
     multipart:
       max-file-size: 2MB
@@ -24,5 +74,19 @@ server:
   servlet:
     context-path: /api
   port: 8080
-avatar:
-  directory: ${FOC_AVATAR_DIRECTORY:${user.home}/.foc/avatars}
+account-mail:
+  from: ${MAIL_FROM:no-reply@localhost}
+  frontend-url: ${FOC_FRONTEND_URL:http://localhost:3000}
+  token-ttl: 30m
+  resend-interval: 60s
+# Email delivery does not determine whether the API can serve requests.
+management:
+  health:
+    mail:
+      enabled: false
+
+storage:
+  s3:
+    bucket: ${FOC_USER_BUCKET:foc-dev-user}
+  avatars:
+    read-url-ttl: 10m

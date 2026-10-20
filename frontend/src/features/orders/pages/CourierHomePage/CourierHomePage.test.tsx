@@ -53,8 +53,6 @@ describe('CourierHomePage', () => {
   it('identifies the current user’s own request', () => {
     render(<CourierHomePage />)
     expect(screen.getByText('Your request · Cannot accept')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Switch view: Courier' }),
-    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Deliver' })).toBeEnabled()
   })
 })

@@ -33,7 +33,7 @@ export const SupplierEditPage = () => {
           {getErrorMessage(supplier.error)}
         </p>
       )}
-      {supplier.isSuccess && (
+      {supplier.data && (
         <SupplierForm
           defaultValues={toSupplierFormValues(supplier.data)}
           currentImageUrl={supplier.data.imageUrl}

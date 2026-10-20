@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { OrderModeSwitcher } from '../../components/OrderModeSwitcher/OrderModeSwitcher'
+import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import {
   OrderPreviewNotice,
@@ -24,7 +24,7 @@ export const CourierHomePage = () => {
   )
   return (
     <section className={styles.page} aria-labelledby="courier-heading">
-      <OrderModeSwitcher mode="courier" />
+      <RoleSwitcher activeMode="courier" />
       <div className={styles.toolbar}>
         <div>
           <h1 id="courier-heading">Find an errand</h1>
