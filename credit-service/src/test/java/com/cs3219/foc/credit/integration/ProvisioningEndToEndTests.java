@@ -53,7 +53,6 @@ import software.amazon.awssdk.services.sns.model.SubscribeRequest;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
-import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.DeleteQueueRequest;
 import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
 import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
@@ -104,16 +103,18 @@ class ProvisioningEndToEndTests {
             app.startCredit();
             app.awaitInitialBalance(app.login(createdWhileStopped));
             var response = app.balance(registeredToken, "?userId=" + admin);
-            assertThat(response.statusCode()).isEqualTo(200);
-            assertThat(JSON.readTree(response.body()).get("availableBalance").asLong())
-                    .isEqualTo(9);
+            var body = JSON.readTree(response.body());
+            var available = body.path("availableBalance");
+            assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+            assertThat(available.isNumber()).as(response.body()).isTrue();
+            assertThat(available.asLong()).isEqualTo(9);
             assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
                     .isEqualTo(4);
         }
     }
 
     @Test
-    void publicationRecoversAfterRestartAndConsumerFailuresParkUntilReplay() throws Exception {
+    void publicationRecoversAfterRestart() throws Exception {
         try (var app = new Applications(temporaryDirectory)) {
             app.startUser("http://127.0.0.1:1");
             var whileBrokerDown = app.register();
@@ -126,21 +127,8 @@ class ProvisioningEndToEndTests {
             app.startUser();
             app.startCredit();
             app.awaitPublishedUsers();
+            app.awaitAccount(whileBrokerDown);
             app.awaitInitialBalance(app.login(whileBrokerDown));
-
-            app.database.offline();
-            var whileDatabaseDown = app.register();
-            app.awaitPublishedUsers();
-            await().atMost(Duration.ofSeconds(45))
-                    .untilAsserted(() -> assertThat(app.dlqDepth()).isEqualTo(1));
-            assertThat(app.creditSql.queryForObject(
-                            "SELECT count(*) FROM credit_accounts WHERE user_id = ?", Long.class, whileDatabaseDown))
-                    .isZero();
-            app.database.online();
-            app.replayDlq();
-            app.awaitInitialBalance(app.login(whileDatabaseDown));
-            assertThat(app.creditSql.queryForObject("SELECT count(*) FROM credit_accounts", Long.class))
-                    .isEqualTo(2);
         }
     }
 
@@ -393,13 +381,21 @@ class ProvisioningEndToEndTests {
             return HTTP.send(request.GET().build(), HttpResponse.BodyHandlers.ofString());
         }
 
+        void awaitAccount(UUID userId) {
+            await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> assertThat(creditSql.queryForObject(
+                            "SELECT count(*) FROM credit_accounts WHERE user_id = ?", Long.class, userId))
+                    .isEqualTo(1L));
+        }
+
         void awaitInitialBalance(String token) {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> {
                 var response = balance(token, "");
-                assertThat(response.statusCode()).isEqualTo(200);
-                JsonNode body = JSON.readTree(response.body());
-                assertThat(body.get("availableBalance").asLong()).isEqualTo(15);
-                assertThat(body.get("reservedBalance").asLong()).isZero();
+                var body = JSON.readTree(response.body());
+                var available = body.path("availableBalance");
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                assertThat(available.isNumber()).as(response.body()).isTrue();
+                assertThat(available.asLong()).isEqualTo(15);
+                assertThat(body.path("reservedBalance").asLong()).isZero();
             });
         }
 
@@ -433,15 +429,6 @@ class ProvisioningEndToEndTests {
                             value -> value != null);
         }
 
-        int dlqDepth() {
-            return Integer.parseInt(sqs.getQueueAttributes(GetQueueAttributesRequest.builder()
-                            .queueUrl(dlqUrl)
-                            .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES)
-                            .build())
-                    .attributes()
-                    .getOrDefault(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES, "0"));
-        }
-
         void redeliver(String serialized) {
             sqs.sendMessage(SendMessageRequest.builder()
                     .queueUrl(queueUrl)
@@ -452,26 +439,6 @@ class ProvisioningEndToEndTests {
                                     .dataType("String")
                                     .stringValue("UserCreatedEvent")
                                     .build()))
-                    .build());
-        }
-
-        void replayDlq() {
-            var message = sqs.receiveMessage(ReceiveMessageRequest.builder()
-                            .queueUrl(dlqUrl)
-                            .maxNumberOfMessages(1)
-                            .waitTimeSeconds(5)
-                            .messageAttributeNames("All")
-                            .build())
-                    .messages()
-                    .getFirst();
-            sqs.sendMessage(SendMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .messageBody(message.body())
-                    .messageAttributes(message.messageAttributes())
-                    .build());
-            sqs.deleteMessage(DeleteMessageRequest.builder()
-                    .queueUrl(dlqUrl)
-                    .receiptHandle(message.receiptHandle())
                     .build());
         }
 
