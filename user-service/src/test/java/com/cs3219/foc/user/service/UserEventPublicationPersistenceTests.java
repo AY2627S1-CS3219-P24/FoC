@@ -53,7 +53,8 @@ import org.springframework.transaction.support.TransactionTemplate;
         properties = {
             "spring.flyway.enabled=false", "spring.modulith.events.jdbc.schema-initialization.enabled=false",
             "spring.modulith.events.staleness.published=0s", "spring.modulith.events.staleness.processing=0s",
-            "spring.modulith.events.staleness.resubmitted=0s", "spring.cloud.aws.s3.enabled=false"
+            "spring.modulith.events.staleness.resubmitted=0s", "spring.cloud.aws.s3.enabled=false",
+            "spring.cloud.aws.sns.enabled=false", "spring.cloud.aws.sqs.enabled=false"
         })
 @TestExecutionListeners(
         listeners = UserEventPublicationPersistenceTests.SchemaCleanup.class,
