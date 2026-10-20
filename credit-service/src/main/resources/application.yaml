@@ -92,6 +92,10 @@ spring:
           creditSettlementResult-out-0:
             producer:
               use-confirm-header: true
+              auto-bind-dlq: true
+              dead-letter-exchange: ${spring.cloud.stream.bindings.creditSettlementResult-out-0.destination}.dlx
+              dead-letter-routing-key: order-credit-settlements
+              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditSettlementResult-out-0.destination}.order-credit-settlements.dlq
               delivery-mode: PERSISTENT
               exchange-durable: true
               exchange-auto-delete: false
