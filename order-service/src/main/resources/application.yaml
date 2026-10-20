@@ -27,8 +27,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-  flyway:
-    default-schema: orders
   threads:
     virtual:
       enabled: true
@@ -45,3 +43,8 @@ server:
 orders:
   expiry-scan-delay: 10s
   expiry-batch-size: 100
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false

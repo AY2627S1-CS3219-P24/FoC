@@ -1,7 +1,4 @@
 spring:
-  datasource:
-    hikari:
-      schema: credits
   main:
     banner-mode: "off"
   cloud:

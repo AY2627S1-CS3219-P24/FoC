@@ -1,18 +1,24 @@
 spring:
   datasource:
-    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?currentSchema=credits
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
+    url: ${FOC_DATABASE_URL}
+    username: ${FOC_DATABASE_USERNAME}
+    password: ${FOC_DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
   security:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: http://user-service:8080/api/.well-known/jwks.json
-  flyway:
-    default-schema: credits
+          jwk-set-uri: ${FOC_JWKS_URI}
 server:
   forward-headers-strategy: framework
 events:
   messaging:
     topic-arn: ${EVENTS_MESSAGING_TOPIC_ARN}
     queue-name: ${EVENTS_MESSAGING_QUEUE_NAME}
+management:
+  opentelemetry:
+    resource-attributes:
+      "[service.instance.id]": ${HOSTNAME}

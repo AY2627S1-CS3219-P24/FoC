@@ -3,7 +3,7 @@
     <option name="ACTIVE_PROFILES" value="dev" />
     <envs>
       <env name="SPRING_DATASOURCE_PASSWORD" value="pass" />
-      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://localhost:5432/foc?currentSchema=users" />
+      <env name="SPRING_DATASOURCE_URL" value="jdbc:postgresql://localhost:5432/foc_user" />
       <env name="SPRING_DATASOURCE_USERNAME" value="foc" />
       <env name="AWS_REGION" value="ap-southeast-1" />
       <env name="FOC_USER_BUCKET" value="foc-dev-user" />

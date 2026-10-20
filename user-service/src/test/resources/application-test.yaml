@@ -1,7 +1,4 @@
 spring:
-  datasource:
-    hikari:
-      schema: users
   cloud:
     aws:
       s3:

@@ -80,21 +80,22 @@ class ImageStorageIntegrationTests {
     @Container
     static final GenericContainer<?> FLOCI = new GenericContainer<>(DockerImageName.parse("floci/floci:2.3.0-compat"))
             .withExposedPorts(4566)
-            .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true");
+            .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true")
+            .withEnv("AWS_REGION", "ap-southeast-1");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         var endpoint = URI.create("http://" + FLOCI.getHost() + ":" + FLOCI.getMappedPort(4566));
         try (var s3 = S3Client.builder()
                 .endpointOverride(endpoint)
-                .region(Region.AP_SOUTHEAST_2)
+                .region(Region.AP_SOUTHEAST_1)
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test")))
                 .forcePathStyle(true)
                 .build()) {
             s3.createBucket(CreateBucketRequest.builder()
                     .bucket(BUCKET)
                     .createBucketConfiguration(CreateBucketConfiguration.builder()
-                            .locationConstraint(BucketLocationConstraint.AP_SOUTHEAST_2)
+                            .locationConstraint(BucketLocationConstraint.AP_SOUTHEAST_1)
                             .build())
                     .build());
             s3.putPublicAccessBlock(PutPublicAccessBlockRequest.builder()
@@ -107,11 +108,11 @@ class ImageStorageIntegrationTests {
                             .build())
                     .build());
         }
-        registry.add("spring.datasource.url", () -> POSTGRES.getJdbcUrl() + "&currentSchema=users");
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("storage.s3.bucket", () -> BUCKET);
-        registry.add("spring.cloud.aws.s3.region", () -> "ap-southeast-2");
+        registry.add("spring.cloud.aws.s3.region", () -> "ap-southeast-1");
         registry.add("spring.cloud.aws.s3.endpoint", endpoint::toString);
     }
 

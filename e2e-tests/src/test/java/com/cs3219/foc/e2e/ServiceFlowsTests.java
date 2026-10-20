@@ -567,8 +567,8 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         });
     }
 
-    private void awaitFailedPublication(String schema, String listener, UUID errand) {
-        await().pollInSameThread().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql(schema)
+    private void awaitFailedPublication(String service, String listener, UUID errand) {
+        await().pollInSameThread().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql(service)
                         .queryForObject(
                                 "SELECT count(*) FROM event_publication WHERE listener_id=? AND serialized_event::jsonb->'payload'->>'errandId'=? AND status='FAILED'",
                                 Long.class,

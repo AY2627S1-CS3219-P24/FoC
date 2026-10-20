@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import com.cs3219.foc.user.config.AccountMailProperties;
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
@@ -27,6 +28,7 @@ import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
 import java.net.URI;
+import java.sql.DriverManager;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -35,7 +37,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,9 +97,6 @@ class UserProfilePersistenceTests {
     @Container
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
-
-    @Autowired
-    private DataSource dataSource;
 
     @Autowired
     private UserRepository repository;
@@ -174,6 +172,46 @@ class UserProfilePersistenceTests {
         user.setPasswordHash(passwordEncoder.encode("CurrentPassword1"));
         user.setEmailVerified(true);
         return repository.saveAndFlush(user);
+    }
+
+    @Test
+    void provisionsVerifiedAdminWithoutVerificationMailAndPreservesItOnRerun() {
+        assertThat(service.initializeAdmin(new RegisterUserRequest(" ADMIN@U.NUS.EDU ", " Admin ", " password123 ")))
+                .isTrue();
+
+        var admin = repository.findByEmail("admin@u.nus.edu").orElseThrow();
+        assertThat(admin.getName()).isEqualTo("Admin");
+        assertThat(admin.getRoles()).containsExactly(UserRole.USER, UserRole.ADMIN);
+        assertThat(admin.isEmailVerified()).isTrue();
+        assertThat(passwordEncoder.matches(" password123 ", admin.getPasswordHash()))
+                .isTrue();
+        assertThat(authService.login(new LoginRequest("admin@u.nus.edu", " password123 ")))
+                .isNotNull();
+        assertThat(emailTokenRepository.count()).isZero();
+        verifyNoInteractions(mailSender);
+
+        assertThat(service.initializeAdmin(new RegisterUserRequest("admin@u.nus.edu", "Changed", "replacement123")))
+                .isFalse();
+
+        var unchanged = repository.findByEmail("admin@u.nus.edu").orElseThrow();
+        assertThat(unchanged.getId()).isEqualTo(admin.getId());
+        assertThat(unchanged.getPasswordHash()).isEqualTo(admin.getPasswordHash());
+        assertThat(unchanged.getName()).isEqualTo(admin.getName());
+        assertThat(repository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void provisioningNeverPromotesOrResetsAnExistingUser() {
+        var user = createPasswordUser("admin@u.nus.edu");
+
+        assertThatThrownBy(
+                        () -> service.initializeAdmin(new RegisterUserRequest(user.getEmail(), "Admin", "password123")))
+                .isInstanceOf(EntityAlreadyExistsException.class);
+
+        var unchanged = repository.findById(user.getId()).orElseThrow();
+        assertThat(unchanged.getRoles()).containsExactly(UserRole.USER);
+        assertThat(unchanged.getPasswordHash()).isEqualTo(user.getPasswordHash());
+        verifyNoInteractions(mailSender);
     }
 
     @Test
@@ -667,18 +705,16 @@ class UserProfilePersistenceTests {
 
     @Test
     void facultyMigrationNormalizesKnownValuesAndClearsUnknownValues() throws Exception {
-        var schema = "faculty_test_" + UUID.randomUUID().toString().replace("-", "");
-        var source = dataSource;
-        try (var connection = source.getConnection();
-                var statement = connection.createStatement()) {
-            try {
-                var config = Flyway.configure()
-                        .dataSource(source)
-                        .schemas(schema)
-                        .defaultSchema(schema)
-                        .locations("classpath:db/migration");
-                config.target("3").load().migrate();
-                connection.setSchema(schema);
+        var database = "faculty_" + UUID.randomUUID().toString().replace("-", "");
+        createDatabase(database);
+        try {
+            var config = Flyway.configure()
+                    .dataSource(databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword())
+                    .locations("classpath:db/migration");
+            config.target("3").load().migrate();
+            try (var connection = DriverManager.getConnection(
+                            databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword());
+                    var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at, faculty)
                         VALUES
@@ -696,26 +732,24 @@ class UserProfilePersistenceTests {
                     assertThat(rows.getString(1)).isNull();
                     assertThat(rows.next()).isFalse();
                 }
-            } finally {
-                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
+        } finally {
+            dropDatabase(database);
         }
     }
 
     @Test
     void migrationPreservesAnExistingAccount() throws Exception {
-        var schema = "profile_test_" + UUID.randomUUID().toString().replace("-", "");
-        var source = dataSource;
-        try (var connection = source.getConnection();
-                var statement = connection.createStatement()) {
-            try {
-                var config = Flyway.configure()
-                        .dataSource(source)
-                        .schemas(schema)
-                        .defaultSchema(schema)
-                        .locations("classpath:db/migration");
-                config.target("2").load().migrate();
-                connection.setSchema(schema);
+        var database = "profile_" + UUID.randomUUID().toString().replace("-", "");
+        createDatabase(database);
+        try {
+            var config = Flyway.configure()
+                    .dataSource(databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword())
+                    .locations("classpath:db/migration");
+            config.target("2").load().migrate();
+            try (var connection = DriverManager.getConnection(
+                            databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword());
+                    var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at)
                         VALUES ('00000000-0000-0000-0000-000000000001', 'old@example.com', 'Existing User',
@@ -732,10 +766,33 @@ class UserProfilePersistenceTests {
                     assertThat(rows.getString("avatar_key")).isNull();
                     assertThat(rows.next()).isFalse();
                 }
-            } finally {
-                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
+        } finally {
+            dropDatabase(database);
         }
+    }
+
+    private void createDatabase(String database) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+        }
+    }
+
+    private void dropDatabase(String database) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.createStatement()) {
+            statement.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
+        }
+    }
+
+    private String databaseUrl(String database) {
+        var jdbc = POSTGRES.getJdbcUrl();
+        var current = "/" + POSTGRES.getDatabaseName();
+        var index = jdbc.lastIndexOf(current);
+        return jdbc.substring(0, index) + "/" + database + jdbc.substring(index + current.length());
     }
 
     @TestConfiguration(proxyBeanMethods = false)

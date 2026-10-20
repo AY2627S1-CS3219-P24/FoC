@@ -110,13 +110,10 @@ abstract class AbstractEndToEndTest {
             awaitMessagingIdle();
         } finally {
             // Cascades include refresh/email tokens, opening hours, reservations and credit audit rows.
-            sql("public").execute("""
-                    TRUNCATE users.users, users.event_publication,
-                             suppliers.suppliers, suppliers.event_publication,
-                             orders.errands, orders.event_publication,
-                             credits.credit_accounts, credits.event_publication
-                    RESTART IDENTITY CASCADE
-                    """);
+            sql("users").execute("TRUNCATE users, event_publication RESTART IDENTITY CASCADE");
+            sql("suppliers").execute("TRUNCATE suppliers, event_publication RESTART IDENTITY CASCADE");
+            sql("orders").execute("TRUNCATE errands, event_publication RESTART IDENTITY CASCADE");
+            sql("credits").execute("TRUNCATE credit_accounts, event_publication RESTART IDENTITY CASCADE");
         }
     }
 
@@ -125,8 +122,8 @@ abstract class AbstractEndToEndTest {
                 .during(Duration.ofSeconds(1))
                 .atMost(Duration.ofSeconds(30))
                 .untilAsserted(() -> {
-                    for (var schema : List.of("users", "suppliers", "orders", "credits"))
-                        assertThat(sql(schema).queryForObject("SELECT count(*) FROM event_publication", Long.class))
+                    for (var service : List.of("users", "suppliers", "orders", "credits"))
+                        assertThat(sql(service).queryForObject("SELECT count(*) FROM event_publication", Long.class))
                                 .isZero();
                     for (var service : List.of("credit", "order")) {
                         var input = sqs.getQueueUrl(r -> r.queueName("foc-e2e-" + service + "-events"))
@@ -162,10 +159,17 @@ abstract class AbstractEndToEndTest {
         return environment().getServicePort(service + "-1", internalPort);
     }
 
-    protected JdbcTemplate sql(String schema) {
+    protected JdbcTemplate sql(String service) {
+        var database =
+                switch (service) {
+                    case "users" -> "foc_user";
+                    case "suppliers" -> "foc_supplier";
+                    case "orders" -> "foc_order";
+                    case "credits" -> "foc_credit";
+                    default -> throw new IllegalArgumentException("Unknown service database: " + service);
+                };
         return new JdbcTemplate(new DriverManagerDataSource(
-                "jdbc:postgresql://" + host("postgres", 5432) + ":" + port("postgres", 5432) + "/foc?currentSchema="
-                        + schema,
+                "jdbc:postgresql://" + host("postgres", 5432) + ":" + port("postgres", 5432) + "/" + database,
                 "test",
                 "test"));
     }

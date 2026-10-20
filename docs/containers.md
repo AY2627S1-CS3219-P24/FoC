@@ -24,7 +24,8 @@ chmod 444 secrets/jwt-private.pem secrets/jwt-public.pem
 ```
 
 Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
-`INITIAL_ADMIN_PASSWORD` in `.env.prod`.
+`INITIAL_ADMIN_PASSWORD` in `.env.prod`. The email must use `u.nus.edu` or
+`nus.edu.sg`, and the password must contain at least eight characters.
 
 Before starting the services, [provision S3 storage](../infra/terraform/README.md)
 and set `AWS_REGION`, `FOC_USER_BUCKET`, and `FOC_SUPPLIER_BUCKET` in `.env.prod`.
@@ -38,13 +39,30 @@ docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --r
 docker compose --env-file .env.prod -f compose.prod.yaml up -d
 ```
 
+`admin-init` belongs to this installation. It starts the User Service image with
+the `prod,admin-init` profiles, applies that service's Flyway migrations,
+creates a verified admin through application code, and exits. The normal User
+Service uses only `prod`. Setup inherits the usual configuration and JWT keys.
+
+An existing admin with the same email is left unchanged. If that email already
+belongs to a non-admin, setup fails and the account stays as it is. A different
+email creates another admin.
+
+`supplier-seed` inserts suppliers from the CSV files. Suppliers that are already
+present stay as they are, including their opening hours.
+
 ## Later deployments
 
 ```bash
 docker compose --env-file .env.prod -f compose.prod.yaml up -d --build
 ```
 
-`admin-init` runs only on first deployment. Rerun `supplier-seed` to add new suppliers from the CSV files.
+Repeat `supplier-seed` when the CSV files contain suppliers that are not in the
+database yet:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml --profile setup run --rm supplier-seed
+```
 
 ## Operate
 

@@ -41,7 +41,7 @@ spring:
     activate:
       on-profile: user-e2e
   datasource:
-    url: jdbc:postgresql://postgres:5432/foc?currentSchema=users
+    url: jdbc:postgresql://postgres:5432/foc_user
   cloud:
     aws:
       sns:
@@ -68,7 +68,7 @@ spring:
     activate:
       on-profile: supplier-e2e
   datasource:
-    url: jdbc:postgresql://postgres:5432/foc?currentSchema=suppliers
+    url: jdbc:postgresql://postgres:5432/foc_supplier
   security:
     oauth2:
       resourceserver:
@@ -83,7 +83,7 @@ spring:
     activate:
       on-profile: credit-e2e
   datasource:
-    url: jdbc:postgresql://postgres:5432/foc?currentSchema=credits
+    url: jdbc:postgresql://postgres:5432/foc_credit
   security:
     oauth2:
       resourceserver:
@@ -105,7 +105,7 @@ spring:
     activate:
       on-profile: order-e2e
   datasource:
-    url: jdbc:postgresql://postgres:5432/foc?currentSchema=orders
+    url: jdbc:postgresql://postgres:5432/foc_order
   security:
     oauth2:
       resourceserver:
