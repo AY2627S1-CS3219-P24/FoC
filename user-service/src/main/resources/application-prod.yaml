@@ -3,11 +3,6 @@ spring:
     url: jdbc:postgresql://postgres:5432/${POSTGRES_DB}?currentSchema=users
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
-  rabbitmq:
-    host: rabbitmq
-    port: 5672
-    username: ${RABBITMQ_DEFAULT_USER}
-    password: ${RABBITMQ_DEFAULT_PASS}
 server:
   forward-headers-strategy: framework
 auth:
@@ -16,6 +11,9 @@ auth:
   public-key-location: file:/run/secrets/jwt_public_key
 account-mail:
   frontend-url: ${FOC_FRONTEND_URL:https://localhost}
+events:
+  messaging:
+    topic-arn: ${EVENTS_MESSAGING_TOPIC_ARN}
 
 storage:
   s3:

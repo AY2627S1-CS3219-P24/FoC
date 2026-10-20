@@ -18,7 +18,6 @@ import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -26,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -50,7 +48,7 @@ class CreditProvisioningPersistenceTests {
             "provision_test_" + UUID.randomUUID().toString().replace("-", "");
 
     @Autowired
-    @Qualifier("userCreated") private Consumer<UserCreatedEvent> provisioning;
+    private UserCreatedConsumer userCreatedConsumer;
 
     @Autowired
     private CreditAccountService creditAccountService;
@@ -81,14 +79,13 @@ class CreditProvisioningPersistenceTests {
     }
 
     private UserCreatedEvent event(UUID userId) {
-        return new UserCreatedEvent(
-                UUID.randomUUID(), "UserCreatedEvent", 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(userId));
+        return new UserCreatedEvent(UUID.randomUUID(), 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(userId));
     }
 
     @Test
     void consumerReturnsOnlyAfterAccountCommitted() {
         var event = event(UUID.randomUUID());
-        provisioning.accept(event);
+        userCreatedConsumer.initializeAccount(event);
         assertThat(jdbc.queryForObject(
                         "SELECT count(*) FROM credit_accounts WHERE user_id = ?",
                         Long.class,
@@ -101,12 +98,12 @@ class CreditProvisioningPersistenceTests {
     @Test
     void duplicateEventAndDifferentEventForSameUserPreserveBalance() {
         var event = event(UUID.randomUUID());
-        provisioning.accept(event);
+        userCreatedConsumer.initializeAccount(event);
         jdbc.update(
                 "UPDATE credit_accounts SET total_balance = 35 WHERE user_id = ?",
                 event.payload().userId());
-        provisioning.accept(event);
-        provisioning.accept(event(event.payload().userId()));
+        userCreatedConsumer.initializeAccount(event);
+        userCreatedConsumer.initializeAccount(event(event.payload().userId()));
         assertThat(creditAccountService.getBalance(event.payload().userId()))
                 .isEqualTo(new CreditBalanceResponse(35, 0));
         assertThat(accountRepository.count()).isEqualTo(1);
@@ -120,13 +117,14 @@ class CreditProvisioningPersistenceTests {
         jdbc.execute(
                 "CREATE CONSTRAINT TRIGGER fail_provisioning_commit AFTER INSERT ON credit_accounts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_provisioning_commit()");
         try {
-            assertThatThrownBy(() -> provisioning.accept(event)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> userCreatedConsumer.initializeAccount(event))
+                    .isInstanceOf(RuntimeException.class);
             assertThat(accountRepository.count()).isZero();
         } finally {
             jdbc.execute("DROP TRIGGER fail_provisioning_commit ON credit_accounts");
             jdbc.execute("DROP FUNCTION fail_provisioning_commit()");
         }
-        provisioning.accept(event);
+        userCreatedConsumer.initializeAccount(event);
         assertThat(accountRepository.count()).isEqualTo(1);
     }
 
@@ -139,9 +137,8 @@ class CreditProvisioningPersistenceTests {
         var json = JsonMapper.builder().build();
         var received = json.readValue(json.writeValueAsString(published), UserCreatedEvent.class);
         assertThat(received)
-                .isEqualTo(new UserCreatedEvent(
-                        eventId, "UserCreatedEvent", 1, occurredAt, new UserCreatedEvent.Payload(userId)));
-        provisioning.accept(received);
+                .isEqualTo(new UserCreatedEvent(eventId, 1, occurredAt, new UserCreatedEvent.Payload(userId)));
+        userCreatedConsumer.initializeAccount(received);
         assertThat(creditAccountService.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
@@ -152,12 +149,12 @@ class CreditProvisioningPersistenceTests {
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
-                provisioning.accept(event);
+                userCreatedConsumer.initializeAccount(event);
                 return true;
             });
             var second = executor.submit(() -> {
                 barrier.await(10, TimeUnit.SECONDS);
-                provisioning.accept(event(event.payload().userId()));
+                userCreatedConsumer.initializeAccount(event(event.payload().userId()));
                 return true;
             });
             assertThat(first.get(20, TimeUnit.SECONDS)).isTrue();

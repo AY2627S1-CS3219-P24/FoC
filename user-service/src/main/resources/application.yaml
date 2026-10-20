@@ -26,31 +26,12 @@ spring:
       mail.smtp.writetimeout: 5000
   application:
     name: user-service
-  rabbitmq:
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    connection-timeout: 5s
   cloud:
     aws:
       s3:
         region: ${AWS_REGION:ap-southeast-2}
         endpoint: ${FOC_S3_ENDPOINT:}
         path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
-    stream:
-      bindings:
-        userCreated-out-0:
-          destination: foc.user-created.v1
-          content-type: application/json
-          producer:
-            error-channel-enabled: true
-      rabbit:
-        bindings:
-          userCreated-out-0:
-            producer:
-              use-confirm-header: true
-              delivery-mode: PERSISTENT
-              exchange-durable: true
-              exchange-auto-delete: false
   servlet:
     multipart:
       max-file-size: 2MB

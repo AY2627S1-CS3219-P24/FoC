@@ -1,9 +1,19 @@
 auth:
   refresh-cookie-secure: false
 
+events:
+  messaging:
+    topic-arn: arn:aws:sns:ap-southeast-1:000000000000:foc-dev-user-events
+
 spring:
   cloud:
     aws:
+      region:
+        static: ap-southeast-1
+      sns:
+        endpoint: http://localhost:4566
+      sqs:
+        endpoint: http://localhost:4566
       credentials:
         access-key: test
         secret-key: test

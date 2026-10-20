@@ -6,8 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.user.UserServiceApplication;
-import com.rabbitmq.client.AMQP;
-import com.rabbitmq.client.ConnectionFactory;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -17,7 +15,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPairGenerator;
@@ -26,6 +23,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,12 +41,37 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.sns.SnsClient;
+import software.amazon.awssdk.services.sns.model.SubscribeRequest;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.ChangeMessageVisibilityRequest;
+import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
+import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
+import software.amazon.awssdk.services.sqs.model.DeleteQueueRequest;
+import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
+import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.services.sqs.model.SetQueueAttributesRequest;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_RABBIT_HOST", matches = ".+")
+@Testcontainers
 class ProvisioningEndToEndTests {
+    @Container
+    static final GenericContainer<?> FLOCI = new GenericContainer<>(DockerImageName.parse("floci/floci:2.3.0-compat"))
+            .withExposedPorts(4566)
+            .withEnv("AWS_REGION", "ap-southeast-1");
+
     @TempDir
     Path temporaryDirectory;
 
@@ -64,10 +87,7 @@ class ProvisioningEndToEndTests {
             var admin = app.register();
             app.userSql.update("UPDATE users SET roles = ARRAY['ADMIN']::text[] WHERE id = ?", admin);
             var registered = app.register();
-            var stored = app.userSql.queryForObject(
-                    "SELECT serialized_event FROM event_publication WHERE serialized_event::jsonb->'payload'->>'userId' = ?",
-                    String.class,
-                    registered.toString());
+            var stored = app.capture(registered);
             app.startCredit();
             app.awaitPublishedUsers();
             var registeredToken = app.login(registered);
@@ -95,16 +115,14 @@ class ProvisioningEndToEndTests {
     @Test
     void publicationRecoversAfterRestartAndConsumerFailuresParkUntilReplay() throws Exception {
         try (var app = new Applications(temporaryDirectory)) {
-            app.broker.offline();
-            app.startUser();
+            app.startUser("http://127.0.0.1:1");
             var whileBrokerDown = app.register();
             assertThat(app.userSql.queryForObject(
-                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit' AND completion_date IS NULL",
+                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created' AND completion_date IS NULL",
                             Long.class))
                     .isEqualTo(1);
             app.user.close();
             app.user = null;
-            app.broker.online();
             app.startUser();
             app.startCredit();
             app.awaitPublishedUsers();
@@ -139,13 +157,16 @@ class ProvisioningEndToEndTests {
         private final String suffix = UUID.randomUUID().toString().replace("-", "");
         private final String userSchema = "users_e2e_" + suffix;
         private final String creditSchema = "credits_e2e_" + suffix;
-        private final String destination = "foc.credit.e2e." + suffix;
-        private final String queue = destination + ".credit-provisioning";
         private final String databaseUrl = System.getenv("FOC_TEST_DATABASE_URL");
+        private final URI endpoint = URI.create("http://" + FLOCI.getHost() + ":" + FLOCI.getMappedPort(4566));
         private final Path privateKey;
         private final Path publicKey;
-        private final ConnectionFactory rabbitFactory = new ConnectionFactory();
-        private final TcpSwitch broker;
+        private final SnsClient sns;
+        private final SqsClient sqs;
+        private final String userTopicArn;
+        private final String creditTopicArn;
+        private final String queueUrl;
+        private final String dlqUrl;
         private final TcpSwitch database;
         private final JdbcTemplate userSql;
         private final JdbcTemplate creditSql;
@@ -155,13 +176,52 @@ class ProvisioningEndToEndTests {
         private int creditPort;
 
         Applications(Path directory) throws Exception {
-            var rabbitHost = System.getenv("FOC_TEST_RABBIT_HOST");
-            int rabbitPort = Integer.parseInt(System.getenv().getOrDefault("FOC_TEST_RABBIT_PORT", "5672"));
-            rabbitFactory.setHost(rabbitHost);
-            rabbitFactory.setPort(rabbitPort);
-            rabbitFactory.setUsername(System.getenv("FOC_TEST_RABBIT_USERNAME"));
-            rabbitFactory.setPassword(System.getenv("FOC_TEST_RABBIT_PASSWORD"));
-            broker = new TcpSwitch(rabbitHost, rabbitPort);
+            var credentials = StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test"));
+            sns = SnsClient.builder()
+                    .endpointOverride(endpoint)
+                    .region(Region.AP_SOUTHEAST_1)
+                    .credentialsProvider(credentials)
+                    .build();
+            sqs = SqsClient.builder()
+                    .endpointOverride(endpoint)
+                    .region(Region.AP_SOUTHEAST_1)
+                    .credentialsProvider(credentials)
+                    .build();
+            userTopicArn = sns.createTopic(request -> request.name("foc-user-e2e-" + suffix))
+                    .topicArn();
+            creditTopicArn = sns.createTopic(request -> request.name("foc-credit-e2e-" + suffix))
+                    .topicArn();
+            dlqUrl = sqs.createQueue(CreateQueueRequest.builder()
+                            .queueName("foc-credit-e2e-" + suffix + "-dlq")
+                            .build())
+                    .queueUrl();
+            var dlqArn = arn(dlqUrl);
+            queueUrl = sqs.createQueue(CreateQueueRequest.builder()
+                            .queueName("foc-credit-e2e-" + suffix)
+                            .attributes(Map.of(
+                                    QueueAttributeName.VISIBILITY_TIMEOUT,
+                                    "5",
+                                    QueueAttributeName.REDRIVE_POLICY,
+                                    "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":\"1\"}"))
+                            .build())
+                    .queueUrl();
+            var queueArn = arn(queueUrl);
+            sqs.setQueueAttributes(SetQueueAttributesRequest.builder()
+                    .queueUrl(dlqUrl)
+                    .attributes(Map.of(
+                            QueueAttributeName.REDRIVE_ALLOW_POLICY,
+                            "{\"redrivePermission\":\"byQueue\",\"sourceQueueArns\":[\"" + queueArn + "\"]}"))
+                    .build());
+            allowSns(queueUrl, queueArn, "\"" + userTopicArn + "\"");
+            sns.subscribe(SubscribeRequest.builder()
+                    .topicArn(userTopicArn)
+                    .protocol("sqs")
+                    .endpoint(queueArn)
+                    .attributes(Map.of(
+                            "RawMessageDelivery", "true",
+                            "FilterPolicyScope", "MessageAttributes",
+                            "FilterPolicy", "{\"eventType\":[\"UserCreatedEvent\"]}"))
+                    .build());
             var databaseUri = URI.create(databaseUrl.substring("jdbc:".length()));
             database = new TcpSwitch(databaseUri.getHost(), databaseUri.getPort() < 0 ? 5432 : databaseUri.getPort());
             userSql = migrate("user-service", userSchema);
@@ -173,6 +233,26 @@ class ProvisioningEndToEndTests {
             publicKey = directory.resolve("public.pem");
             pem(privateKey, "PRIVATE KEY", keys.getPrivate().getEncoded());
             pem(publicKey, "PUBLIC KEY", keys.getPublic().getEncoded());
+        }
+
+        private String arn(String url) {
+            return sqs.getQueueAttributes(GetQueueAttributesRequest.builder()
+                            .queueUrl(url)
+                            .attributeNames(QueueAttributeName.QUEUE_ARN)
+                            .build())
+                    .attributes()
+                    .get(QueueAttributeName.QUEUE_ARN);
+        }
+
+        private void allowSns(String url, String queueArn, String sourceArns) {
+            sqs.setQueueAttributes(SetQueueAttributesRequest.builder()
+                    .queueUrl(url)
+                    .attributes(Map.of(
+                            QueueAttributeName.POLICY,
+                            "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\""
+                                    + queueArn + "\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":[" + sourceArns
+                                    + "]}}}]}"))
+                    .build());
         }
 
         private static void pem(Path path, String type, byte[] bytes) throws IOException {
@@ -217,28 +297,29 @@ class ProvisioningEndToEndTests {
                     "--spring.datasource.hikari.validation-timeout=1000",
                     "--spring.flyway.default-schema=" + schema,
                     "--spring.flyway.locations=filesystem:" + root.resolve(module + "/src/main/resources/db/migration"),
-                    "--spring.rabbitmq.host=127.0.0.1",
-                    "--spring.rabbitmq.port=" + broker.port(),
-                    "--spring.rabbitmq.username=" + System.getenv("FOC_TEST_RABBIT_USERNAME"),
-                    "--spring.rabbitmq.password=" + System.getenv("FOC_TEST_RABBIT_PASSWORD"),
-                    "--spring.rabbitmq.connection-timeout=1s",
-                    "--spring.cloud.stream.binding-retry-interval=1"));
+                    "--spring.cloud.aws.region.static=ap-southeast-1",
+                    "--spring.cloud.aws.credentials.access-key=test",
+                    "--spring.cloud.aws.credentials.secret-key=test",
+                    "--spring.cloud.aws.sqs.endpoint=" + endpoint,
+                    "--spring.cloud.aws.s3.enabled=false"));
         }
 
         void startUser() {
+            startUser(endpoint.toString());
+        }
+
+        void startUser(String snsEndpoint) {
             var args = arguments("user-service", userSchema, databaseUrl);
             args.addAll(List.of(
                     "--auth.private-key-location=" + privateKey.toUri(),
                     "--auth.public-key-location=" + publicKey.toUri(),
-                    "--spring.cloud.aws.credentials.access-key=test",
-                    "--spring.cloud.aws.credentials.secret-key=test",
-                    "--events.publication.confirm-timeout=1s",
+                    "--spring.cloud.aws.sns.endpoint=" + snsEndpoint,
+                    "--events.messaging.topic-arn=" + userTopicArn,
                     "--events.publication.retry-delay=100ms",
                     "--spring.modulith.events.staleness.published=1s",
                     "--spring.modulith.events.staleness.processing=1s",
                     "--spring.modulith.events.staleness.resubmitted=1s",
-                    "--spring.modulith.events.staleness.check-interval=100ms",
-                    "--spring.cloud.stream.bindings.userCreated-out-0.destination=" + destination));
+                    "--spring.modulith.events.staleness.check-interval=100ms"));
             user = new SpringApplicationBuilder(UserServiceApplication.class, MailConfig.class)
                     .run(args.toArray(String[]::new));
             userPort = user.getEnvironment().getProperty("local.server.port", Integer.class);
@@ -257,13 +338,12 @@ class ProvisioningEndToEndTests {
                             uri.getFragment());
             var args = arguments("credit-service", creditSchema, proxyUrl);
             args.addAll(List.of(
-                    "--spring.cloud.aws.s3.enabled=false",
+                    "--spring.cloud.aws.sns.endpoint=" + endpoint,
+                    "--spring.cloud.aws.sqs.listener.poll-timeout=2s",
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
-                    "--spring.cloud.function.definition=userCreated",
-                    "--spring.cloud.stream.bindings.userCreated-in-0.destination=" + destination,
-                    "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-initial-interval=100",
-                    "--spring.cloud.stream.bindings.userCreated-in-0.consumer.back-off-max-interval=200"));
+                    "--events.messaging.topic-arn=" + creditTopicArn,
+                    "--events.messaging.queue-name=" + "foc-credit-e2e-" + suffix));
             credit = new SpringApplicationBuilder(CreditServiceApplication.class).run(args.toArray(String[]::new));
             creditPort = credit.getEnvironment().getProperty("local.server.port", Integer.class);
         }
@@ -281,7 +361,8 @@ class ProvisioningEndToEndTests {
                     "{\"email\":\"" + UUID.randomUUID()
                             + "@u.nus.edu\",\"name\":\"Test\",\"password\":\"password123\"}");
             assertThat(response.statusCode()).isEqualTo(201);
-            return UUID.fromString(JSON.readTree(response.body()).get("id").asText());
+            var body = JSON.readTree(response.body());
+            return UUID.fromString(body.get("id").asString());
         }
 
         String login(UUID id) throws Exception {
@@ -290,7 +371,8 @@ class ProvisioningEndToEndTests {
             var email = userSql.queryForObject("SELECT email FROM users WHERE id = ?", String.class, id);
             var response = post("/auth/login", "{\"email\":\"" + email + "\",\"password\":\"password123\"}");
             assertThat(response.statusCode()).isEqualTo(200);
-            return JSON.readTree(response.body()).get("accessToken").asText();
+            var body = JSON.readTree(response.body());
+            return body.get("accessToken").asString();
         }
 
         private HttpResponse<String> post(String route, String body) throws Exception {
@@ -323,70 +405,91 @@ class ProvisioningEndToEndTests {
 
         void awaitPublishedUsers() {
             await().atMost(Duration.ofSeconds(40)).untilAsserted(() -> assertThat(userSql.queryForObject(
-                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created-rabbit'",
-                            Long.class))
+                            "SELECT count(*) FROM event_publication WHERE listener_id = 'user-created'", Long.class))
                     .isZero());
         }
 
-        int dlqDepth() throws Exception {
-            return depth(queue + ".dlq");
+        String capture(UUID userId) {
+            return await().atMost(Duration.ofSeconds(20))
+                    .until(
+                            () -> {
+                                var messages = sqs.receiveMessage(ReceiveMessageRequest.builder()
+                                                .queueUrl(queueUrl)
+                                                .maxNumberOfMessages(10)
+                                                .waitTimeSeconds(1)
+                                                .build())
+                                        .messages();
+                                String stored = null;
+                                for (var message : messages) {
+                                    if (message.body().contains(userId.toString())) stored = message.body();
+                                    sqs.changeMessageVisibility(ChangeMessageVisibilityRequest.builder()
+                                            .queueUrl(queueUrl)
+                                            .receiptHandle(message.receiptHandle())
+                                            .visibilityTimeout(0)
+                                            .build());
+                                }
+                                return stored;
+                            },
+                            value -> value != null);
         }
 
-        void redeliver(String serialized) throws Exception {
-            try (var connection = rabbitFactory.newConnection();
-                    var channel = connection.createChannel()) {
-                channel.confirmSelect();
-                channel.basicPublish(
-                        destination,
-                        "",
-                        new AMQP.BasicProperties.Builder()
-                                .contentType("application/json")
-                                .deliveryMode(2)
-                                .build(),
-                        serialized.getBytes(StandardCharsets.UTF_8));
-                channel.waitForConfirmsOrDie(5000);
-            }
+        int dlqDepth() {
+            return Integer.parseInt(sqs.getQueueAttributes(GetQueueAttributesRequest.builder()
+                            .queueUrl(dlqUrl)
+                            .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES)
+                            .build())
+                    .attributes()
+                    .getOrDefault(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES, "0"));
         }
 
-        void replayDlq() throws Exception {
-            try (var connection = rabbitFactory.newConnection();
-                    var channel = connection.createChannel()) {
-                var message = channel.basicGet(queue + ".dlq", false);
-                assertThat(message).isNotNull();
-                channel.confirmSelect();
-                channel.basicPublish(destination, "", message.getProps(), message.getBody());
-                channel.waitForConfirmsOrDie(5000);
-                channel.basicAck(message.getEnvelope().getDeliveryTag(), false);
-            }
+        void redeliver(String serialized) {
+            sqs.sendMessage(SendMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .messageBody(serialized)
+                    .messageAttributes(Map.of(
+                            "eventType",
+                            MessageAttributeValue.builder()
+                                    .dataType("String")
+                                    .stringValue("UserCreatedEvent")
+                                    .build()))
+                    .build());
         }
 
-        private int depth(String name) throws Exception {
-            try (var connection = rabbitFactory.newConnection();
-                    var channel = connection.createChannel()) {
-                return channel.queueDeclarePassive(name).getMessageCount();
-            }
+        void replayDlq() {
+            var message = sqs.receiveMessage(ReceiveMessageRequest.builder()
+                            .queueUrl(dlqUrl)
+                            .maxNumberOfMessages(1)
+                            .waitTimeSeconds(5)
+                            .messageAttributeNames("All")
+                            .build())
+                    .messages()
+                    .getFirst();
+            sqs.sendMessage(SendMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .messageBody(message.body())
+                    .messageAttributes(message.messageAttributes())
+                    .build());
+            sqs.deleteMessage(DeleteMessageRequest.builder()
+                    .queueUrl(dlqUrl)
+                    .receiptHandle(message.receiptHandle())
+                    .build());
         }
 
         @Override
         public void close() throws Exception {
             stopCredit();
             if (user != null) user.close();
-            broker.close();
             database.close();
-            try (var connection = rabbitFactory.newConnection();
-                    var channel = connection.createChannel()) {
-                channel.queueDelete(queue);
-                channel.queueDelete(queue + ".dlq");
-                channel.exchangeDelete(destination);
-                channel.exchangeDelete(destination + ".dlx");
-            } finally {
-                userSql.execute("DROP SCHEMA IF EXISTS " + userSchema + " CASCADE");
-                creditSql.execute("DROP SCHEMA IF EXISTS " + creditSchema + " CASCADE");
-            }
+            sqs.deleteQueue(DeleteQueueRequest.builder().queueUrl(queueUrl).build());
+            sqs.deleteQueue(DeleteQueueRequest.builder().queueUrl(dlqUrl).build());
+            sns.close();
+            sqs.close();
+            userSql.execute("DROP SCHEMA IF EXISTS " + userSchema + " CASCADE");
+            creditSql.execute("DROP SCHEMA IF EXISTS " + creditSchema + " CASCADE");
         }
     }
 
-    /** Drops real TCP connections to exercise recovery without controlling the shared CI broker/database. */
+    /** Proxies the database so a test can drop credit's connections without stopping Postgres. */
     static final class TcpSwitch implements AutoCloseable {
         private final ServerSocket listener;
         private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();

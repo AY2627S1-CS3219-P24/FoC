@@ -22,18 +22,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      rabbitmq:
-        image: rabbitmq:4-management-alpine
-        env:
-          RABBITMQ_DEFAULT_USER: foc_test
-          RABBITMQ_DEFAULT_PASS: foc_test
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,10 +37,6 @@ jobs:
           FOC_TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/foc_test
           FOC_TEST_DATABASE_USERNAME: foc
           FOC_TEST_DATABASE_PASSWORD: foc
-          FOC_TEST_RABBIT_HOST: localhost
-          FOC_TEST_RABBIT_PORT: "5672"
-          FOC_TEST_RABBIT_USERNAME: foc_test
-          FOC_TEST_RABBIT_PASSWORD: foc_test
 
   frontend:
     runs-on: ubuntu-latest

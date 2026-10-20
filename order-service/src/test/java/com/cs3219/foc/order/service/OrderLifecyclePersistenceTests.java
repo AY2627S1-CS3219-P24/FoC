@@ -174,7 +174,6 @@ class OrderLifecyclePersistenceTests {
         UUID operationId = jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
         return new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -385,7 +384,6 @@ class OrderLifecyclePersistenceTests {
         SecurityContextHolder.clearContext();
         var result = new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -458,7 +456,6 @@ class OrderLifecyclePersistenceTests {
                 .orElseThrow();
         var refund = new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -480,7 +477,6 @@ class OrderLifecyclePersistenceTests {
                 List.of("operationId", "requesterId", "amount", "courierId", "settlementType", "outcome")) {
             var result = new CreditSettlementResultEvent(
                     UUID.randomUUID(),
-                    "CreditSettlementResultEvent",
                     1,
                     OffsetDateTime.now(clock),
                     new CreditSettlementResultEvent.Payload(
@@ -511,7 +507,6 @@ class OrderLifecyclePersistenceTests {
         for (String outcome : List.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")) {
             var conflict = new CreditSettlementResultEvent(
                     UUID.randomUUID(),
-                    "CreditSettlementResultEvent",
                     1,
                     OffsetDateTime.now(clock),
                     new CreditSettlementResultEvent.Payload(
@@ -800,7 +795,6 @@ class OrderLifecyclePersistenceTests {
                             jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
                     service.handleSettlementResult(new CreditSettlementResultEvent(
                             UUID.randomUUID(),
-                            "CreditSettlementResultEvent",
                             1,
                             OffsetDateTime.now(clock),
                             new CreditSettlementResultEvent.Payload(

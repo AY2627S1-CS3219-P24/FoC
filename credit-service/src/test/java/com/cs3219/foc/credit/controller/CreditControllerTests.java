@@ -30,7 +30,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-@WebMvcTest({CreditController.class, CreditReservationController.class})
+@WebMvcTest(
+        value = {CreditController.class, CreditReservationController.class},
+        properties = {
+            "events.messaging.topic-arn=arn:aws:sns:ap-southeast-1:000000000000:foc-test-credit-events",
+            "events.messaging.queue-name=foc-test-credit-events"
+        })
 @Import(CreditControllerTests.TestConfig.class)
 class CreditControllerTests {
     @Autowired

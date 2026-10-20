@@ -9,16 +9,15 @@
 
 ## Setup
 
-Create the local environment file and start **Postgres + RabbitMQ + FLoCI**:
+Create the local environment file and start **Postgres + Floci**:
 
 ```bash
   cp .env.example .env
   docker compose up -d
 ```
 
-You only need to create `.env` once. RabbitMQ for the Spring apps is configured via
-`SPRING_RABBITMQ_ADDRESSES` in the IntelliJ run configurations
-(`amqp://foc:pass@localhost:5672`).
+You only need to create `.env` once. Floci provides local S3, SNS, and SQS;
+the `dev` profile configures the Spring services to use it.
 
 Also set up the keys needed for signing and verifying JWT tokens:
 
@@ -61,7 +60,7 @@ email address whose inbox you can access.
    credentials. The `.run/` directory is ignored by Git; `docs/run-configs/`
    contains the shared templates and must not contain personal credentials.
 4. Open **Environment variables** and add these values, preserving the existing
-   database and RabbitMQ variables and the `dev` active profile:
+   database and AWS variables and the `dev` active profile:
 
    | Variable           | Value                                                                       |
    | ------------------ | --------------------------------------------------------------------------- |
@@ -113,13 +112,13 @@ not confirm that the email was delivered.
 
 ## Stop
 
-Stop the frontend dev server and services in IntelliJ, then stop Postgres and RabbitMQ:
+Stop the frontend dev server and services in IntelliJ, then stop Postgres and Floci:
 
 ```bash
 docker compose down
 ```
 
-If you'd like to delete the database volumes, run this instead:
+To delete the local database and Floci volumes as well:
 
 ```bash
 docker compose down -v

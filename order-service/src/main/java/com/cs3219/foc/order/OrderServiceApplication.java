@@ -1,6 +1,9 @@
 package com.cs3219.foc.order;
 
-import com.cs3219.foc.order.config.*;
+import com.cs3219.foc.order.config.EventMessagingProperties;
+import com.cs3219.foc.order.config.EventPublicationProperties;
+import com.cs3219.foc.order.config.OrderProperties;
+import com.cs3219.foc.order.config.ServiceClientProperties;
 import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -12,7 +15,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableAsync
 @EnableScheduling
-@EnableConfigurationProperties({OrderProperties.class, ServiceClientProperties.class, EventPublicationProperties.class})
+@EnableConfigurationProperties({
+    OrderProperties.class,
+    ServiceClientProperties.class,
+    EventPublicationProperties.class,
+    EventMessagingProperties.class
+})
 public class OrderServiceApplication {
     @Bean
     Clock clock() {

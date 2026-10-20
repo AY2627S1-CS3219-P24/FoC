@@ -9,14 +9,14 @@ services:
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_SERVICES_S3_ENFORCE_AUTH: "true"
       FLOCI_HOSTNAME: localhost
-      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_USER_BUCKET: ${FOC_USER_BUCKET:-foc-dev-user}
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET:-foc-dev-supplier}
     volumes:
       - floci_data:/app/data
       - ./docker/floci/init-storage.sh:/etc/localstack/init/ready.d/10-foc-storage.sh:ro
     healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/foc-storage-ready"]
+      test: ["CMD", "test", "-f", "/tmp/foc-resources-ready"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -30,17 +30,6 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql
-  rabbitmq:
-    image: rabbitmq:4-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
 volumes:
   floci_data:
   pg_data:
-  rabbitmq_data:

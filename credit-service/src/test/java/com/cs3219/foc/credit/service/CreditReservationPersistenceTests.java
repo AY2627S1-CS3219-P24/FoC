@@ -194,7 +194,6 @@ class CreditReservationPersistenceTests {
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
         settlement.releaseReservedCredits(new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(first.errandId(), user, 20)));

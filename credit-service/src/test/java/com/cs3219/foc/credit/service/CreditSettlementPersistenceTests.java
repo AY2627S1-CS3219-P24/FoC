@@ -125,7 +125,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCancelledEvent cancelled(UUID user, ReserveCreditRequest r) {
         return new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, r.amount()));
@@ -134,7 +133,6 @@ class CreditSettlementPersistenceTests {
     private ErrandExpiredEvent expired(UUID user, ReserveCreditRequest r) {
         return new ErrandExpiredEvent(
                 UUID.randomUUID(),
-                "ErrandExpiredEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandExpiredEvent.Payload(r.errandId(), user, r.amount()));
@@ -143,7 +141,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCompletedEvent completed(UUID user, ReserveCreditRequest r, UUID courier) {
         return new ErrandCompletedEvent(
                 UUID.randomUUID(),
-                "ErrandCompletedEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCompletedEvent.Payload(r.errandId(), user, r.amount(), courier));
@@ -255,7 +252,6 @@ class CreditSettlementPersistenceTests {
         var corrected = cancelled(user, r);
         var rejected = new ErrandCancelledEvent(
                 corrected.eventId(),
-                corrected.eventType(),
                 1,
                 corrected.occurredAt(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, 70));
@@ -285,18 +281,13 @@ class CreditSettlementPersistenceTests {
         settlement.releaseReservedCredits(cancel);
         var changed = new ErrandCancelledEvent(
                 cancel.eventId(),
-                cancel.eventType(),
                 1,
                 cancel.occurredAt(),
                 new ErrandCancelledEvent.Payload(second.errandId(), user, 40));
         assertThatThrownBy(() -> settlement.releaseReservedCredits(changed))
                 .isInstanceOf(IllegalArgumentException.class);
         var changedAmount = new ErrandCancelledEvent(
-                cancel.eventId(),
-                cancel.eventType(),
-                1,
-                cancel.occurredAt(),
-                new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
+                cancel.eventId(), 1, cancel.occurredAt(), new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
         assertThatThrownBy(() -> settlement.releaseReservedCredits(changedAmount))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));

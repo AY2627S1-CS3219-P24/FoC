@@ -43,7 +43,9 @@ Dependencies use constructor injection.
 
 ## Messaging
 
-Asynchronous service integration uses Spring Cloud Stream.
+Asynchronous service integration uses Amazon SNS/SQS through Spring Cloud AWS.
+
+Services own their event contracts, SNS producers and SQS consumers. Configure SNS/SQS bindings in Terraform and the owning service’s AWS profile.
 
 Messaging infrastructure is organized as:
 
@@ -76,7 +78,7 @@ CreditsAllocatedEvent
 
 Application services may create and publish these events through Spring's `ApplicationEventPublisher`.
 
-Messaging infrastructure may listen for the same event types and transport them through Spring Cloud Stream.
+Messaging infrastructure may listen for the same event types and transport them through Amazon SNS.
 
 Messaging bindings and transport configuration live in the owning service's application configuration.
 

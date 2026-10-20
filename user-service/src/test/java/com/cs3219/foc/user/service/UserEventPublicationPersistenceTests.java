@@ -5,7 +5,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-import com.cs3219.foc.user.infrastructure.messaging.producer.UserCreatedEventPublisher;
+import com.cs3219.foc.user.infrastructure.messaging.producer.SnsUserCreatedEventPublisher;
 import com.cs3219.foc.user.mapper.UserMapper;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
@@ -67,7 +67,7 @@ class UserEventPublicationPersistenceTests {
     private UserService userService;
 
     @Autowired
-    private UserCreatedEventPublisher publisher;
+    private SnsUserCreatedEventPublisher publisher;
 
     @Autowired
     private FailedEventPublications publications;
@@ -189,8 +189,8 @@ class UserEventPublicationPersistenceTests {
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     static class TestConfig {
         @Bean
-        UserCreatedEventPublisher publisher() {
-            return mock(UserCreatedEventPublisher.class);
+        SnsUserCreatedEventPublisher publisher() {
+            return mock(SnsUserCreatedEventPublisher.class);
         }
 
         @Bean
