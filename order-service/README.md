@@ -25,16 +25,20 @@ Order reads and writes the same PostgreSQL order table. Spring Data JPA provides
 ```mermaid
 flowchart LR
     Client[Client] -->|HTTP and JWT| Order[Order Service]
-    Order -->|Orders and publication records| OrderDB[(Order DB)]
-    Order -->|HTTP: supplier and pickup information| Supplier[Supplier Service]
-    Order -->|HTTP: names for lists and details| User[User Service]
-    Order -->|HTTP: account readiness and creation reservation| Credit[Credit Service]
-    Order -->|Terminal lifecycle facts| MQ[RabbitMQ]
-    MQ -->|Pay or release| Credit
-    Credit -->|Settlement results| MQ
-    MQ -->|Results| Order
-    Credit -->|Accounts, reservations and ledger| CreditDB[(Credit DB)]
+    Order -->|Order data| OrderDB[(Order DB)]
+    Order -->|HTTP: get supplier and pickup information| Supplier[Supplier Service]
+    Order -->|HTTP: get participant names| User[User Service]
+    Order -->|HTTP: check account / reserve credits| Credit[Credit Service]
+    Order -.->|Order completed / cancelled / expired events| MQ[RabbitMQ]
+    MQ -.->|Deliver order events| Credit
+    Credit -.->|Payment / release results| MQ
+    MQ -.->|Deliver credit results| Order
+    Credit -->|Credit data| CreditDB[(Credit DB)]
 ```
+
+Solid arrows show synchronous HTTP calls or local database access; dotted arrows show asynchronous messages. RabbitMQ delivers order events to Credit for payment or release, then delivers Credit's results to Order to update its credit-processing state. Order commits a completion, cancellation or expiry and its event-publication registration together; the event is sent after commit.
+
+This is a dependency overview; each request makes only the synchronous calls it needs. Participant names are fetched for lists and details. The business-flow diagrams below show execution order, and [Section 8](#8-database-design) describes the database tables.
 
 | Component | Responsibility |
 | --- | --- |
