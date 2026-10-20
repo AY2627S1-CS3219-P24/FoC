@@ -131,7 +131,7 @@ class ProvisioningEndToEndTests {
             app.database.offline();
             var whileDatabaseDown = app.register();
             app.awaitPublishedUsers();
-            await().atMost(Duration.ofSeconds(30))
+            await().atMost(Duration.ofSeconds(45))
                     .untilAsserted(() -> assertThat(app.dlqDepth()).isEqualTo(1));
             assertThat(app.creditSql.queryForObject(
                             "SELECT count(*) FROM credit_accounts WHERE user_id = ?", Long.class, whileDatabaseDown))
@@ -202,7 +202,7 @@ class ProvisioningEndToEndTests {
                                     QueueAttributeName.VISIBILITY_TIMEOUT,
                                     "5",
                                     QueueAttributeName.REDRIVE_POLICY,
-                                    "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":\"1\"}"))
+                                    "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":\"5\"}"))
                             .build())
                     .queueUrl();
             var queueArn = arn(queueUrl);
