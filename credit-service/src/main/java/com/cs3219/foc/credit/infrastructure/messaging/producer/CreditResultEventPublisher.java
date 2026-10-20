@@ -1,7 +1,9 @@
 package com.cs3219.foc.credit.infrastructure.messaging.producer;
 
 import com.cs3219.foc.credit.config.EventPublicationProperties;
+import com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent;
 import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -17,18 +19,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class CreditResultEventPublisher {
     public static final String SETTLEMENT_BINDING = "creditSettlementResult-out-0";
+    public static final String RESERVATION_BINDING = "creditReservationResult-out-0";
     private final StreamBridge streamBridge;
     private final EventPublicationProperties properties;
 
     @ApplicationModuleListener(id = "credit-settlement-rabbit")
     public void publish(CreditSettlementResultEvent event) {
+        send(SETTLEMENT_BINDING, event, event.eventId());
+    }
+
+    @ApplicationModuleListener(id = "credit-reservation-rabbit")
+    public void publish(CreditReservationResultEvent event) {
+        send(RESERVATION_BINDING, event, event.eventId());
+    }
+
+    private void send(String binding, Object event, UUID eventId) {
         // Correlation is per attempt; the business event ID remains unchanged on every retry.
         var correlation = new CorrelationData();
         var message = MessageBuilder.withPayload(event)
                 .setHeader(AmqpHeaders.PUBLISH_CONFIRM_CORRELATION, correlation)
-                .setHeader("eventId", event.eventId().toString())
+                .setHeader("eventId", eventId.toString())
                 .build();
-        if (!streamBridge.send(SETTLEMENT_BINDING, message)) {
+        if (!streamBridge.send(binding, message)) {
             throw new IllegalStateException("Credit result message was not accepted for publication");
         }
         try {

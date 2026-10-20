@@ -2,6 +2,7 @@ package com.cs3219.foc.user.mapper;
 
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
+import com.cs3219.foc.user.model.dto.UserBriefDto;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.entity.User;
@@ -15,6 +16,8 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
 
 @Mapper(collectionMappingStrategy = CollectionMappingStrategy.TARGET_IMMUTABLE)
 public interface UserMapper {
+    UserBriefDto toUserBriefDto(User user);
+
     @Mapping(target = "avatarUrl", source = "avatarUrl")
     UserProfileDto toUserProfileDto(User user, String avatarUrl);
 

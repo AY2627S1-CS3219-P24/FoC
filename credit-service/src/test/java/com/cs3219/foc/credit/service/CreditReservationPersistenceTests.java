@@ -12,10 +12,17 @@ import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
@@ -31,7 +38,9 @@ import org.springframework.orm.jpa.*;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringJUnitConfig(CreditReservationPersistenceTests.TestConfig.class)
 @TestPropertySource(properties = "credits.initial-allocation=15")
@@ -52,10 +61,21 @@ class CreditReservationPersistenceTests {
     @Autowired
     private DataSource dataSource;
 
+    @Autowired
+    private TestClock clock;
+
+    @Autowired
+    private ReservationResults results;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void clean() {
+        clock.time.set(Instant.parse("2030-01-01T00:00:00Z"));
+        results.events.clear();
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE credit_accounts CASCADE");
     }
@@ -203,6 +223,165 @@ class CreditReservationPersistenceTests {
         assertThat(count("credit_transaction_log")).isEqualTo(3);
     }
 
+    private ErrandCreationStartedEvent creation(UUID user, long amount, Duration remaining) {
+        var now = OffsetDateTime.now(clock);
+        var errandId = UUID.randomUUID();
+        return new ErrandCreationStartedEvent(
+                errandId,
+                "ErrandCreationStartedEvent",
+                1,
+                now,
+                new ErrandCreationStartedEvent.Payload(errandId, user, amount, now.plus(remaining)));
+    }
+
+    @Test
+    void readyAccountCreationReservesOnceAndReplaysItsResult() {
+        var user = fund(15);
+        var event = creation(user, 5, Duration.ofSeconds(30));
+        reserve.reserveForCreation(event);
+        clock.time.set(clock.instant().plusSeconds(40));
+        reserve.reserveForCreation(event);
+        assertThat(results.events).extracting(e -> e.payload().outcome()).containsExactly("RESERVED", "RESERVED");
+        assertThat(results.events).extracting(e -> e.payload().operationId()).containsOnly(event.eventId());
+        assertThat(count("credit_reservations")).isEqualTo(1);
+        assertThat(count("credit_transaction_log")).isEqualTo(1);
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(10, 5));
+    }
+
+    @Test
+    void missingAccountInAnAdmittedMessageIsAnErrorEvenAfterCutoff() {
+        for (var remaining : List.of(Duration.ofSeconds(30), Duration.ZERO)) {
+            var event = creation(UUID.randomUUID(), 5, remaining);
+            assertThatThrownBy(() -> reserve.reserveForCreation(event))
+                    .isInstanceOf(CreditAccountPendingException.class);
+        }
+        assertThat(results.events).isEmpty();
+        assertThat(count("credit_reservations")).isZero();
+        assertThat(count("credit_transaction_log")).isZero();
+    }
+
+    @Test
+    void healthyAccountWithQueuedExpiredRequestDoesNotReserve() {
+        var user = fund(100);
+        var event = creation(user, 5, Duration.ZERO);
+        reserve.reserveForCreation(event);
+        assertThat(results.events.getFirst().payload().outcome()).isEqualTo("CREATION_TIMEOUT");
+        assertThat(count("credit_reservations")).isZero();
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+    }
+
+    @Test
+    void admissionBeforeCutoffCanCommitAfterCutoff() {
+        var user = fund(100);
+        var event = creation(user, 5, Duration.ofMillis(1));
+        new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+            reserve.reserveForCreation(event);
+            clock.time.set(clock.instant().plusSeconds(1));
+        });
+        assertThat(results.events.getFirst().payload().outcome()).isEqualTo("RESERVED");
+        assertThat(count("credit_reservations")).isEqualTo(1);
+    }
+
+    @Test
+    void waitingForAccountLockPastCutoffTimesOutNewReservation() throws Exception {
+        var user = fund(100);
+        var event = creation(user, 5, Duration.ofSeconds(30));
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var holder = executor.submit(() -> {
+                new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+                    jdbc.queryForObject(
+                            "SELECT user_id FROM credit_accounts WHERE user_id=? FOR UPDATE", UUID.class, user);
+                    locked.countDown();
+                    try {
+                        assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+                    } catch (InterruptedException e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+            });
+            assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+            var waiting = executor.submit(() -> reserve.reserveForCreation(event));
+            try {
+                assertThatThrownBy(() -> waiting.get(200, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+                clock.time.set(clock.instant().plusSeconds(31));
+            } finally {
+                release.countDown();
+            }
+            holder.get(10, TimeUnit.SECONDS);
+            waiting.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(results.events.getFirst().payload().outcome()).isEqualTo("CREATION_TIMEOUT");
+        assertThat(count("credit_reservations")).isZero();
+    }
+
+    @Test
+    void replayAfterCutoffWaitsForUncommittedOriginalDecision() throws Exception {
+        var user = fund(100);
+        var event = creation(user, 5, Duration.ofSeconds(30));
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var holder = executor.submit(() -> {
+                new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
+                    reserve.reserve(
+                            user,
+                            new ReserveCreditRequest(
+                                    event.eventId(), event.payload().errandId(), 5));
+                    locked.countDown();
+                    try {
+                        assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+                    } catch (InterruptedException e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+            });
+            assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+            clock.time.set(clock.instant().plusSeconds(31));
+            var waiting = executor.submit(() -> reserve.reserveForCreation(event));
+            try {
+                assertThatThrownBy(() -> waiting.get(200, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+            } finally {
+                release.countDown();
+            }
+            holder.get(10, TimeUnit.SECONDS);
+            waiting.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(results.events.getFirst().payload().outcome()).isEqualTo("RESERVED");
+        assertThat(count("credit_transaction_log")).isEqualTo(1);
+    }
+
+    static class TestClock extends Clock {
+        final AtomicReference<Instant> time = new AtomicReference<>();
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(instant(), zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return time.get();
+        }
+    }
+
+    static class ReservationResults {
+        final List<CreditReservationResultEvent> events = new CopyOnWriteArrayList<>();
+
+        @org.springframework.context.event.EventListener
+        public void on(CreditReservationResultEvent event) {
+            events.add(event);
+        }
+    }
+
     @TestConfiguration
     @EnableConfigurationProperties(CreditProperties.class)
     @EnableTransactionManagement
@@ -216,6 +395,16 @@ class CreditReservationPersistenceTests {
         AuthenticatedUserResolver.class
     })
     static class TestConfig {
+        @Bean
+        TestClock clock() {
+            return new TestClock();
+        }
+
+        @Bean
+        ReservationResults results() {
+            return new ReservationResults();
+        }
+
         @Bean
         DataSource dataSource() {
             var url = System.getenv("FOC_TEST_DATABASE_URL");

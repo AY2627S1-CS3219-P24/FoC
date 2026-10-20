@@ -17,3 +17,7 @@ spring:
     default-schema: orders
 server:
   forward-headers-strategy: framework
+services:
+  credit-url: http://credit-service:8083/api
+  supplier-url: http://supplier-service:8081/api
+  user-url: http://user-service:8080/api

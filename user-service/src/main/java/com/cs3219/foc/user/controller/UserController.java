@@ -4,6 +4,7 @@ import com.cs3219.foc.user.model.dto.PageDto;
 import com.cs3219.foc.user.model.dto.UpdateEmailRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
+import com.cs3219.foc.user.model.dto.UserBriefDto;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
@@ -12,6 +13,7 @@ import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.service.EmailChangeService;
 import com.cs3219.foc.user.service.UserService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
     private final UserService userService;
     private final EmailChangeService emailChangeService;
+
+    @GetMapping("/brief")
+    public List<UserBriefDto> briefs(@RequestParam @Size(min = 1, max = 200) List<UUID> ids) {
+        return userService.getUserBriefs(ids);
+    }
 
     @PostMapping("/email-change/confirm")
     @ResponseStatus(HttpStatus.NO_CONTENT)
