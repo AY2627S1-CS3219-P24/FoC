@@ -2,11 +2,18 @@ package com.cs3219.foc.order.integration;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.credit.service.CreditAccountService;
 import com.cs3219.foc.order.OrderServiceApplication;
+import com.cs3219.foc.order.infrastructure.client.CreditClient;
+import com.cs3219.foc.order.model.dto.CreditReservationResponse;
+import com.cs3219.foc.order.model.dto.event.ErrandCancelledEvent;
 import com.cs3219.foc.order.model.dto.event.ErrandCompletedEvent;
+import com.cs3219.foc.order.model.dto.event.ErrandExpiredEvent;
 import com.cs3219.foc.order.service.OrderService;
 import com.rabbitmq.client.*;
 import com.sun.net.httpserver.HttpServer;
@@ -19,10 +26,14 @@ import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -50,6 +61,8 @@ class OrderCreditIntegrationTests {
     private final List<com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent> settlementResults =
             new CopyOnWriteArrayList<>();
     private final Set<UUID> handledSettlementResults = ConcurrentHashMap.newKeySet();
+    private final List<UUID> terminalEventOrders = new CopyOnWriteArrayList<>();
+    private final AtomicReference<ReservationPause> reservationPause = new AtomicReference<>();
     private final Map<String, String> destinations = Map.of(
             "errandCompleted",
             "completed",
@@ -346,6 +359,82 @@ class OrderCreditIntegrationTests {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCEPTED", "COMPLETED", "CANCELLED", "EXPIRED"})
+    void lateHttpCreationPreservesTheStateReachedAfterRetry(String targetStatus) throws Exception {
+        UUID requester = account(100);
+        UUID courier = account(0);
+        UUID key = UUID.randomUUID();
+        String body = creationBody(key, 5);
+        var pause = new ReservationPause();
+        reservationPause.set(pause);
+        Future<JsonNode> original = executor.submit(() -> request("POST", "", requester, body, 200));
+        try {
+            // Pause only after the real Credit HTTP call commits, while the original Order request is still open.
+            assertThat(pause.waiting.await(10, TimeUnit.SECONDS)).isTrue();
+            UUID id = orders.queryForObject("SELECT id FROM errands WHERE create_request_id=?", UUID.class, key);
+            assertThat(request("POST", "", requester, body, 200).get("errandId").asText())
+                    .isEqualTo(id.toString());
+            if (targetStatus.equals("ACCEPTED") || targetStatus.equals("COMPLETED")) {
+                request("POST", "/" + id + "/accept", courier, null, 200);
+                if (targetStatus.equals("COMPLETED")) {
+                    request("POST", "/" + id + "/pick-up", courier, null, 200);
+                    request("POST", "/" + id + "/complete", requester, null, 200);
+                }
+            } else if (targetStatus.equals("CANCELLED")) {
+                request("POST", "/" + id + "/cancel", requester, null, 200);
+            } else {
+                orders.update("UPDATE errands SET expires_at=created_at + interval '1 millisecond' WHERE id=?", id);
+                order.getBean(OrderService.class).expireOpenOrders();
+            }
+            String expectedCreditState =
+                    switch (targetStatus) {
+                        case "ACCEPTED" -> "RESERVED";
+                        case "COMPLETED" -> "SETTLED";
+                        default -> "RELEASED";
+                    };
+            awaitOrder(id, targetStatus, expectedCreditState);
+            Map<String, Object> advanced = orders.queryForMap("SELECT * FROM errands WHERE id=?", id);
+            long terminalEvents =
+                    terminalEventOrders.stream().filter(id::equals).count();
+            long requesterBalance = balance(requester, "total_balance");
+            long courierBalance = balance(courier, "total_balance");
+            long reservedBalance = balance(requester, "reserved_balance");
+
+            pause.release.countDown();
+            JsonNode lateResponse = original.get(10, TimeUnit.SECONDS);
+            assertThat(lateResponse.get("errandId").asText()).isEqualTo(id.toString());
+            assertThat(lateResponse.get("status").asText()).isEqualTo(targetStatus);
+            assertThat(orders.queryForMap("SELECT * FROM errands WHERE id=?", id))
+                    .isEqualTo(advanced);
+            assertThat(terminalEventOrders.stream().filter(id::equals).count()).isEqualTo(terminalEvents);
+            assertThat(terminalEvents).isEqualTo(targetStatus.equals("ACCEPTED") ? 0 : 1);
+            assertThat(credits.queryForObject(
+                            "SELECT count(*) FROM credit_reservations WHERE errand_id=?", Long.class, id))
+                    .isEqualTo(1);
+            assertThat(credits.queryForObject(
+                            "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, id))
+                    .isEqualTo(targetStatus.equals("ACCEPTED") ? 1 : 2);
+            assertThat(balance(requester, "total_balance")).isEqualTo(requesterBalance);
+            assertThat(balance(courier, "total_balance")).isEqualTo(courierBalance);
+            assertThat(balance(requester, "reserved_balance")).isEqualTo(reservedBalance);
+            assertNoPendingPublicationsOrDeadLetters();
+        } finally {
+            pause.release.countDown();
+            try {
+                original.get(10, TimeUnit.SECONDS);
+            } finally {
+                reservationPause.compareAndSet(pause, null);
+            }
+        }
+    }
+
+    private static class ReservationPause {
+        final CountDownLatch waiting = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        final AtomicBoolean claimed = new AtomicBoolean();
+    }
+
     private void awaitFailedPublication(JdbcTemplate database, String listenerId, UUID errandId) {
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(database.queryForObject(
                         "SELECT count(*) FROM event_publication WHERE listener_id=? AND serialized_event::jsonb->'payload'->>'errandId'=? AND status='FAILED' AND completion_date IS NULL",
@@ -499,6 +588,24 @@ class OrderCreditIntegrationTests {
     private ConfigurableApplicationContext start(Class<?> application, List<String> args) {
         return new SpringApplicationBuilder(application)
                 .initializers(context -> {
+                    if (application == OrderServiceApplication.class) {
+                        context.addApplicationListener(event -> {
+                            if (event instanceof PayloadApplicationEvent<?> payload) {
+                                switch (payload.getPayload()) {
+                                    case ErrandCompletedEvent completed ->
+                                        terminalEventOrders.add(
+                                                completed.payload().errandId());
+                                    case ErrandCancelledEvent cancelled ->
+                                        terminalEventOrders.add(
+                                                cancelled.payload().errandId());
+                                    case ErrandExpiredEvent expired ->
+                                        terminalEventOrders.add(
+                                                expired.payload().errandId());
+                                    default -> {}
+                                }
+                            }
+                        });
+                    }
                     if (application == CreditServiceApplication.class) {
                         context.addApplicationListener(event -> {
                             if (event instanceof PayloadApplicationEvent<?> payload
@@ -525,6 +632,23 @@ class OrderCreditIntegrationTests {
                         @Override
                         @SuppressWarnings("unchecked")
                         public Object postProcessAfterInitialization(Object bean, String name) {
+                            if (application == OrderServiceApplication.class && bean instanceof CreditClient client) {
+                                CreditClient controlled = spy(client);
+                                doAnswer(call -> {
+                                            CreditReservationResponse response =
+                                                    (CreditReservationResponse) call.callRealMethod();
+                                            ReservationPause pause = reservationPause.get();
+                                            if (pause != null && pause.claimed.compareAndSet(false, true)) {
+                                                pause.waiting.countDown();
+                                                assertThat(pause.release.await(30, TimeUnit.SECONDS))
+                                                        .isTrue();
+                                            }
+                                            return response;
+                                        })
+                                        .when(controlled)
+                                        .reserve(any());
+                                return controlled;
+                            }
                             if (application == OrderServiceApplication.class && name.equals("creditSettlementResult")) {
                                 var consumer =
                                         (Consumer<com.cs3219.foc.order.model.dto.event.CreditSettlementResultEvent>)

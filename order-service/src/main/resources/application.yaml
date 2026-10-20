@@ -91,6 +91,7 @@ spring:
         resubmitted: 1m
         check-interval: 30s
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: validate
   flyway:

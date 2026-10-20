@@ -297,37 +297,58 @@ public class OrderService {
         var payload = event.payload();
         transactions.executeWithoutResult(tx -> {
             var errand = locked(payload.errandId());
-            boolean payout = errand.getStatus() == COMPLETED;
-            boolean refund = errand.getStatus() == CANCELLED || errand.getStatus() == EXPIRED;
             checkResult(
-                    (payout || refund)
-                            && Objects.equals(errand.getSettlementEventId(), payload.operationId())
+                    Objects.equals(errand.getSettlementEventId(), payload.operationId())
                             && Objects.equals(errand.getRequesterId(), payload.requesterId())
-                            && errand.getCreditReward() == payload.amount()
-                            && Objects.equals(payload.courierId(), payout ? errand.getCourierId() : null)
-                            && Objects.equals(payload.settlementType(), payout ? "PAYOUT" : "REFUND"),
+                            && errand.getCreditReward() == payload.amount(),
                     errand,
                     payload.operationId());
-            if (Set.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")
-                    .contains(payload.outcome())) {
-                log.error(
-                        "Credit settlement conflict errandId={} operationId={} outcome={}",
-                        errand.getId(),
-                        payload.operationId(),
-                        payload.outcome());
-                return;
+            switch (errand.getStatus()) {
+                case COMPLETED -> handlePayoutResult(errand, payload);
+                case CANCELLED, EXPIRED -> handleRefundResult(errand, payload);
+                default -> checkResult(false, errand, payload.operationId());
             }
-            checkResult(Objects.equals(payload.outcome(), payout ? "PAID" : "REFUNDED"), errand, payload.operationId());
-            CreditState target = payout ? SETTLED : RELEASED;
-            if (errand.getCreditState() == target) return;
-            checkResult(
-                    errand.getCreditState() == (payout ? SETTLEMENT_PENDING : RELEASE_PENDING),
-                    errand,
-                    payload.operationId());
-            errand.setCreditState(target);
-            errand.setUpdatedAt(now());
-            repository.saveAndFlush(errand);
         });
+    }
+
+    private void handlePayoutResult(Errand errand, CreditSettlementResultEvent.Payload payload) {
+        checkResult(
+                Objects.equals(payload.settlementType(), "PAYOUT")
+                        && Objects.equals(payload.courierId(), errand.getCourierId()),
+                errand,
+                payload.operationId());
+        confirmSettlement(errand, payload, "PAID", SETTLEMENT_PENDING, SETTLED);
+    }
+
+    private void handleRefundResult(Errand errand, CreditSettlementResultEvent.Payload payload) {
+        checkResult(
+                Objects.equals(payload.settlementType(), "REFUND") && payload.courierId() == null,
+                errand,
+                payload.operationId());
+        confirmSettlement(errand, payload, "REFUNDED", RELEASE_PENDING, RELEASED);
+    }
+
+    private void confirmSettlement(
+            Errand errand,
+            CreditSettlementResultEvent.Payload payload,
+            String expectedOutcome,
+            CreditState pendingState,
+            CreditState confirmedState) {
+        if (Set.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")
+                .contains(payload.outcome())) {
+            log.error(
+                    "Credit settlement conflict errandId={} operationId={} outcome={}",
+                    errand.getId(),
+                    payload.operationId(),
+                    payload.outcome());
+            return;
+        }
+        checkResult(Objects.equals(payload.outcome(), expectedOutcome), errand, payload.operationId());
+        if (errand.getCreditState() == confirmedState) return;
+        checkResult(errand.getCreditState() == pendingState, errand, payload.operationId());
+        errand.setCreditState(confirmedState);
+        errand.setUpdatedAt(now());
+        repository.saveAndFlush(errand);
     }
 
     private void expire(Errand errand) {

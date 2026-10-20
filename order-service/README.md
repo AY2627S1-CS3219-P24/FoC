@@ -423,6 +423,8 @@ Acceptance, pickup, completion and cancellation return `ErrandActionResponse` di
 
 Order uses `PESSIMISTIC_WRITE` on the order row for lifecycle changes and result handling. Each operation checks the latest state after obtaining the lock. Acceptance and expiry also check the deadline under the lock.
 
+`spring.jpa.open-in-view=false` gives each short transaction its own persistence context. After the Credit HTTP call, creation finalization loads the committed order state under the row lock. A late response therefore preserves any acceptance, completion, cancellation or expiry already committed by another request.
+
 | Competing operations | Protection |
 | --- | --- |
 | Concurrent creation attempts | Same reservation operation ID and a final status check under the order lock |
@@ -447,6 +449,8 @@ HTTP calls happen outside order write/row-lock transactions. Broker confirmation
 | Publication-registry `id` | Framework record ID, independent of business identifiers |
 
 The reservation HTTP request carries the fixed order/operation ID and amount, with Requester identity from JWT. Settlement results must match order ID, operation ID, Requester, amount and the expected payout/refund type and Courier, with null Courier for refunds. Only explicit matching success marks credit processing complete.
+
+`OrderService` handles payout and refund results in separate private methods. They share operation matching, conflict logging and idempotent credit-state updates within the same locked transaction.
 
 An order can produce at most one terminal lifecycle fact. Redelivery retains its original identifier and content. The flows use these identifiers and current states rather than a global message-order coordinator.
 
