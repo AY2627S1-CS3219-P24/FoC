@@ -21,16 +21,7 @@ CREATE TABLE errands (
     picked_up_at TIMESTAMPTZ,
     ended_at TIMESTAMPTZ,
     CONSTRAINT errands_request_unique UNIQUE (requester_id, create_request_id),
-    CONSTRAINT errands_distinct_participants CHECK (courier_id IS NULL OR courier_id <> requester_id),
-    CONSTRAINT errands_state_credit CHECK (
-        (status IN ('CREATING', 'CREATE_FAILED') AND credit_state IS NULL)
-        OR (status IN ('OPEN', 'ACCEPTED', 'PICKED_UP') AND credit_state IS NOT NULL AND credit_state = 'RESERVED')
-        OR (status = 'COMPLETED' AND credit_state IS NOT NULL AND credit_state IN ('SETTLEMENT_PENDING', 'SETTLED'))
-        OR (status IN ('CANCELLED', 'EXPIRED') AND credit_state IS NOT NULL AND credit_state IN ('RELEASE_PENDING', 'RELEASED'))
-    ),
-    CONSTRAINT errands_courier CHECK ((status IN ('ACCEPTED', 'PICKED_UP', 'COMPLETED')) = (courier_id IS NOT NULL)),
-    CONSTRAINT errands_terminal_event CHECK ((status IN ('COMPLETED', 'CANCELLED', 'EXPIRED')) = (settlement_event_id IS NOT NULL)),
-    CONSTRAINT errands_creation_failure CHECK ((status = 'CREATE_FAILED') = (creation_failure_code IS NOT NULL))
+    CONSTRAINT errands_distinct_participants CHECK (courier_id IS NULL OR courier_id <> requester_id)
 );
 CREATE INDEX errands_requester_created_idx ON errands (requester_id, created_at DESC);
 CREATE INDEX errands_courier_created_idx ON errands (courier_id, created_at DESC);

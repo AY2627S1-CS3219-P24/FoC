@@ -10,7 +10,7 @@ spring:
     connection-timeout: 5s
   cloud:
     function:
-      definition: creditReservationResult;creditSettlementResult
+      definition: creditSettlementResult
     stream:
       default:
         consumer:
@@ -18,12 +18,6 @@ spring:
           back-off-initial-interval: 1000
           back-off-max-interval: 2000
       bindings:
-        errandCreationStarted-out-0:
-          destination: foc.errand-creation-started.v1
-          content-type: application/json
-          producer:
-            required-groups: credit-reservations
-            error-channel-enabled: true
         errandCompleted-out-0:
           destination: foc.errand-completed.v1
           content-type: application/json
@@ -42,10 +36,6 @@ spring:
           producer:
             required-groups: credit-settlements
             error-channel-enabled: true
-        creditReservationResult-in-0:
-          destination: foc.credit-reservation-result.v1
-          group: order-credit-reservations
-          content-type: application/json
         creditSettlementResult-in-0:
           destination: foc.credit-settlement-result.v1
           group: order-credit-settlements
@@ -67,11 +57,6 @@ spring:
             republish-to-dlq: false
             requeue-rejected: false
         bindings:
-          errandCreationStarted-out-0:
-            producer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandCreationStarted-out-0.destination}.dlx
-              dead-letter-routing-key: credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCreationStarted-out-0.destination}.credit-reservations.dlq
           errandCompleted-out-0:
             producer:
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandCompleted-out-0.destination}.dlx
@@ -87,11 +72,6 @@ spring:
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandExpired-out-0.destination}.dlx
               dead-letter-routing-key: credit-settlements
               dead-letter-queue-name: ${spring.cloud.stream.bindings.errandExpired-out-0.destination}.credit-settlements.dlq
-          creditReservationResult-in-0:
-            consumer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}.dlx
-              dead-letter-routing-key: order-credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditReservationResult-in-0.destination}.order-credit-reservations.dlq
           creditSettlementResult-in-0:
             consumer:
               dead-letter-exchange: ${spring.cloud.stream.bindings.creditSettlementResult-in-0.destination}.dlx
@@ -129,6 +109,5 @@ server:
     context-path: /api
   port: 8082
 orders:
-  creation-wait: 30s
   expiry-scan-delay: 10s
   expiry-batch-size: 100

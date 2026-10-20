@@ -12,7 +12,6 @@ import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
-import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -383,11 +382,6 @@ class CreditSettlementPersistenceTests {
         AuthenticatedUserResolver.class
     })
     static class TestConfig {
-        @Bean
-        Clock clock() {
-            return Clock.systemUTC();
-        }
-
         @Bean
         Results results() {
             return new Results();

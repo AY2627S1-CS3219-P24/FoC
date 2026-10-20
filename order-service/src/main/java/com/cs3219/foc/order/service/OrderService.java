@@ -31,6 +31,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -88,8 +89,9 @@ public class OrderService {
         if (address.length() > 1000)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pickup address is too long");
 
+        Errand created;
         try {
-            return transactions.execute(tx -> {
+            created = transactions.execute(tx -> {
                 var now = now();
                 var errand = new Errand();
                 errand.setId(UUID.randomUUID());
@@ -107,16 +109,7 @@ public class OrderService {
                 errand.setUpdatedAt(now);
                 errand.setExpiresAt(now.plusMinutes(request.expiryMinutes()));
                 repository.saveAndFlush(errand);
-                var reserveBefore = now.plus(properties.creationWait());
-                if (reserveBefore.isAfter(errand.getExpiresAt())) reserveBefore = errand.getExpiresAt();
-                events.publishEvent(new ErrandCreationStartedEvent(
-                        errand.getId(),
-                        "ErrandCreationStartedEvent",
-                        1,
-                        now,
-                        new ErrandCreationStartedEvent.Payload(
-                                errand.getId(), actor, errand.getCreditReward(), reserveBefore)));
-                return creationResponse(errand);
+                return errand;
             });
         } catch (DataIntegrityViolationException conflict) {
             // The losing insert is rolled back before reading the winning request in a fresh transaction.
@@ -124,6 +117,45 @@ public class OrderService {
                     tx -> repository.findByRequesterIdAndCreateRequestId(actor, request.createRequestId()));
             if (original.isEmpty()) throw conflict;
             return creationResponse(matching(original.get(), request));
+        }
+
+        // The durable record commits before HTTP. Concurrent repeats return it without reserving again.
+        try {
+            CreditReservationResponse reservation = creditClient.reserve(
+                    new ReserveCreditRequest(created.getId(), created.getId(), created.getCreditReward()));
+            if (reservation == null
+                    || reservation.outcome() == null
+                    || !Set.of("RESERVED", "INSUFFICIENT_BALANCE").contains(reservation.outcome())) {
+                throw new RestClientException("Credit returned an invalid reservation outcome");
+            }
+            Errand finalized = transactions.execute(tx -> {
+                Errand errand = locked(created.getId());
+                if ("INSUFFICIENT_BALANCE".equals(reservation.outcome())) {
+                    errand.setStatus(CREATE_FAILED);
+                    errand.setCreationFailureCode(reservation.outcome());
+                    errand.setEndedAt(now());
+                    errand.setUpdatedAt(errand.getEndedAt());
+                    repository.saveAndFlush(errand);
+                } else if (!now().isBefore(errand.getExpiresAt())) {
+                    expire(errand);
+                } else {
+                    errand.setStatus(OPEN);
+                    errand.setCreditState(RESERVED);
+                    errand.setUpdatedAt(now());
+                    repository.saveAndFlush(errand);
+                }
+                return errand;
+            });
+            return creationResponse(finalized);
+        } catch (RuntimeException failure) {
+            // HTTP failure cannot establish whether Credit committed. Never mark an unknown result as failed.
+            log.error(
+                    "Order creation needs investigation errandId={} requesterId={} createRequestId={}",
+                    created.getId(),
+                    actor,
+                    request.createRequestId(),
+                    failure);
+            throw failure;
         }
     }
 
@@ -251,48 +283,6 @@ public class OrderService {
                         if (errand.getStatus() == OPEN && !now().isBefore(errand.getExpiresAt())) expire(errand);
                     }));
         }
-    }
-
-    public void handleReservationResult(CreditReservationResultEvent event) {
-        var payload = event.payload();
-        transactions.executeWithoutResult(tx -> {
-            var errand = locked(payload.errandId());
-            checkResult(
-                    Objects.equals(errand.getId(), payload.operationId())
-                            && Objects.equals(errand.getRequesterId(), payload.requesterId())
-                            && errand.getCreditReward() == payload.amount(),
-                    errand,
-                    payload.operationId());
-            if ("RESERVED".equals(payload.outcome())) {
-                checkResult(errand.getStatus() != CREATE_FAILED, errand, payload.operationId());
-                if (errand.getStatus() == CREATING) {
-                    if (!now().isBefore(errand.getExpiresAt())) {
-                        expire(errand);
-                    } else {
-                        errand.setStatus(OPEN);
-                        errand.setCreditState(RESERVED);
-                        errand.setUpdatedAt(now());
-                        repository.saveAndFlush(errand);
-                    }
-                }
-            } else if (Set.of("INSUFFICIENT_BALANCE", "CREATION_TIMEOUT").contains(payload.outcome())) {
-                if (errand.getStatus() == CREATE_FAILED) {
-                    checkResult(
-                            Objects.equals(errand.getCreationFailureCode(), payload.outcome()),
-                            errand,
-                            payload.operationId());
-                    return;
-                }
-                checkResult(errand.getStatus() == CREATING, errand, payload.operationId());
-                errand.setStatus(CREATE_FAILED);
-                errand.setCreationFailureCode(payload.outcome());
-                errand.setEndedAt(now());
-                errand.setUpdatedAt(errand.getEndedAt());
-                repository.saveAndFlush(errand);
-            } else {
-                throw new IllegalArgumentException("Unknown credit reservation outcome: " + payload.outcome());
-            }
-        });
     }
 
     public void handleSettlementResult(CreditSettlementResultEvent event) {

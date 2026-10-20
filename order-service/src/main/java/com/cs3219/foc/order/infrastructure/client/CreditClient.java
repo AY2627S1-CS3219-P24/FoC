@@ -2,7 +2,9 @@ package com.cs3219.foc.order.infrastructure.client;
 
 import com.cs3219.foc.order.config.ServiceClientProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
+import com.cs3219.foc.order.model.dto.CreditReservationResponse;
 import com.cs3219.foc.order.model.dto.ErrorResponse;
+import com.cs3219.foc.order.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.order.security.AuthenticationContextService;
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -49,5 +51,18 @@ public class CreditClient {
             }
             throw exception;
         }
+    }
+
+    public CreditReservationResponse reserve(ReserveCreditRequest request) {
+        if (!(authenticationContextService.requireAuthentication() instanceof JwtAuthenticationToken authentication)) {
+            throw new AuthenticationCredentialsNotFoundException("JWT is required for credit reservation");
+        }
+        return client.post()
+                .uri("/credits/reservations")
+                .headers(headers ->
+                        headers.setBearerAuth(authentication.getToken().getTokenValue()))
+                .body(request)
+                .retrieve()
+                .body(CreditReservationResponse.class);
     }
 }

@@ -56,19 +56,19 @@ class OrderControllerTests {
     }
 
     @Test
-    void createRequiresLoginAndReturnsAcceptedLocation() throws Exception {
+    void createRequiresLoginAndReturnsSynchronousResultLocation() throws Exception {
         mvc.perform(post("/orders").contentType(MediaType.APPLICATION_JSON).content(body(5)))
                 .andExpect(status().isUnauthorized());
         when(service.create(any()))
-                .thenReturn(new CreateErrandResponse(id, ErrandStatus.CREATING, null, "/api/orders/" + id));
+                .thenReturn(new CreateErrandResponse(id, ErrandStatus.OPEN, null, "/api/orders/" + id));
         mvc.perform(post("/orders")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(5)))
-                .andExpect(status().isAccepted())
+                .andExpect(status().isOk())
                 .andExpect(header().string("Location", "/api/orders/" + id))
                 .andExpect(jsonPath("$.errandId").value(id.toString()))
-                .andExpect(jsonPath("$.status").value("CREATING"));
+                .andExpect(jsonPath("$.status").value("OPEN"));
     }
 
     @Test
@@ -110,13 +110,13 @@ class OrderControllerTests {
     void completedOrFailedCreationReplayReturnsCurrentResult() throws Exception {
         when(service.create(any()))
                 .thenReturn(new CreateErrandResponse(
-                        id, ErrandStatus.CREATE_FAILED, "CREATION_TIMEOUT", "/api/orders/" + id));
+                        id, ErrandStatus.CREATE_FAILED, "INSUFFICIENT_BALANCE", "/api/orders/" + id));
         mvc.perform(post("/orders")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(5)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.creationFailureCode").value("CREATION_TIMEOUT"));
+                .andExpect(jsonPath("$.creationFailureCode").value("INSUFFICIENT_BALANCE"));
     }
 
     @Test

@@ -1,7 +1,6 @@
 package com.cs3219.foc.credit.infrastructure.messaging.producer;
 
 import com.cs3219.foc.credit.config.EventPublicationProperties;
-import com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent;
 import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -19,18 +18,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class CreditResultEventPublisher {
     public static final String SETTLEMENT_BINDING = "creditSettlementResult-out-0";
-    public static final String RESERVATION_BINDING = "creditReservationResult-out-0";
     private final StreamBridge streamBridge;
     private final EventPublicationProperties properties;
 
     @ApplicationModuleListener(id = "credit-settlement-rabbit")
     public void publish(CreditSettlementResultEvent event) {
         send(SETTLEMENT_BINDING, event, event.eventId());
-    }
-
-    @ApplicationModuleListener(id = "credit-reservation-rabbit")
-    public void publish(CreditReservationResultEvent event) {
-        send(RESERVATION_BINDING, event, event.eventId());
     }
 
     private void send(String binding, Object event, UUID eventId) {

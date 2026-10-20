@@ -18,11 +18,6 @@ public class ErrandEventPublisher {
     private final StreamBridge streamBridge;
     private final EventPublicationProperties properties;
 
-    @ApplicationModuleListener(id = "order-creation-rabbit")
-    public void publish(ErrandCreationStartedEvent event) {
-        send("errandCreationStarted-out-0", event, event.eventId());
-    }
-
     @ApplicationModuleListener(id = "order-completed-rabbit")
     public void publish(ErrandCompletedEvent event) {
         send("errandCompleted-out-0", event, event.eventId());

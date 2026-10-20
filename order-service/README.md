@@ -1,6 +1,6 @@
 # Order Service
 
-Order Service owns errand creation, participation and lifecycle. It coordinates credit reservation, payment and release through events, and records the credit-processing result alongside each order.
+Order Service owns errand creation, participation and lifecycle. It reserves credits synchronously during creation, coordinates payment and release through events, and records the credit-processing result alongside each order.
 
 The HTTP resource is `/api/orders`; the business table is `orders.errands`, and integration events use the `Errand...Event` naming convention. **Client** in this document means an API caller. Client interactions describe the API contract rather than an implemented frontend workflow.
 
@@ -28,10 +28,10 @@ flowchart LR
     Order -->|Orders and publication records| OrderDB[(Order DB)]
     Order -->|HTTP: supplier and pickup information| Supplier[Supplier Service]
     Order -->|HTTP: names for lists and details| User[User Service]
-    Order -->|HTTP: account readiness before creation or acceptance| Credit[Credit Service]
-    Order -->|Creation and terminal lifecycle facts| MQ[RabbitMQ]
-    MQ -->|Reserve, pay or release| Credit
-    Credit -->|Reservation and settlement results| MQ
+    Order -->|HTTP: account readiness and creation reservation| Credit[Credit Service]
+    Order -->|Terminal lifecycle facts| MQ[RabbitMQ]
+    MQ -->|Pay or release| Credit
+    Credit -->|Settlement results| MQ
     MQ -->|Results| Order
     Credit -->|Accounts, reservations and ledger| CreditDB[(Credit DB)]
 ```
@@ -51,13 +51,13 @@ HTTP clients forward the caller's JWT. Background consumers and scheduled jobs u
 
 ### Order states
 
-The diagram and transition table summarize the main lifecycle. Late reservation-result cleanup is described separately in [Section 4.4](#44-a-successful-reservation-result-arrives-after-order-expiry).
+The diagram and transition table summarize the main lifecycle. Exceptional expiry after synchronous reservation is described separately in [Section 4.4](#44-reservation-finishes-after-order-expiry).
 
 ```mermaid
 stateDiagram-v2
     direction TB
     [*] --> CREATING: Creation accepted
-    CREATING --> CREATE_FAILED: Insufficient balance or reservation deadline reached
+    CREATING --> CREATE_FAILED: Insufficient balance
     CREATING --> OPEN: Reserved and still valid
     OPEN --> EXPIRED: Expiry job
     OPEN --> ACCEPTED: Courier accepts
@@ -72,9 +72,9 @@ stateDiagram-v2
 
 | Transition | Trigger and conditions | Credit effect |
 | --- | --- | --- |
-| New request → `CREATING` | Authenticated Requester; account ready; supplier exists and is active; valid input | Publish creation fact; reservation is asynchronous |
-| `CREATING` → `OPEN` | Matching `RESERVED` result; before `expires_at` | Record `RESERVED` |
-| `CREATING` → `CREATE_FAILED` | Matching `INSUFFICIENT_BALANCE` or `CREATION_TIMEOUT` result | No effective reservation to release |
+| New request → `CREATING` | Authenticated Requester; account ready; supplier exists and is active; valid input | Save a durable record, then reserve credits over HTTP |
+| `CREATING` → `OPEN` | Synchronous `RESERVED` response; before `expires_at` | Record `RESERVED` |
+| `CREATING` → `CREATE_FAILED` | Synchronous `INSUFFICIENT_BALANCE` response | No effective reservation to release |
 | `OPEN` → `ACCEPTED` | Another user with a ready account; before expiry | Keep reservation |
 | `ACCEPTED` → `PICKED_UP` | Assigned Courier | Keep reservation |
 | `PICKED_UP` → `COMPLETED` | Requester | Request payment to Courier |
@@ -104,7 +104,7 @@ While an order is `CREATING`, a null credit state means Order has not confirmed 
 
 ## 3. Business flows
 
-In the diagrams, “register event” means save the event publication in the same local transaction as the business change. Transport to RabbitMQ happens after that transaction commits. Post-commit publication and the HTTP response can proceed independently; the response does not wait for Credit processing.
+In the diagrams, “register event” means save the event publication in the same local transaction as the business change. Transport to RabbitMQ happens after that transaction commits. For completion and cancellation, publication and the HTTP response can proceed independently. Creation waits for synchronous reservation and Order finalization.
 
 ### 3.1 Create an errand
 
@@ -114,33 +114,28 @@ sequenceDiagram
     participant Order
     participant Supplier
     participant DB as Order DB
-    participant MQ as RabbitMQ
     participant Credit
     Client->>Order: POST /api/orders with createRequestId
     Order->>DB: Look up Requester and createRequestId
-    Note over Order,DB: An existing request returns its current result
-    Order->>Credit: New request: GET /api/credits/me with JWT
+    Note over Order,DB: Existing requests return their current record without another reservation
+    Order->>Credit: GET /api/credits/me with JWT
     Credit-->>Order: Account exists
     Order->>Supplier: GET /api/suppliers/id with JWT
-    Supplier-->>Order: Supplier, active flag and pickup information
-    Order->>Order: Require active supplier and build pickup address
-    Order->>DB: Transaction: save CREATING and register creation event
+    Supplier-->>Order: Active supplier and pickup information
+    Order->>DB: Transaction A - save CREATING
     DB-->>Order: Commit
-    Order-->>Client: 202, errandId and queryUrl
-    Order->>MQ: ErrandCreationStartedEvent
-    MQ->>Credit: Deliver creation fact
-    Credit->>Credit: Transaction: reserve and register result
-    Credit->>MQ: CreditReservationResultEvent
-    MQ->>Order: RESERVED result
-    Order->>DB: Lock order and match operation, Requester and amount
-    Order->>DB: Set OPEN / RESERVED if still valid, then commit
-    Client->>Order: GET /api/orders/id
-    Order-->>Client: Current order details
+    Order->>Credit: POST /api/credits/reservations with JWT and stable order ID
+    Note over Order,Credit: HTTP runs outside Order transactions and row locks
+    Credit->>Credit: Lock account and commit reservation decision with ledger
+    Credit-->>Order: RESERVED or INSUFFICIENT_BALANCE
+    Order->>DB: Transaction B - lock order and save known outcome
+    DB-->>Order: Commit OPEN or CREATE_FAILED
+    Order-->>Client: 200 with errandId and current outcome
 ```
 
-The HTTP request accepts creation without waiting for reservation. After acceptance, the message chain progresses independently of the Client. Querying progress refreshes the display; it does not drive creation.
+Normal creation returns after reservation and local finalization. Credit checks and reserves available balance atomically under its account lock. A separate balance read does not authorize spending.
 
-Supplier validity is based on the active supplier returned before initial acceptance, including when ADMIN creates an order. Opening hours are not a creation restriction. The pickup name and address are saved with the order and remain fixed if the supplier later changes.
+Supplier validity is based on the active supplier returned before the initial record is saved, including when ADMIN creates an order. Opening hours are not a creation restriction. Pickup name and address remain fixed if the supplier later changes.
 
 ### 3.2 Accept an order and handle competing Couriers
 
@@ -288,7 +283,7 @@ flowchart TD
 
 Readiness means the account exists. A zero-balance Courier can accept work; sufficient Requester balance is decided later inside the reservation transaction. An existing creation request is returned before this readiness check.
 
-Accounts remain present after provisioning in the normal account lifecycle. Pickup, completion and cancellation do not repeat this HTTP check. A missing account encountered during background processing raises an exception and follows ordinary retry/DLQ handling; it is not reported as a normal creation timeout.
+Accounts remain present after provisioning in the normal account lifecycle. Pickup, completion and cancellation do not repeat this HTTP check. A missing account encountered during settlement raises an exception and follows ordinary retry/DLQ handling. Creation reservation failures are HTTP errors.
 
 ### 4.2 Duplicate submission and a lost HTTP response
 
@@ -312,55 +307,67 @@ sequenceDiagram
 
 The database uniquely identifies a creation by `(requester_id, create_request_id)`. If concurrent requests both initially find no record, the unique constraint permits one insert. The losing transaction rolls back before a fresh transaction reads and compares the accepted request.
 
-Comparison covers supplier, delivery location, description, normalized notes, reward and original expiry duration. Missing notes normalize to `""`. An accepted retry does not revalidate the supplier, create a new event or extend either deadline. Supplier validation errors are returned before insertion; the unique-conflict reread applies when insertion is attempted.
+Comparison covers supplier, delivery location, description, normalized notes, reward and original expiry duration. Missing notes normalize to `""`. An accepted retry does not revalidate the supplier, reserve again or extend order expiry. Supplier validation errors are returned before insertion; the unique-conflict reread applies when insertion is attempted.
 
 The caller should retain the request ID and original input until the result is known. A lost response does not imply failure. If no accepted record exists, the submission follows the normal new-creation path. A genuinely new creation after a definitive failure uses a new request ID.
 
-### 4.3 Reservation deadline and order expiry
-
-Two fixed timestamps have different responsibilities:
-
-```text
-expires_at    = created_at + expiryMinutes
-reserveBefore = min(created_at + orders.creation-wait, expires_at)
-```
-
-`orders.creation-wait` defaults to **30 seconds**. Order calculates `reserveBefore` at initial acceptance and includes it in the creation event. The value stays unchanged on publication retries and message redelivery; it is not an additional order-table column.
-
-Credit obtains the account lock, checks for an existing decision, and checks the actual current time immediately before admitting a new reservation. An existing decision takes precedence over the deadline.
-
-| Situation | Result |
-| --- | --- |
-| No existing decision and `now >= reserveBefore` | Do not reserve; return `CREATION_TIMEOUT` |
-| Admitted before `reserveBefore`, committed after it | Allow the transaction to finish |
-| Reservation succeeded; result arrives after 30 seconds but before `expires_at` | Order can become `OPEN` |
-| Reservation succeeded; result arrives at or after `expires_at` | Expire the order and release credits |
-| Matching successful result is redelivered after the order advanced | Keep its current state; do not reopen it |
-
-Publication, queueing and account-lock waits count toward the 30-second window. This rejects requests delayed too long before a new reservation, including otherwise healthy requests. It is not a guarantee that the Client receives an outcome, or that `CREATING` ends, within 30 seconds. Order waits for an explicit Credit result rather than declaring failure using a separate creation timer.
-
-### 4.4 A successful reservation result arrives after order expiry
+### 4.3 Technical failure leaves an uncertain creation
 
 ```mermaid
 sequenceDiagram
-    participant MQ as RabbitMQ
+    participant Client
     participant Order
     participant DB as Order DB
     participant Credit
-    MQ->>Order: CreditReservationResultEvent with RESERVED
-    Order->>DB: Lock and match CREATING order
+    Client->>Order: Create with a stable request ID
+    Order->>DB: Commit CREATING
+    Order->>Credit: Reserve with order ID as operationId
+    alt HTTP fails or response is lost
+        Credit--xOrder: Reservation outcome is unknown to Order
+        Order-->>Client: 502 UPSTREAM_ERROR
+    else RESERVED received but finalization fails
+        Credit-->>Order: RESERVED
+        Order->>DB: Attempt to save OPEN
+        DB--xOrder: Transaction rolls back
+        Order-->>Client: Server error
+    end
+    Note over DB,Credit: CREATING may coexist with a committed reservation
+    Client->>Order: Repeat original request
+    Order->>DB: Read original record
+    Order-->>Client: 202 with current CREATING record
+    Note over Order,Credit: No automatic reservation retry or recovery job
+```
+
+A connection failure or timeout does not prove that Credit failed. Order logs the order ID, Requester ID and creation request ID and keeps `CREATING` with null `credit_state`. If Credit committed, credits can remain reserved. A process interruption between the two local transactions can leave the same unresolved record.
+
+Repeated POSTs return the record without repeating reservation. Queries do not resume it. The initial request may still be running, or a technical failure may require manual investigation. This implementation accepts that rare unresolved creations do not automatically finish.
+
+For investigation, locate old `CREATING` records in `orders.errands`. Correlate order `id` with `credits.credit_reservations.errand_id` and `operation_id` and with `credits.credit_transaction_log.errand_id`. Compare Requester, amount and reservation state with the logged operation. Submitted business fields are stored server-side, so diagnosis does not depend on browser storage. Confirm that the original HTTP operation has finished before manual correction. An HTTP timeout alone does not establish that a refund or a second reservation is safe.
+
+There is no independent creation deadline or creation scanner. `expires_at = created_at + expiryMinutes` remains the business deadline. The HTTP client has a three-second connection timeout and five-second read timeout. These bound waiting for the call, not the outcome of a remote transaction.
+
+### 4.4 Reservation finishes after order expiry
+
+```mermaid
+sequenceDiagram
+    participant Credit
+    participant Order
+    participant DB as Order DB
+    participant MQ as RabbitMQ
+    Credit-->>Order: Synchronous RESERVED response
+    Order->>DB: Lock CREATING order in finalization transaction
     Order->>Order: expires_at has been reached
     Order->>DB: Save EXPIRED / RELEASE_PENDING and register expiry event
     DB-->>Order: Commit
     Order->>MQ: ErrandExpiredEvent
-    MQ->>Credit: Release the successful reservation
+    MQ->>Credit: Release successful reservation
     Credit->>Credit: Commit release, ledger and result registration
     Credit->>MQ: CreditSettlementResultEvent
     MQ->>Order: REFUND / REFUNDED
-    Order->>DB: Match result, set RELEASED and commit
+    Order->>DB: Match result and commit RELEASED
 ```
 
-This exceptional `CREATING` → `EXPIRED` transition closes an unfinished creation whose credits were already reserved. It uses the same expiry event and release handling as an expired `OPEN` order. A definitive creation failure with no effective reservation becomes `CREATE_FAILED` and does not emit a release event.
+If synchronous reservation finishes after the business deadline, finalization uses the existing expiry-and-release path instead of opening an expired order. This exceptional `CREATING` → `EXPIRED` transition is separate from the main lifecycle diagram. It is not automatic recovery of an unknown result. A known insufficient-balance decision becomes `CREATE_FAILED` and emits no release event.
 
 ## 5. Queries and permissions
 
@@ -418,12 +425,12 @@ HTTP calls happen outside order write/row-lock transactions. Broker confirmation
 | Identifier | Meaning |
 | --- | --- |
 | `create_request_id` | Caller-generated creation key, unique within one Requester |
-| Order `id` | Order identity, creation event `eventId` and reservation `operationId` |
+| Order `id` | Order identity and reservation `operationId` |
 | `settlement_event_id` | Fixed ID of the order's completion, cancellation or expiry fact |
 | Result event `eventId` | Identity of that result message; a repeated decision can have a new result event ID |
 | Publication-registry `id` | Framework record ID, independent of business identifiers |
 
-Reservation results must match order ID, operation ID, Requester and amount. Settlement results must also match the expected payout/refund type and Courier, with null Courier for refunds. Only explicit matching success marks credit processing complete.
+The reservation HTTP request carries the fixed order/operation ID and amount, with Requester identity from JWT. Settlement results must match order ID, operation ID, Requester, amount and the expected payout/refund type and Courier, with null Courier for refunds. Only explicit matching success marks credit processing complete.
 
 An order can produce at most one terminal lifecycle fact. Redelivery retains its original identifier and content. The flows use these identifiers and current states rather than a global message-order coordinator.
 
@@ -433,16 +440,17 @@ An order can produce at most one terminal lifecycle fact. Redelivery retains its
 
 | Transaction | Changes committed or rolled back together |
 | --- | --- |
-| Order accepts creation | Order record and creation-event publication registration |
-| Credit reserves | Reservation decision, reserve ledger entry when successful, and result-event registration |
+| Order starts creation | Durable `CREATING` record and immutable submitted data |
+| Credit reserves over HTTP | Reservation decision and reserve ledger entry when successful |
 | Order completes/cancels/expires | Order state, expected settlement ID and terminal-event registration |
 | Credit pays | Requester debit, Courier credit, reservation state, ledger and result-event registration |
 | Credit releases | Reservation state, release ledger and result-event registration |
-| Order processes a result | Matched order/credit-state changes and any resulting expiry-event registration |
+| Order finalizes creation | Known outcome and any required expiry-event registration |
+| Order processes a settlement result | Matched credit-state change |
 
-A transaction failure undoes that service's uncommitted changes. If Order's creation transaction fails, no creation message is published from it. If Credit's ledger or result registration fails during reservation, the reservation transaction rolls back too.
+A transaction failure undoes that service's uncommitted changes. Failure of Order's initial insert prevents the Credit call. Failure of Credit's reserve-ledger insert rolls back reservation. A finalization failure rolls back only Order's final update, preserving the original `CREATING` record.
 
-Each service commits independently. If Credit committed a reservation but Order cannot save its result, the reservation remains committed while result consumption is retried. Order then opens or expires the order according to its business deadline.
+Each service commits independently. Credit's committed reservation is not rolled back by Order finalization failure. Unknown outcomes follow Section 4.3's manual investigation boundary. No creation retry task or asynchronous fallback is installed.
 
 ### 7.2 Reliable event publication and consumption
 
@@ -465,15 +473,15 @@ flowchart TD
 
 Publishers check `StreamBridge.send`, broker confirms and returned messages. Durable queues and persistent messages carry accepted publications. `required-groups` declares destination queues, and producer/consumer declarations use matching DLX/DLQ arguments.
 
-Consumer retries allow three attempts with one- then two-second backoff. Credit's creation consumer has concurrency 3 and prefetch 1. Retries address processing errors; they are not an account-provisioning wait. Consumers tolerate duplicate deliveries instead of assuming exactly-once transport.
+Consumer retries allow three attempts with one- then two-second backoff. Retries address processing errors; they are not an account-provisioning wait. Consumers tolerate duplicate deliveries instead of assuming exactly-once transport.
 
-Each service's publication recovery job retries its own failed publication records. Order's only business-state scanning job is `OPEN` expiry; creation, pending payment and pending release progress through messages.
+Each service's publication recovery job retries its own failed publication records. Order's only business-state scanning job is `OPEN` expiry. Pending payment and release progress through messages; uncertain creation requires investigation.
 
 ### 7.3 Rollback, compensation and Saga
 
-Releasing an already committed reservation is a **compensating transaction**. Credit preserves the reserve history and records a release; it does not erase or roll back the earlier committed transaction. Cancellation, expiry and late successful creation all use this release path.
+Releasing an already committed reservation is a **compensating transaction**. Credit preserves the reserve history and records a release; it does not erase or roll back the earlier committed transaction. Cancellation, expiry and synchronous reservation finishing after order expiry all use this release path.
 
-This is lightweight event-driven coordination with a choreography-style Saga compensation step. There is no separate Saga engine, central Saga coordinator or cross-service database transaction. Services react to facts and commit their own state changes.
+Terminal operations use event-driven coordination with compensation; creation uses synchronous orchestration. There is no separate Saga engine, central Saga coordinator or cross-service database transaction. Services react to facts and commit their own state changes.
 
 After completion, a failed Credit payment transaction rolls back locally and is retried. The order remains `COMPLETED / SETTLEMENT_PENDING`; it is not moved back to `PICKED_UP`. Successful payment is not repeated if the same completion event is delivered again.
 
@@ -482,7 +490,8 @@ After completion, a failed Credit payment transaction rolls back locally and is 
 | Outcome | Handling |
 | --- | --- |
 | Account not ready before admission | HTTP `409/CREDIT_ACCOUNT_PENDING`; no new order or acceptance change |
-| `INSUFFICIENT_BALANCE` or `CREATION_TIMEOUT` | Explicit creation result; Order records `CREATE_FAILED` |
+| `INSUFFICIENT_BALANCE` | Synchronous creation decision; Order records `CREATE_FAILED` |
+| Creation HTTP error or failed finalization | Propagate error and retain `CREATING` for investigation |
 | Normal duplicate message | Return/reconcile the original decision without repeating the financial effect |
 | Database failure, malformed event or incompatible operation data | Throw, roll back, retry, then DLQ if unresolved |
 | Credit reports `RESERVATION_MISMATCH`, `NO_RESERVATION` or `TERMINAL_CONFLICT` | Order logs the conflict and keeps its existing credit state; it does not report success |
@@ -543,7 +552,7 @@ erDiagram
 
 | Field | Nullable | Purpose |
 | --- | --- | --- |
-| `id` | No | Order key, creation event ID and reservation operation ID |
+| `id` | No | Order key and reservation operation ID |
 | `requester_id` | No | Authenticated creator |
 | `courier_id` | Yes | Written on acceptance |
 | `supplier_id` | No | Selected supplier |
@@ -557,7 +566,7 @@ erDiagram
 | `settlement_event_id` | Yes | Completion, cancellation or expiry event ID |
 | `status` | No | One of the eight order/progress states |
 | `credit_state` | Yes | Reservation, payment or release progress |
-| `creation_failure_code` | Yes | `INSUFFICIENT_BALANCE` or `CREATION_TIMEOUT` for `CREATE_FAILED` |
+| `creation_failure_code` | Yes | `INSUFFICIENT_BALANCE` for `CREATE_FAILED` |
 | `created_at` | No | Fixed at first acceptance |
 | `updated_at` | No | Latest local change |
 | `expires_at` | No | `created_at` plus requested duration; unchanged on retries |
@@ -579,12 +588,8 @@ Requester/Courier names and the requested expiry duration are not stored as extr
 | Reward | `credit_reward > 0` |
 | Deadline | `expires_at > created_at` |
 | Participants | Courier is null or differs from Requester |
-| Order/credit state | Only combinations in the lifecycle table are allowed, with explicit null handling |
-| Courier presence | Required exactly for `ACCEPTED`, `PICKED_UP` and `COMPLETED` |
-| Terminal event presence | Required exactly for `COMPLETED`, `CANCELLED` and `EXPIRED` |
-| Failure reason | Required exactly for `CREATE_FAILED` |
 
-Service logic enforces permissions and historical transitions; database checks protect the stored row from contradictory field combinations. Related status, credit state and terminal ID changes are saved together. Service logic also maintains lifecycle timestamps without duplicating every timestamp combination in SQL checks.
+`OrderService` enforces permissions, lifecycle transitions and the state combinations in Section 2. It maintains the corresponding credit state, Courier, terminal event ID, failure reason and lifecycle timestamps together in each local transaction. These workflow rules are verified by lifecycle tests rather than duplicated in database `CHECK` constraints. The database retains the basic data constraints listed above.
 
 In addition to primary/unique indexes, the table has:
 
@@ -614,9 +619,9 @@ erDiagram
     }
 ```
 
-The table has indexes on the serialized-event hash and completion date. Business changes and publication registration commit together. Successfully completed publication records are deleted; durable broker queues retain delivered messages. Publication completion means transport succeeded, not that reservation or settlement finished.
+The table has indexes on the serialized-event hash and completion date. Business changes and publication registration commit together. Successfully completed publication records are deleted; durable broker queues retain delivered messages. Publication completion means transport succeeded, not that settlement finished.
 
-The registry ID is not referenced by `errands.id` or `settlement_event_id`. The stored creation message includes its original `reserveBefore`, so retries do not recalculate it from current configuration.
+The registry ID is not referenced by `errands.id` or `settlement_event_id`. Creation has no event publication entry. Terminal facts and Credit settlement results use the registry.
 
 ## 9. HTTP API
 
@@ -626,7 +631,7 @@ All business endpoints require JWT authentication. The controller resource is `/
 
 | Method | Path | Permission and behavior |
 | --- | --- | --- |
-| POST | `/api/orders` | New creation requires ready account and active supplier; return `202` on acceptance |
+| POST | `/api/orders` | Ready account and active supplier; reserve synchronously and return `200` with known outcome |
 | GET | `/api/orders` | Other Requesters' unexpired `OPEN` orders |
 | GET | `/api/orders?requesterId={id}` | ADMIN only; specified Requester's full history |
 | GET | `/api/orders/mine?as=requester` | Caller's requests, including creation progress and failures |
@@ -655,18 +660,18 @@ List endpoints accept zero-based `page`, `size` up to 100 and `sort` over `creat
 
 `createRequestId` and `supplierId` are required UUIDs. Delivery location and description are nonblank, limited to 500 and 2,000 characters respectively. Notes are limited to 2,000 characters and normalize to `""` when omitted or null. Reward is a positive integer `long`; duration is a positive integer `int`. Fractional numbers are rejected. The server determines Requester and Courier identities from authentication.
 
-Initial acceptance returns HTTP `202` with a `Location` header matching `queryUrl`:
+Normal creation returns HTTP `200` with a `Location` header matching `queryUrl`:
 
 ```json
 {
   "errandId": "0e139207-2076-444b-94a9-a7a57fbcda71",
-  "status": "CREATING",
+  "status": "OPEN",
   "creationFailureCode": null,
   "queryUrl": "/api/orders/0e139207-2076-444b-94a9-a7a57fbcda71"
 }
 ```
 
-A matching repeated POST returns this structure with the current status: `202` while creating, otherwise `200`. A definitive failure includes `creationFailureCode`. Reusing the same key with different input returns `409`.
+A matching repeated POST returns the current status: `202` if still `CREATING`, otherwise `200`. It does not restart reservation. Insufficient balance returns `200 / CREATE_FAILED` with `creationFailureCode: INSUFFICIENT_BALANCE`. Reusing the same key with different input returns `409`.
 
 ### 9.3 Action response
 
@@ -735,20 +740,18 @@ Application errors handled by `GlobalExceptionHandler` use `code` and `message`,
 | 404 | `ORDER_NOT_FOUND` | No such order |
 | 409 | `ORDER_CONFLICT` | Invalid transition or creation key reused with different content |
 | 409 | `CREDIT_ACCOUNT_PENDING` | Account is not ready; creation/acceptance was not admitted |
-| 502 | `UPSTREAM_ERROR` | HTTP-client failure while retrieving service data |
+| 502 | `UPSTREAM_ERROR` | HTTP-client failure while reading service data or reserving credits |
 
 Authentication-filter failures and other framework errors can use Spring's own response body. Unexpected persistence or application failures remain server errors. `CREATE_FAILED` is a stored creation outcome retrieved successfully over HTTP; it is distinct from rejection before acceptance.
 
 ## 10. Event contracts
 
-All six contracts use an envelope containing `eventId`, `eventType`, `schemaVersion`, `occurredAt` and `payload`. Schema version is `1`. Each service keeps its own record definitions with matching JSON fields.
+All four contracts use an envelope containing `eventId`, `eventType`, `schemaVersion`, `occurredAt` and `payload`. Schema version is `1`. Each service keeps its own record definitions with matching JSON fields.
 
 ### 10.1 Destinations and payloads
 
 | Event | Producer → consumer | Destination | Payload fields |
 | --- | --- | --- | --- |
-| `ErrandCreationStartedEvent` | Order → Credit | `foc.errand-creation-started.v1` | `errandId`, `requesterId`, `amount`, `reserveBefore` |
-| `CreditReservationResultEvent` | Credit → Order | `foc.credit-reservation-result.v1` | `operationId`, `errandId`, `requesterId`, `amount`, `outcome` |
 | `ErrandCompletedEvent` | Order → Credit | `foc.errand-completed.v1` | `errandId`, `requesterId`, `amount`, `courierId` |
 | `ErrandCancelledEvent` | Order → Credit | `foc.errand-cancelled.v1` | `errandId`, `requesterId`, `amount` |
 | `ErrandExpiredEvent` | Order → Credit | `foc.errand-expired.v1` | `errandId`, `requesterId`, `amount` |
@@ -756,53 +759,12 @@ All six contracts use an envelope containing `eventId`, `eventType`, `schemaVers
 
 | Consumer | Group |
 | --- | --- |
-| Credit creation | `credit-reservations` |
 | Credit completion/cancellation/expiry | `credit-settlements` |
-| Order reservation result | `order-credit-reservations` |
 | Order settlement result | `order-credit-settlements` |
 
-`ErrandCreationStartedEvent` means creation has been accepted and saved; it does not mean the order is open. Terminal order events record completed lifecycle changes, not an HTTP command to Credit.
+Terminal order events record completed lifecycle changes. Creation reservation uses HTTP and has no integration event contract.
 
-### 10.2 Creation and reservation result
-
-The creation event ID equals the order ID. `amount` is the immutable `credit_reward`.
-
-```json
-{
-  "eventId": "0e139207-2076-444b-94a9-a7a57fbcda71",
-  "eventType": "ErrandCreationStartedEvent",
-  "schemaVersion": 1,
-  "occurredAt": "2026-10-20T12:00:00Z",
-  "payload": {
-    "errandId": "0e139207-2076-444b-94a9-a7a57fbcda71",
-    "requesterId": "11111111-1111-4111-8111-111111111111",
-    "amount": 5,
-    "reserveBefore": "2026-10-20T12:00:30Z"
-  }
-}
-```
-
-Credit returns its decision with a new result event ID and the original operation ID:
-
-```json
-{
-  "eventId": "44444444-4444-4444-8444-444444444444",
-  "eventType": "CreditReservationResultEvent",
-  "schemaVersion": 1,
-  "occurredAt": "2026-10-20T12:00:01Z",
-  "payload": {
-    "operationId": "0e139207-2076-444b-94a9-a7a57fbcda71",
-    "errandId": "0e139207-2076-444b-94a9-a7a57fbcda71",
-    "requesterId": "11111111-1111-4111-8111-111111111111",
-    "amount": 5,
-    "outcome": "RESERVED"
-  }
-}
-```
-
-The reservation outcomes are `RESERVED`, `INSUFFICIENT_BALANCE` and `CREATION_TIMEOUT`. Credit republishes the original decision on a repeated creation event, including after the reservation was paid or released. Order does not interpret that repeated success as permission to reopen a terminal order.
-
-### 10.3 Completion and settlement result
+### 10.2 Completion and settlement result
 
 The terminal event ID is saved as `settlement_event_id`:
 
@@ -864,6 +826,8 @@ order-service/
     │   │   │   ├── ErrandStatus.java
     │   │   │   └── CreditState.java
     │   │   └── dto/
+    │   │       ├── ReserveCreditRequest.java
+    │   │       ├── CreditReservationResponse.java
     │   │       ├── CreateErrandRequest.java
     │   │       ├── CreateErrandResponse.java
     │   │       ├── ErrandActionResponse.java
@@ -873,8 +837,6 @@ order-service/
     │   │       ├── SupplierPickupDto.java
     │   │       ├── UserBriefDto.java
     │   │       └── event/
-    │   │           ├── ErrandCreationStartedEvent.java
-    │   │           ├── CreditReservationResultEvent.java
     │   │           ├── ErrandCompletedEvent.java
     │   │           ├── ErrandCancelledEvent.java
     │   │           ├── ErrandExpiredEvent.java
@@ -890,7 +852,6 @@ order-service/
     │   │       ├── producer/
     │   │       │   └── ErrandEventPublisher.java
     │   │       └── consumer/
-    │   │           ├── CreditReservationResultConsumer.java
     │   │           └── CreditSettlementResultConsumer.java
     │   ├── scheduler/
     │   │   ├── ErrandExpiryJob.java
@@ -920,17 +881,17 @@ order-service/
 
 | Area | Responsibility |
 | --- | --- |
-| `OrderController` and DTOs | HTTP binding, validation, response shapes and accepted-creation status |
+| `OrderController` and DTOs | HTTP binding, validation and creation/duplicate response status |
 | `OrderService` | Permissions, short transactions, idempotency, lifecycle changes, queries and Credit result matching |
 | `ErrandRepository` | Creation-key lookup, row locks, paging and expiry candidates |
 | `ErrandMapper` | Full detail mapping with supplied names and local action-response mapping |
-| HTTP clients | Readiness, supplier validation data and batch names; forward caller JWT |
+| HTTP clients | Readiness, synchronous reservation, supplier data and batch names; forward caller JWT |
 | Event producer | Post-commit transport with broker confirmation and returned-message checks |
 | Result consumers | Validate incoming messages and delegate to the service |
 | Scheduled jobs | Expire `OPEN` orders and retry failed framework publications |
 | Security | JWT verification, current identity/roles and authentication context for HTTP forwarding |
-| Configuration | Business deadline/batch properties, service URLs and publication-confirm/retry properties |
+| Configuration | Expiry batch properties, service URLs and publication-confirm/retry properties |
 | Exceptions | Domain errors, account-readiness rejection and HTTP error translation |
 | Flyway migrations | Business schema, constraints, indexes and framework publication registry |
 
-Credit's creation consumer delegates to `CreditReservationService`; its result publisher sends reservation and settlement results. User's `/api/users/brief` returns only ID/name for authenticated callers. These integrations keep account ownership, financial effects and user data within their owning services.
+Credit's reservation controller delegates to `CreditReservationService`; its result publisher sends settlement results. User's `/api/users/brief` returns only ID/name for authenticated callers. These integrations keep account ownership, financial effects and user data within their owning services.

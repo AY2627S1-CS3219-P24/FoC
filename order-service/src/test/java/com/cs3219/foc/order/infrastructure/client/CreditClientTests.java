@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.cs3219.foc.order.config.ServiceClientProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
+import com.cs3219.foc.order.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.order.security.AuthenticationContextService;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -18,6 +19,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.databind.json.JsonMapper;
 
 class CreditClientTests {
     private HttpServer server;
@@ -25,6 +27,7 @@ class CreditClientTests {
     private volatile int status;
     private volatile String body;
     private final AtomicReference<String> authorization = new AtomicReference<>();
+    private final AtomicReference<String> reservationBody = new AtomicReference<>();
 
     @BeforeEach
     void start() throws Exception {
@@ -34,6 +37,17 @@ class CreditClientTests {
         server.createContext("/api/credits/me", exchange -> {
             try (exchange) {
                 authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+                var bytes = body.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(status, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
+        });
+        server.createContext("/api/credits/reservations", exchange -> {
+            try (exchange) {
+                assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+                authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+                reservationBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
                 var bytes = body.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(status, bytes.length);
@@ -91,5 +105,31 @@ class CreditClientTests {
         status = 409;
         body = "not-json";
         assertThatThrownBy(client::requireAccountReady).isInstanceOf(RestClientException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"RESERVED", "INSUFFICIENT_BALANCE"})
+    void reservationPostsStableIdentifiersAndReturnsTheCreditDecision(String outcome) {
+        var id = UUID.randomUUID();
+        body = "{\"outcome\":\"" + outcome + "\"}";
+        assertThat(client.reserve(new ReserveCreditRequest(id, id, 5)).outcome())
+                .isEqualTo(outcome);
+        assertThat(authorization.get()).isEqualTo("Bearer current-access-token");
+        var payload = JsonMapper.builder().build().readTree(reservationBody.get());
+        assertThat(payload.get("operationId").asText()).isEqualTo(id.toString());
+        assertThat(payload.get("errandId").asText()).isEqualTo(id.toString());
+        assertThat(payload.get("amount").asLong()).isEqualTo(5);
+    }
+
+    @Test
+    void reservationHttpAndParsingFailuresRemainUpstreamErrors() {
+        var id = UUID.randomUUID();
+        var request = new ReserveCreditRequest(id, id, 5);
+        status = 503;
+        body = "{\"code\":\"UNAVAILABLE\"}";
+        assertThatThrownBy(() -> client.reserve(request)).isInstanceOf(RestClientResponseException.class);
+        status = 200;
+        body = "not-json";
+        assertThatThrownBy(() -> client.reserve(request)).isInstanceOf(RestClientException.class);
     }
 }

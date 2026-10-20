@@ -6,7 +6,7 @@ import static org.awaitility.Awaitility.await;
 import com.cs3219.foc.credit.CreditServiceApplication;
 import com.cs3219.foc.credit.service.CreditAccountService;
 import com.cs3219.foc.order.OrderServiceApplication;
-import com.cs3219.foc.order.model.dto.event.ErrandCreationStartedEvent;
+import com.cs3219.foc.order.model.dto.event.ErrandCompletedEvent;
 import com.cs3219.foc.order.service.OrderService;
 import com.rabbitmq.client.*;
 import com.sun.net.httpserver.HttpServer;
@@ -47,20 +47,16 @@ class OrderCreditIntegrationTests {
     private final JsonMapper json = JsonMapper.builder().build();
     private final HttpClient http = HttpClient.newHttpClient();
     private final ExecutorService executor = Executors.newCachedThreadPool();
-    private final List<com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent> reservationResults =
+    private final List<com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent> settlementResults =
             new CopyOnWriteArrayList<>();
-    private final Set<UUID> handledReservationResults = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> handledSettlementResults = ConcurrentHashMap.newKeySet();
     private final Map<String, String> destinations = Map.of(
-            "errandCreationStarted",
-            "creation",
             "errandCompleted",
             "completed",
             "errandCancelled",
             "cancelled",
             "errandExpired",
             "expired",
-            "creditReservationResult",
-            "reserved",
             "creditSettlementResult",
             "settled");
     private ConfigurableApplicationContext order;
@@ -125,8 +121,7 @@ class OrderCreditIntegrationTests {
         channel = connection.createChannel();
         channel.confirmSelect();
         var creditArgs = arguments("credit", creditSchema);
-        creditArgs.add(
-                "--spring.cloud.function.definition=errandCreationStarted;errandCancelled;errandExpired;errandCompleted");
+        creditArgs.add("--spring.cloud.function.definition=errandCancelled;errandExpired;errandCompleted");
         credit = start(CreditServiceApplication.class, creditArgs);
         var orderArgs = arguments("order", orderSchema);
         orderArgs.addAll(List.of(
@@ -147,8 +142,9 @@ class OrderCreditIntegrationTests {
         var courier = account(15);
         var key = UUID.randomUUID();
         var body = creationBody(key, 5);
-        var created = request("POST", "", requester, body, 202);
+        var created = request("POST", "", requester, body, 200);
         var id = UUID.fromString(created.get("errandId").asText());
+        assertThat(created.get("status").asText()).isEqualTo("OPEN");
         awaitOrder(id, "OPEN", "RESERVED");
         assertThat(balance(requester, "reserved_balance")).isEqualTo(5);
         assertThat(credits.queryForObject(
@@ -174,27 +170,26 @@ class OrderCreditIntegrationTests {
         assertThat(balance(requester, "total_balance")).isEqualTo(95);
         assertThat(balance(courier, "total_balance")).isEqualTo(20);
 
-        // Re-deliver creation after payment: Credit returns its original decision; Order stays completed.
-        var previousResults = reservationResults.stream()
-                .map(com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent::eventId)
+        // Re-deliver completion after payment and wait for the duplicate result's Order transaction to finish.
+        var previousResults = settlementResults.stream()
+                .map(com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent::eventId)
                 .collect(Collectors.toSet());
-        var createdAt = OffsetDateTime.parse(details.get("createdAt").asText());
+        UUID operationId = orders.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
         publish(
-                "errandCreationStarted",
-                new ErrandCreationStartedEvent(
-                        id,
-                        "ErrandCreationStartedEvent",
+                "errandCompleted",
+                new ErrandCompletedEvent(
+                        operationId,
+                        "ErrandCompletedEvent",
                         1,
-                        createdAt,
-                        new ErrandCreationStartedEvent.Payload(id, requester, 5, createdAt.plusSeconds(4))));
+                        OffsetDateTime.now(),
+                        new ErrandCompletedEvent.Payload(id, requester, 5, courier)));
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {
-            var repeatedResult = reservationResults.stream()
-                    .filter(result ->
-                            result.payload().operationId().equals(id) && !previousResults.contains(result.eventId()))
+            var repeatedResult = settlementResults.stream()
+                    .filter(result -> result.payload().operationId().equals(operationId)
+                            && !previousResults.contains(result.eventId()))
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("Credit has not emitted the duplicate result"));
-            // The real result is published after Credit commits; the test consumer signals after Order commits.
-            assertThat(handledReservationResults).contains(repeatedResult.eventId());
+            assertThat(handledSettlementResults).contains(repeatedResult.eventId());
         });
         awaitOrder(id, "COMPLETED", "SETTLED");
         assertThat(credits.queryForObject(
@@ -214,16 +209,22 @@ class OrderCreditIntegrationTests {
         assertThat(balance(requester, "reserved_balance")).isZero();
         assertThat(balance(requester, "total_balance")).isEqualTo(95);
 
-        // A registry insert failure rolls back the order itself and sends no creation message.
-        var rollbackKey = UUID.randomUUID();
-        orders.execute("ALTER TABLE event_publication ADD CONSTRAINT reject_publication CHECK(FALSE) NOT VALID");
+        // Credit can commit before Order's final transaction fails. Preserve the original record for investigation.
+        var uncertainKey = UUID.randomUUID();
+        orders.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
         try {
-            request("POST", "", requester, creationBody(rollbackKey, 1), 500);
-            assertThat(orders.queryForObject(
-                            "SELECT count(*) FROM errands WHERE create_request_id=?", Long.class, rollbackKey))
-                    .isZero();
+            request("POST", "", requester, creationBody(uncertainKey, 1), 500);
+            var pending = request("POST", "", requester, creationBody(uncertainKey, 1), 202);
+            var uncertainId = UUID.fromString(pending.get("errandId").asText());
+            awaitOrder(uncertainId, "CREATING", null);
+            assertThat(credits.queryForObject(
+                            "SELECT state FROM credit_reservations WHERE errand_id=?", String.class, uncertainId))
+                    .isEqualTo("RESERVED");
+            assertThat(credits.queryForObject(
+                            "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, uncertainId))
+                    .isEqualTo(1);
         } finally {
-            orders.execute("ALTER TABLE event_publication DROP CONSTRAINT reject_publication");
+            orders.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
         }
         request("POST", "", requester, body.replace("\"creditReward\":5", "\"creditReward\":1.5"), 400);
         assertNoPendingPublicationsOrDeadLetters();
@@ -243,7 +244,7 @@ class OrderCreditIntegrationTests {
                 .isZero();
         credit.getBean(CreditAccountService.class).initializeAccount(newUser);
         var waiting = UUID.fromString(
-                request("POST", "", newUser, body, 202).get("errandId").asText());
+                request("POST", "", newUser, body, 200).get("errandId").asText());
         awaitOrder(waiting, "OPEN", "RESERVED");
 
         var courier = UUID.randomUUID();
@@ -264,7 +265,7 @@ class OrderCreditIntegrationTests {
         assertThat(balance(newUser, "total_balance")).isEqualTo(10);
         assertThat(balance(newUser, "reserved_balance")).isZero();
         var poor = account(1);
-        var rejected = UUID.fromString(request("POST", "", poor, creationBody(UUID.randomUUID(), 2), 202)
+        var rejected = UUID.fromString(request("POST", "", poor, creationBody(UUID.randomUUID(), 2), 200)
                 .get("errandId")
                 .asText());
         awaitOrder(rejected, "CREATE_FAILED", null);
@@ -275,48 +276,50 @@ class OrderCreditIntegrationTests {
     }
 
     @Test
-    void creationAndReservationResultPublicationsRecoverWithoutRepeatingTheReservation() throws Exception {
+    void completionAndSettlementResultPublicationsRecoverWithoutRepeatingPayment() throws Exception {
         UUID requester = account(100);
-        // Establish both dynamic producer bindings before temporarily removing their routes.
-        createOpen(requester, 1);
-        String creationDestination = destination("errandCreationStarted");
-        String creationQueue = creationDestination + "." + group("errandCreationStarted");
-        String resultDestination = destination("creditReservationResult");
-        String resultQueue = resultDestination + "." + group("creditReservationResult");
+        UUID courier = account(0);
+        // Warm up both dynamic producer bindings before removing routes.
+        UUID warmup = createOpen(requester, 1);
+        request("POST", "/" + warmup + "/accept", courier, null, 200);
+        request("POST", "/" + warmup + "/pick-up", courier, null, 200);
+        request("POST", "/" + warmup + "/complete", requester, null, 200);
+        awaitOrder(warmup, "COMPLETED", "SETTLED");
+        String completedDestination = destination("errandCompleted");
+        String completedQueue = completedDestination + "." + group("errandCompleted");
+        String resultDestination = destination("creditSettlementResult");
+        String resultQueue = resultDestination + "." + group("creditSettlementResult");
+        UUID id = createOpen(requester, 5);
+        request("POST", "/" + id + "/accept", courier, null, 200);
+        request("POST", "/" + id + "/pick-up", courier, null, 200);
         try {
-            channel.queueUnbind(creationQueue, creationDestination, "#");
-            UUID id = UUID.fromString(request("POST", "", requester, creationBody(UUID.randomUUID(), 5), 202)
-                    .get("errandId")
-                    .asText());
-            awaitFailedPublication(orders, "order-creation-rabbit", id);
-            awaitOrder(id, "CREATING", null);
-            assertThat(credits.queryForObject(
-                            "SELECT count(*) FROM credit_reservations WHERE errand_id=?", Long.class, id))
-                    .isZero();
-
-            // Let Order recover its publication, while Credit's successful result cannot yet reach Order.
-            channel.queueUnbind(resultQueue, resultDestination, "#");
-            channel.queueBind(creationQueue, creationDestination, "#");
-            awaitFailedPublication(credits, "credit-reservation-rabbit", id);
+            channel.queueUnbind(completedQueue, completedDestination, "#");
+            request("POST", "/" + id + "/complete", requester, null, 200);
+            awaitFailedPublication(orders, "order-completed-rabbit", id);
+            awaitOrder(id, "COMPLETED", "SETTLEMENT_PENDING");
             assertThat(credits.queryForObject(
                             "SELECT state FROM credit_reservations WHERE errand_id=?", String.class, id))
                     .isEqualTo("RESERVED");
-            awaitOrder(id, "CREATING", null);
 
-            // Both services' ordinary recovery jobs retry the saved events after the routes return.
-            channel.queueBind(resultQueue, resultDestination, "#");
-            awaitOrder(id, "OPEN", "RESERVED");
+            channel.queueUnbind(resultQueue, resultDestination, "#");
+            channel.queueBind(completedQueue, completedDestination, "#");
+            awaitFailedPublication(credits, "credit-settlement-rabbit", id);
             assertThat(credits.queryForObject(
-                            "SELECT count(*) FROM credit_reservations WHERE errand_id=?", Long.class, id))
-                    .isEqualTo(1);
+                            "SELECT state FROM credit_reservations WHERE errand_id=?", String.class, id))
+                    .isEqualTo("PAID");
+            awaitOrder(id, "COMPLETED", "SETTLEMENT_PENDING");
+
+            channel.queueBind(resultQueue, resultDestination, "#");
+            awaitOrder(id, "COMPLETED", "SETTLED");
             assertThat(credits.queryForObject(
                             "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, id))
-                    .isEqualTo(1);
-            assertThat(balance(requester, "total_balance")).isEqualTo(100);
-            assertThat(balance(requester, "reserved_balance")).isEqualTo(6);
+                    .isEqualTo(2);
+            assertThat(balance(requester, "total_balance")).isEqualTo(94);
+            assertThat(balance(requester, "reserved_balance")).isZero();
+            assertThat(balance(courier, "total_balance")).isEqualTo(6);
             assertNoPendingPublicationsOrDeadLetters();
         } finally {
-            channel.queueBind(creationQueue, creationDestination, "#");
+            channel.queueBind(completedQueue, completedDestination, "#");
             channel.queueBind(resultQueue, resultDestination, "#");
         }
     }
@@ -346,7 +349,7 @@ class OrderCreditIntegrationTests {
     }
 
     private UUID createOpen(UUID requester, long amount) throws Exception {
-        var id = UUID.fromString(request("POST", "", requester, creationBody(UUID.randomUUID(), amount), 202)
+        var id = UUID.fromString(request("POST", "", requester, creationBody(UUID.randomUUID(), amount), 200)
                 .get("errandId")
                 .asText());
         awaitOrder(id, "OPEN", "RESERVED");
@@ -425,8 +428,6 @@ class OrderCreditIntegrationTests {
 
     private String group(String binding) {
         return switch (binding) {
-            case "errandCreationStarted" -> "credit-reservations";
-            case "creditReservationResult" -> "order-credit-reservations";
             case "creditSettlementResult" -> "order-credit-settlements";
             default -> "credit-settlements";
         };
@@ -481,8 +482,8 @@ class OrderCreditIntegrationTests {
                             if (event instanceof PayloadApplicationEvent<?> payload
                                     && payload.getPayload()
                                             instanceof
-                                            com.cs3219.foc.credit.model.dto.event.CreditReservationResultEvent result) {
-                                reservationResults.add(result);
+                                            com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent result) {
+                                settlementResults.add(result);
                             }
                         });
                     }
@@ -502,15 +503,14 @@ class OrderCreditIntegrationTests {
                         @Override
                         @SuppressWarnings("unchecked")
                         public Object postProcessAfterInitialization(Object bean, String name) {
-                            if (application == OrderServiceApplication.class
-                                    && name.equals("creditReservationResult")) {
+                            if (application == OrderServiceApplication.class && name.equals("creditSettlementResult")) {
                                 var consumer =
-                                        (Consumer<com.cs3219.foc.order.model.dto.event.CreditReservationResultEvent>)
+                                        (Consumer<com.cs3219.foc.order.model.dto.event.CreditSettlementResultEvent>)
                                                 bean;
-                                return (Consumer<com.cs3219.foc.order.model.dto.event.CreditReservationResultEvent>)
+                                return (Consumer<com.cs3219.foc.order.model.dto.event.CreditSettlementResultEvent>)
                                         event -> {
                                             consumer.accept(event);
-                                            handledReservationResults.add(event.eventId());
+                                            handledSettlementResults.add(event.eventId());
                                         };
                             }
                             return bean;

@@ -13,10 +13,8 @@ import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.repository.CreditReservationRepository;
 import com.cs3219.foc.credit.repository.CreditTransactionLogRepository;
 import com.cs3219.foc.credit.security.CurrentUserService;
-import java.time.Clock;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 
 class CreditReservationServiceTests {
     @Test
@@ -26,9 +24,7 @@ class CreditReservationServiceTests {
                 mock(CreditAccountRepository.class),
                 mock(CreditReservationRepository.class),
                 mock(CreditTransactionLogRepository.class),
-                currentUserService,
-                Clock.systemUTC(),
-                mock(ApplicationEventPublisher.class)));
+                currentUserService));
         var userId = UUID.randomUUID();
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), 80);
         var response = new CreditReservationResponse("RESERVED");

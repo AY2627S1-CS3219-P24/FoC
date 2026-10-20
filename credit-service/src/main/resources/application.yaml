@@ -10,25 +10,9 @@ spring:
     connection-timeout: 5s
   cloud:
     function:
-      definition: userCreated;errandCreationStarted;errandCancelled;errandExpired;errandCompleted
+      definition: userCreated;errandCancelled;errandExpired;errandCompleted
     stream:
       bindings:
-        errandCreationStarted-in-0:
-          destination: foc.errand-creation-started.v1
-          group: credit-reservations
-          content-type: application/json
-          consumer:
-            concurrency: 3
-            max-attempts: 3
-            back-off-initial-interval: 1000
-            back-off-max-interval: 2000
-            back-off-multiplier: 2.0
-        creditReservationResult-out-0:
-          destination: foc.credit-reservation-result.v1
-          content-type: application/json
-          producer:
-            required-groups: order-credit-reservations
-            error-channel-enabled: true
         errandCancelled-in-0:
           destination: foc.errand-cancelled.v1
           group: credit-settlements
@@ -69,28 +53,6 @@ spring:
             back-off-max-interval: 2000
       rabbit:
         bindings:
-          errandCreationStarted-in-0:
-            consumer:
-              acknowledge-mode: AUTO
-              prefetch: 1
-              exchange-durable: true
-              exchange-auto-delete: false
-              auto-bind-dlq: true
-              republish-to-dlq: false
-              requeue-rejected: false
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandCreationStarted-in-0.destination}.dlx
-              dead-letter-routing-key: credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCreationStarted-in-0.destination}.credit-reservations.dlq
-          creditReservationResult-out-0:
-            producer:
-              use-confirm-header: true
-              auto-bind-dlq: true
-              dead-letter-exchange: ${spring.cloud.stream.bindings.creditReservationResult-out-0.destination}.dlx
-              dead-letter-routing-key: order-credit-reservations
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditReservationResult-out-0.destination}.order-credit-reservations.dlq
-              delivery-mode: PERSISTENT
-              exchange-durable: true
-              exchange-auto-delete: false
           errandCancelled-in-0:
             consumer:
               acknowledge-mode: AUTO

@@ -62,6 +62,6 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> upstream(RestClientException e) {
         log.error("Order upstream request failed", e);
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(new ErrorResponse("UPSTREAM_ERROR", "Unable to retrieve service data"));
+                .body(new ErrorResponse("UPSTREAM_ERROR", "Unable to complete the service request"));
     }
 }
