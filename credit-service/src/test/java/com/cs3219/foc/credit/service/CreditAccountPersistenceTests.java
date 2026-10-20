@@ -85,13 +85,13 @@ class CreditAccountPersistenceTests {
     @Test
     void initializesWithConfiguredAllocationAndPreservesExistingBalancesAndTimestamps() {
         var owner = UUID.randomUUID();
-        assertThat(service.initializeAccount(owner)).isTrue();
+        service.initializeAccount(owner);
         assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
         var initial = repository.findById(owner).orElseThrow();
         assertThat(initial.getCreatedAt()).isNotNull();
         assertThat(initial.getUpdatedAt()).isNotNull();
         jdbc.update("UPDATE credit_accounts SET total_balance = 100 WHERE user_id = ?", owner);
-        assertThat(service.initializeAccount(owner)).isFalse();
+        service.initializeAccount(owner);
         assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(100, 0));
         var after = repository.findById(owner).orElseThrow();
         assertThat(after.getCreatedAt()).isEqualTo(initial.getCreatedAt());
@@ -105,18 +105,17 @@ class CreditAccountPersistenceTests {
         int workers = 8;
         var barrier = new CyclicBarrier(workers);
         try (var executor = Executors.newFixedThreadPool(workers)) {
-            var results = new ArrayList<Future<Boolean>>();
+            var results = new ArrayList<Future<?>>();
             for (int i = 0; i < workers; i++) {
                 results.add(executor.submit(() -> {
                     barrier.await(10, TimeUnit.SECONDS);
-                    return service.initializeAccount(owner);
+                    service.initializeAccount(owner);
+                    return null;
                 }));
             }
-            int created = 0;
             for (var result : results) {
-                if (result.get(20, TimeUnit.SECONDS)) created++;
+                result.get(20, TimeUnit.SECONDS);
             }
-            assertThat(created).isEqualTo(1);
         }
         assertThat(repository.count()).isEqualTo(1);
         assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
@@ -196,11 +195,12 @@ class CreditAccountPersistenceTests {
     void initializationRollsBackWithItsOwningTransaction() {
         var owner = UUID.randomUUID();
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            assertThat(service.initializeAccount(owner)).isTrue();
+            service.initializeAccount(owner);
             status.setRollbackOnly();
         });
         assertThat(repository.existsById(owner)).isFalse();
-        assertThat(service.initializeAccount(owner)).isTrue();
+        service.initializeAccount(owner);
+        assertThat(service.getBalance(owner)).isEqualTo(new CreditBalanceResponse(20, 0));
     }
 
     @TestConfiguration

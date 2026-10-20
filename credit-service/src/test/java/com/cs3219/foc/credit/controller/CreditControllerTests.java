@@ -1,5 +1,6 @@
 package com.cs3219.foc.credit.controller;
 
+import static com.cs3219.foc.credit.model.entity.ReservationState.RESERVED;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -109,7 +110,7 @@ class CreditControllerTests {
         var operation = UUID.randomUUID();
         var errand = UUID.randomUUID();
         var body = "{\"operationId\":\"" + operation + "\",\"errandId\":\"" + errand + "\",\"amount\":80}";
-        when(creditReservationService.reserve(any())).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(any())).thenReturn(new CreditReservationResponse(RESERVED));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .param("userId", UUID.randomUUID().toString())
@@ -140,7 +141,7 @@ class CreditControllerTests {
     void reservationAcceptsIntegerAmountsWithoutChangingThem(long amount) throws Exception {
         var owner = UUID.randomUUID();
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
-        when(creditReservationService.reserve(request)).thenReturn(new CreditReservationResponse("RESERVED"));
+        when(creditReservationService.reserve(request)).thenReturn(new CreditReservationResponse(RESERVED));
         mvc.perform(post("/credits/reservations")
                         .with(jwt().jwt(t -> t.subject(owner.toString())))
                         .contentType("application/json")

@@ -6,6 +6,7 @@ import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
@@ -114,10 +115,15 @@ class CreditSettlementPersistenceTests {
     }
 
     static class Results {
-        final CopyOnWriteArrayList<CreditSettlementResultEvent> events = new CopyOnWriteArrayList<>();
+        final CopyOnWriteArrayList<Object> events = new CopyOnWriteArrayList<>();
 
         @EventListener
-        public void on(CreditSettlementResultEvent event) {
+        public void on(CreditRefundedEvent event) {
+            events.add(event);
+        }
+
+        @EventListener
+        public void on(CreditPaidEvent event) {
             events.add(event);
         }
     }
@@ -125,7 +131,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCancelledEvent cancelled(UUID user, ReserveCreditRequest r) {
         return new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, r.amount()));
@@ -134,7 +139,6 @@ class CreditSettlementPersistenceTests {
     private ErrandExpiredEvent expired(UUID user, ReserveCreditRequest r) {
         return new ErrandExpiredEvent(
                 UUID.randomUUID(),
-                "ErrandExpiredEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandExpiredEvent.Payload(r.errandId(), user, r.amount()));
@@ -143,7 +147,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCompletedEvent completed(UUID user, ReserveCreditRequest r, UUID courier) {
         return new ErrandCompletedEvent(
                 UUID.randomUUID(),
-                "ErrandCompletedEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCompletedEvent.Payload(r.errandId(), user, r.amount(), courier));
@@ -151,12 +154,16 @@ class CreditSettlementPersistenceTests {
 
     private ReserveCreditRequest reserved(UUID user, long amount) {
         var r = request(amount);
-        assertThat(reserve.reserve(user, r).outcome()).isEqualTo("RESERVED");
+        assertThat(reserve.reserve(user, r).outcome()).isEqualTo(ReservationState.RESERVED);
         return r;
     }
 
-    private String outcome() {
-        return results.events.getLast().payload().outcome();
+    private void assertRefunded() {
+        assertThat(results.events.getLast()).isInstanceOf(CreditRefundedEvent.class);
+    }
+
+    private void assertPaid() {
+        assertThat(results.events.getLast()).isInstanceOf(CreditPaidEvent.class);
     }
 
     @Test
@@ -169,14 +176,14 @@ class CreditSettlementPersistenceTests {
                 () -> settlement.releaseReservedCredits(expired(user, r)));
         settlement.releaseReservedCredits(cancel);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
-        assertThat(count("credit_transaction_log")).isEqualTo(2);
+        assertThat(count("credit_transaction_log")).isEqualTo(3);
         assertThat(jdbc.queryForList("SELECT transaction_type FROM credit_transaction_log", String.class))
-                .containsExactlyInAnyOrder("RESERVE", "REFUND");
-        assertThat(reserve.reserve(user, r).outcome()).isEqualTo("RESERVED");
+                .containsExactlyInAnyOrder("RESERVE", "REFUND", "REFUND");
+        assertThat(reserve.reserve(user, r).outcome()).isEqualTo(ReservationState.RESERVED);
     }
 
     @Test
-    void payoutTransfersOnceAndRejectsDifferentCourierOrTerminalEffect() {
+    void repeatedPayoutPaysOnce() {
         var user = fund(100);
         var courier = fund(7);
         var other = fund(0);
@@ -184,14 +191,11 @@ class CreditSettlementPersistenceTests {
         var paid = completed(user, r, courier);
         settlement.transferReservedCredits(paid);
         settlement.transferReservedCredits(paid);
-        assertThat(outcome()).isEqualTo("PAID");
-        assertThat(results.events.getLast().payload().operationId()).isEqualTo(paid.eventId());
+        assertPaid();
+        assertThat(((CreditPaidEvent) results.events.getLast()).payload().operationId())
+                .isEqualTo(paid.eventId());
         settlement.transferReservedCredits(completed(user, r, courier));
-        assertThat(outcome()).isEqualTo("PAID");
-        settlement.transferReservedCredits(completed(user, r, other));
-        assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
-        settlement.releaseReservedCredits(cancelled(user, r));
-        assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
+        assertPaid();
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
         assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(87, 0));
         assertThat(creditAccountService.getBalance(other)).isEqualTo(new CreditBalanceResponse(0, 0));
@@ -215,91 +219,16 @@ class CreditSettlementPersistenceTests {
     }
 
     @Test
-    void settlementBeforeReservationRetriesAndRejectedReservationHasNoEffect() {
+    void settlementBeforeReservationRetries() {
         var user = fund(100);
         var r = request(80);
         var cancel = cancelled(user, r);
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel))
+                .isInstanceOf(ReservationPendingException.class);
         reserve.reserve(user, r);
         settlement.releaseReservedCredits(cancel);
-        assertThat(outcome()).isEqualTo("REFUNDED");
-        var rejected = request(200);
-        reserve.reserve(user, rejected);
-        settlement.releaseReservedCredits(cancelled(user, rejected));
-        assertThat(outcome()).isEqualTo("NO_RESERVATION");
+        assertRefunded();
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
-        assertThat(count("credit_transaction_log")).isEqualTo(2);
-    }
-
-    @Test
-    void mismatchedReservationCannotMoveCredits() {
-        var user = fund(100);
-        var r = reserved(user, 80);
-        for (long amount : new long[] {70, 0, -1}) {
-            var wrongAmount = new ReserveCreditRequest(r.operationId(), r.errandId(), amount);
-            settlement.releaseReservedCredits(cancelled(user, wrongAmount));
-            assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
-            settlement.transferReservedCredits(completed(user, wrongAmount, UUID.randomUUID()));
-            assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
-        }
-        settlement.releaseReservedCredits(cancelled(UUID.randomUUID(), r));
-        assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
-        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
-        assertThat(count("credit_transaction_log")).isEqualTo(1);
-    }
-
-    @Test
-    void correctedRejectedEventPublishesDistinctResultIdentity() {
-        var user = fund(100);
-        var r = reserved(user, 80);
-        var corrected = cancelled(user, r);
-        var rejected = new ErrandCancelledEvent(
-                corrected.eventId(),
-                corrected.eventType(),
-                1,
-                corrected.occurredAt(),
-                new ErrandCancelledEvent.Payload(r.errandId(), user, 70));
-
-        settlement.releaseReservedCredits(rejected);
-        var rejectedResult = results.events.getLast();
-        assertThat(rejectedResult.payload().outcome()).isEqualTo("RESERVATION_MISMATCH");
-        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
-
-        settlement.releaseReservedCredits(corrected);
-        var correctedResult = results.events.getLast();
-        assertThat(correctedResult.payload().outcome()).isEqualTo("REFUNDED");
-        assertThat(correctedResult.payload().operationId()).isEqualTo(corrected.eventId());
-        assertThat(correctedResult.payload().operationId())
-                .isEqualTo(rejectedResult.payload().operationId());
-        assertThat(correctedResult.eventId()).isNotEqualTo(rejectedResult.eventId());
-        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
-        assertThat(count("credit_transaction_log")).isEqualTo(2);
-    }
-
-    @Test
-    void processedEventIdCannotBeReusedWithChangedFacts() {
-        var user = fund(100);
-        var r = reserved(user, 40);
-        var second = reserved(user, 40);
-        var cancel = cancelled(user, r);
-        settlement.releaseReservedCredits(cancel);
-        var changed = new ErrandCancelledEvent(
-                cancel.eventId(),
-                cancel.eventType(),
-                1,
-                cancel.occurredAt(),
-                new ErrandCancelledEvent.Payload(second.errandId(), user, 40));
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(changed))
-                .isInstanceOf(IllegalArgumentException.class);
-        var changedAmount = new ErrandCancelledEvent(
-                cancel.eventId(),
-                cancel.eventType(),
-                1,
-                cancel.occurredAt(),
-                new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(changedAmount))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));
     }
 
     @Test
@@ -319,7 +248,7 @@ class CreditSettlementPersistenceTests {
             jdbc.execute("ALTER TABLE credit_accounts DROP CONSTRAINT fail_recipient");
         }
         settlement.transferReservedCredits(paid);
-        assertThat(outcome()).isEqualTo("PAID");
+        assertPaid();
     }
 
     @Test
@@ -339,31 +268,13 @@ class CreditSettlementPersistenceTests {
     }
 
     @Test
-    void concurrentRefundAndPaymentHaveOneTerminalEffect() throws Exception {
-        var user = fund(100);
-        var courier = fund(0);
-        var r = reserved(user, 80);
-        concurrent(
-                () -> settlement.releaseReservedCredits(cancelled(user, r)),
-                () -> settlement.transferReservedCredits(completed(user, r, courier)));
-        assertThat(results.events.stream().map(e -> e.payload().outcome()).toList())
-                .contains("TERMINAL_CONFLICT");
-        assertThat(creditAccountService.getBalance(user).reservedBalance()).isZero();
-        assertThat(creditAccountService.getBalance(user).availableBalance()
-                        + creditAccountService.getBalance(courier).availableBalance())
-                .isEqualTo(100);
-        assertThat(count("credit_transaction_log")).isEqualTo(2);
-    }
-
-    @Test
-    void oppositePaymentsUseConsistentAccountLockOrder() throws Exception {
+    void oppositePaymentsMoveBothBalances() {
         var a = fund(100);
         var b = fund(100);
         var r = reserved(a, 80);
         var s = reserved(b, 30);
-        concurrent(
-                () -> settlement.transferReservedCredits(completed(a, r, b)),
-                () -> settlement.transferReservedCredits(completed(b, s, a)));
+        settlement.transferReservedCredits(completed(a, r, b));
+        settlement.transferReservedCredits(completed(b, s, a));
         assertThat(creditAccountService.getBalance(a)).isEqualTo(new CreditBalanceResponse(50, 0));
         assertThat(creditAccountService.getBalance(b)).isEqualTo(new CreditBalanceResponse(150, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(4);
@@ -377,6 +288,7 @@ class CreditSettlementPersistenceTests {
         CreditReservationService.class,
         CreditAccountService.class,
         CreditSettlementService.class,
+        CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

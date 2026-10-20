@@ -6,6 +6,7 @@ import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
@@ -121,7 +122,7 @@ class CreditReservationPersistenceTests {
         var user = fund(100);
         var request = request(80);
         concurrent(() -> reserve.reserve(user, request), () -> reserve.reserve(user, request));
-        assertThat(reserve.reserve(user, request).outcome()).isEqualTo("RESERVED");
+        assertThat(reserve.reserve(user, request).outcome()).isEqualTo(ReservationState.RESERVED);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         assertThat(count("credit_reservations")).isEqualTo(1);
         assertThat(count("credit_transaction_log")).isEqualTo(1);
@@ -150,9 +151,9 @@ class CreditReservationPersistenceTests {
     void rejectedDecisionRemainsRejectedAfterFunding() {
         var user = fund(0);
         var request = request(80);
-        assertThat(reserve.reserve(user, request).outcome()).isEqualTo("INSUFFICIENT_BALANCE");
+        assertThat(reserve.reserve(user, request).outcome()).isEqualTo(ReservationState.INSUFFICIENT_BALANCE);
         jdbc.update("UPDATE credit_accounts SET total_balance=100 WHERE user_id=?", user);
-        assertThat(reserve.reserve(user, request).outcome()).isEqualTo("INSUFFICIENT_BALANCE");
+        assertThat(reserve.reserve(user, request).outcome()).isEqualTo(ReservationState.INSUFFICIENT_BALANCE);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isZero();
     }
@@ -165,7 +166,7 @@ class CreditReservationPersistenceTests {
         assertThat(count("credit_reservations")).isZero();
         creditAccountService.initializeAccount(user);
         jdbc.update("UPDATE credit_accounts SET total_balance=20 WHERE user_id=?", user);
-        assertThat(reserve.reserve(user, request).outcome()).isEqualTo("RESERVED");
+        assertThat(reserve.reserve(user, request).outcome()).isEqualTo(ReservationState.RESERVED);
     }
 
     @Test
@@ -180,7 +181,7 @@ class CreditReservationPersistenceTests {
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_audit");
         }
-        assertThat(reserve.reserve(user, request).outcome()).isEqualTo("RESERVED");
+        assertThat(reserve.reserve(user, request).outcome()).isEqualTo(ReservationState.RESERVED);
     }
 
     @Test
@@ -194,12 +195,11 @@ class CreditReservationPersistenceTests {
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
         settlement.releaseReservedCredits(new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(first.errandId(), user, 20)));
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(70, 30));
-        assertThat(reserve.reserve(user, first).outcome()).isEqualTo("RESERVED");
+        assertThat(reserve.reserve(user, first).outcome()).isEqualTo(ReservationState.RESERVED);
         assertThat(count("credit_transaction_log")).isEqualTo(3);
     }
 
@@ -211,6 +211,7 @@ class CreditReservationPersistenceTests {
         CreditReservationService.class,
         CreditAccountService.class,
         CreditSettlementService.class,
+        CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

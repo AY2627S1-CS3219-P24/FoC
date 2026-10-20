@@ -4,6 +4,10 @@ plugins {
 
 
 subprojects {
+    plugins.withId('org.springframework.boot') {
+        pluginManager.apply('org.springframework.boot.aot')
+    }
+
     plugins.withId('java') {
         tasks.withType(JavaCompile).configureEach {
             options.compilerArgs.addAll('-Amapstruct.defaultComponentModel=spring')

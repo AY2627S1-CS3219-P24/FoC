@@ -71,7 +71,7 @@ Events are records representing completed facts, for example:
 
 ```text
 UserCreatedEvent
-CreditsAllocatedEvent
+CreditSettlementResultEvent
 ```
 
 Application services may create and publish these events through Spring's `ApplicationEventPublisher`.

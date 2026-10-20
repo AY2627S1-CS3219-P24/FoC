@@ -15,11 +15,10 @@ class ErrandSettlementConsumerTests {
     private final CreditSettlementService service = mock(CreditSettlementService.class);
     private final ErrandSettlementConsumer consumers = new ErrandSettlementConsumer();
 
-    private <T> T contract(String type, UUID courier, Class<T> eventClass) {
+    private <T> T contract(UUID courier, Class<T> eventClass) {
         var body = """
                 {
                   "eventId": "00000000-0000-0000-0000-000000000001",
-                  "eventType": "%s",
                   "schemaVersion": 1,
                   "occurredAt": "2026-10-18T01:00:00Z",
                   "payload": {
@@ -28,7 +27,7 @@ class ErrandSettlementConsumerTests {
                     "amount": 80%s
                   }
                 }
-                """.formatted(type, courier == null ? "" : ", \"courierId\": \"" + courier + "\"");
+                """.formatted(courier == null ? "" : ", \"courierId\": \"" + courier + "\"");
         var json = JsonMapper.builder().build();
         var event = json.readValue(body, eventClass);
         // Each public contract contains errand facts, without Credit operation IDs or instructions.
@@ -38,7 +37,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void cancellationRoutesToRelease() {
-        var event = contract("ErrandCancelledEvent", null, ErrandCancelledEvent.class);
+        var event = contract(null, ErrandCancelledEvent.class);
         consumers.errandCancelled(service).accept(event);
         verify(service).releaseReservedCredits(event);
         verifyNoMoreInteractions(service);
@@ -46,7 +45,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void expiryRoutesToRelease() {
-        var event = contract("ErrandExpiredEvent", null, ErrandExpiredEvent.class);
+        var event = contract(null, ErrandExpiredEvent.class);
         consumers.errandExpired(service).accept(event);
         verify(service).releaseReservedCredits(event);
         verifyNoMoreInteractions(service);
@@ -54,7 +53,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void completionRoutesToTransfer() {
-        var event = contract("ErrandCompletedEvent", UUID.randomUUID(), ErrandCompletedEvent.class);
+        var event = contract(UUID.randomUUID(), ErrandCompletedEvent.class);
         consumers.errandCompleted(service).accept(event);
         verify(service).transferReservedCredits(event);
         verifyNoMoreInteractions(service);
@@ -62,7 +61,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void cancellationPropagatesTransactionFailure() {
-        var event = contract("ErrandCancelledEvent", null, ErrandCancelledEvent.class);
+        var event = contract(null, ErrandCancelledEvent.class);
         var failure = new IllegalStateException("database unavailable");
         doThrow(failure).when(service).releaseReservedCredits(event);
         assertThatThrownBy(() -> consumers.errandCancelled(service).accept(event))
@@ -71,7 +70,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void expiryPropagatesTransactionFailure() {
-        var event = contract("ErrandExpiredEvent", null, ErrandExpiredEvent.class);
+        var event = contract(null, ErrandExpiredEvent.class);
         var failure = new IllegalStateException("database unavailable");
         doThrow(failure).when(service).releaseReservedCredits(event);
         assertThatThrownBy(() -> consumers.errandExpired(service).accept(event)).isSameAs(failure);
@@ -79,7 +78,7 @@ class ErrandSettlementConsumerTests {
 
     @Test
     void completionPropagatesTransactionFailure() {
-        var event = contract("ErrandCompletedEvent", UUID.randomUUID(), ErrandCompletedEvent.class);
+        var event = contract(UUID.randomUUID(), ErrandCompletedEvent.class);
         var failure = new IllegalStateException("database unavailable");
         doThrow(failure).when(service).transferReservedCredits(event);
         assertThatThrownBy(() -> consumers.errandCompleted(service).accept(event))

@@ -9,12 +9,13 @@ import static org.mockito.Mockito.when;
 
 import com.cs3219.foc.credit.model.dto.CreditReservationResponse;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.repository.CreditReservationRepository;
-import com.cs3219.foc.credit.repository.CreditTransactionLogRepository;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 class CreditReservationServiceTests {
     @Test
@@ -23,11 +24,11 @@ class CreditReservationServiceTests {
         var service = spy(new CreditReservationService(
                 mock(CreditAccountRepository.class),
                 mock(CreditReservationRepository.class),
-                mock(CreditTransactionLogRepository.class),
+                mock(ApplicationEventPublisher.class),
                 currentUserService));
         var userId = UUID.randomUUID();
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), 80);
-        var response = new CreditReservationResponse("RESERVED");
+        var response = new CreditReservationResponse(ReservationState.RESERVED);
         when(currentUserService.requireCurrentUserId()).thenReturn(userId);
         doReturn(response).when(service).reserve(userId, request);
 

@@ -17,10 +17,9 @@ public class CreditAccountService {
     private final CreditProperties properties;
     private final CurrentUserService currentUserService;
 
-    /** Returns true only when this call creates the account with its initial credit allocation. */
     @Transactional
-    public boolean initializeAccount(UUID userId) {
-        return repository.initializeIfAbsent(userId, properties.initialAllocation()) == 1;
+    public void initializeAccount(UUID userId) {
+        repository.initializeIfAbsent(userId, properties.initialAllocation());
     }
 
     @Transactional(readOnly = true)

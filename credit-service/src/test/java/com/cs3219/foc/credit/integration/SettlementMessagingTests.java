@@ -8,6 +8,7 @@ import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.credit.model.dto.event.ErrandCancelledEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandCompletedEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandExpiredEvent;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.service.*;
 import com.rabbitmq.client.*;
 import java.nio.charset.StandardCharsets;
@@ -37,8 +38,10 @@ class SettlementMessagingTests {
         var cancelled = "foc.cancel.test." + suffix;
         var expired = "foc.expire.test." + suffix;
         var completed = "foc.complete.test." + suffix;
-        var output = "foc.settlement.test." + suffix;
-        var queue = output + ".order-credit-settlements";
+        var refunds = "foc.credit-refunded.test." + suffix;
+        var payouts = "foc.credit-paid.test." + suffix;
+        var refundQueue = refunds + ".order-credit-refunds";
+        var payoutQueue = payouts + ".order-credit-payouts";
         var url = System.getenv("FOC_TEST_DATABASE_URL");
         var sql = new JdbcTemplate(new DriverManagerDataSource(
                 url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema,
@@ -77,7 +80,8 @@ class SettlementMessagingTests {
                     "--spring.cloud.stream.bindings.errandCancelled-in-0.destination=" + cancelled,
                     "--spring.cloud.stream.bindings.errandExpired-in-0.destination=" + expired,
                     "--spring.cloud.stream.bindings.errandCompleted-in-0.destination=" + completed,
-                    "--spring.cloud.stream.bindings.creditSettlementResult-out-0.destination=" + output,
+                    "--spring.cloud.stream.bindings.creditRefunded-out-0.destination=" + refunds,
+                    "--spring.cloud.stream.bindings.creditPaid-out-0.destination=" + payouts,
                     "--events.publication.confirm-timeout=1s",
                     "--events.publication.retry-delay=100ms",
                     "--spring.modulith.events.staleness.published=0s",
@@ -99,13 +103,11 @@ class SettlementMessagingTests {
                     var a = cancelled(reserve, owner, 20);
                     var b = new ErrandExpiredEvent(
                             UUID.randomUUID(),
-                            "ErrandExpiredEvent",
                             1,
                             OffsetDateTime.now(),
                             new ErrandExpiredEvent.Payload(reserved(reserve, owner, 20), owner, 20));
                     var c = new ErrandCompletedEvent(
                             UUID.randomUUID(),
-                            "ErrandCompletedEvent",
                             1,
                             OffsetDateTime.now(),
                             new ErrandCompletedEvent.Payload(reserved(reserve, owner, 40), owner, 40, courier));
@@ -207,13 +209,12 @@ class SettlementMessagingTests {
                     boolean recovered = false;
                     var json = JsonMapper.builder().build();
                     GetResponse received;
-                    while ((received = channel.basicGet(queue, true)) != null) {
+                    while ((received = channel.basicGet(refundQueue, true)) != null) {
                         assertThat(received.getProps().getDeliveryMode()).isEqualTo(2);
                         var result = json.readTree(received.getBody());
                         if (result.get("eventId").asText().equals(recoveryId.toString())) {
                             recovered = true;
-                            assertThat(result.get("payload").get("outcome").asText())
-                                    .isEqualTo("REFUNDED");
+                            assertThat(result.get("payload").has("courierId")).isFalse();
                         }
                     }
                     assertThat(recovered).isTrue();
@@ -228,8 +229,10 @@ class SettlementMessagingTests {
                     channel.exchangeDelete(input);
                     channel.exchangeDelete(input + ".dlx");
                 }
-                channel.queueDelete(queue);
-                channel.exchangeDelete(output);
+                channel.queueDelete(refundQueue);
+                channel.queueDelete(payoutQueue);
+                channel.exchangeDelete(refunds);
+                channel.exchangeDelete(payouts);
                 sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
         }
@@ -237,14 +240,13 @@ class SettlementMessagingTests {
 
     private UUID reserved(CreditReservationService service, UUID owner, long amount) {
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
-        assertThat(service.reserve(owner, request).outcome()).isEqualTo("RESERVED");
+        assertThat(service.reserve(owner, request).outcome()).isEqualTo(ReservationState.RESERVED);
         return request.errandId();
     }
 
     private ErrandCancelledEvent cancelled(CreditReservationService service, UUID owner, long amount) {
         return new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(reserved(service, owner, amount), owner, amount));

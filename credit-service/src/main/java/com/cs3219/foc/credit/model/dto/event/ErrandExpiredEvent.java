@@ -4,7 +4,6 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** Order-owned fact. Redelivery retains eventId; amount is the errand's immutable reward. */
-public record ErrandExpiredEvent(
-        UUID eventId, String eventType, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
+public record ErrandExpiredEvent(UUID eventId, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
     public record Payload(UUID errandId, UUID requesterId, long amount) {}
 }

@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.cs3219.foc.credit.config.EventPublicationProperties;
-import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditRefundedEvent;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -19,33 +19,26 @@ import org.springframework.messaging.Message;
 
 class CreditResultEventPublisherTests {
     private final StreamBridge bridge = mock(StreamBridge.class);
-    private final CreditSettlementResultEvent event = new CreditSettlementResultEvent(
-            UUID.randomUUID(),
-            "CreditSettlementResultEvent",
-            1,
-            OffsetDateTime.now(),
-            new CreditSettlementResultEvent.Payload(
-                    UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 80, "REFUNDED", "REFUND", null));
+    private final CreditRefundedEvent event =
+            CreditRefundedEvent.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 80, OffsetDateTime.now());
     private final CreditResultEventPublisher publisher = new CreditResultEventPublisher(
             bridge, new EventPublicationProperties(Duration.ofMillis(20), Duration.ofSeconds(5)));
 
     private void confirm(boolean ack, boolean returned) {
-        when(bridge.send(eq(CreditResultEventPublisher.SETTLEMENT_BINDING), any()))
-                .thenAnswer(call -> {
-                    Message<?> message = call.getArgument(1);
-                    assertThat(message.getPayload()).isEqualTo(event);
-                    var correlation =
-                            (CorrelationData) message.getHeaders().get(AmqpHeaders.PUBLISH_CONFIRM_CORRELATION);
-                    if (returned)
-                        correlation.setReturned(new ReturnedMessage(
-                                new org.springframework.amqp.core.Message(new byte[0], new MessageProperties()),
-                                312,
-                                "NO_ROUTE",
-                                "exchange",
-                                "key"));
-                    correlation.getFuture().complete(new CorrelationData.Confirm(ack, ack ? null : "NACK"));
-                    return true;
-                });
+        when(bridge.send(eq(CreditResultEventPublisher.REFUND_BINDING), any())).thenAnswer(call -> {
+            Message<?> message = call.getArgument(1);
+            assertThat(message.getPayload()).isEqualTo(event);
+            var correlation = (CorrelationData) message.getHeaders().get(AmqpHeaders.PUBLISH_CONFIRM_CORRELATION);
+            if (returned)
+                correlation.setReturned(new ReturnedMessage(
+                        new org.springframework.amqp.core.Message(new byte[0], new MessageProperties()),
+                        312,
+                        "NO_ROUTE",
+                        "exchange",
+                        "key"));
+            correlation.getFuture().complete(new CorrelationData.Confirm(ack, ack ? null : "NACK"));
+            return true;
+        });
     }
 
     @Test
@@ -68,15 +61,13 @@ class CreditResultEventPublisherTests {
 
     @Test
     void sendReturningFalseIsFailure() {
-        when(bridge.send(eq(CreditResultEventPublisher.SETTLEMENT_BINDING), any()))
-                .thenReturn(false);
+        when(bridge.send(eq(CreditResultEventPublisher.REFUND_BINDING), any())).thenReturn(false);
         assertThatThrownBy(() -> publisher.publish(event)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void sendReturningTrueWithoutConfirmIsNotSuccess() {
-        when(bridge.send(eq(CreditResultEventPublisher.SETTLEMENT_BINDING), any()))
-                .thenReturn(true);
+        when(bridge.send(eq(CreditResultEventPublisher.REFUND_BINDING), any())).thenReturn(true);
         assertThatThrownBy(() -> publisher.publish(event))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not confirmed");

@@ -81,8 +81,7 @@ class CreditProvisioningPersistenceTests {
     }
 
     private UserCreatedEvent event(UUID userId) {
-        return new UserCreatedEvent(
-                UUID.randomUUID(), "UserCreatedEvent", 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(userId));
+        return new UserCreatedEvent(UUID.randomUUID(), 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(userId));
     }
 
     @Test
@@ -139,8 +138,7 @@ class CreditProvisioningPersistenceTests {
         var json = JsonMapper.builder().build();
         var received = json.readValue(json.writeValueAsString(published), UserCreatedEvent.class);
         assertThat(received)
-                .isEqualTo(new UserCreatedEvent(
-                        eventId, "UserCreatedEvent", 1, occurredAt, new UserCreatedEvent.Payload(userId)));
+                .isEqualTo(new UserCreatedEvent(eventId, 1, occurredAt, new UserCreatedEvent.Payload(userId)));
         provisioning.accept(received);
         assertThat(creditAccountService.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }

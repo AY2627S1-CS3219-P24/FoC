@@ -37,11 +37,17 @@ spring:
             max-attempts: 3
             back-off-initial-interval: 1000
             back-off-max-interval: 2000
-        creditSettlementResult-out-0:
-          destination: foc.credit-settlement-result.v1
+        creditRefunded-out-0:
+          destination: foc.credit-refunded.v1
           content-type: application/json
           producer:
-            required-groups: order-credit-settlements
+            required-groups: order-credit-refunds
+            error-channel-enabled: true
+        creditPaid-out-0:
+          destination: foc.credit-paid.v1
+          content-type: application/json
+          producer:
+            required-groups: order-credit-payouts
             error-channel-enabled: true
         userCreated-in-0:
           destination: foc.user-created.v1
@@ -89,7 +95,13 @@ spring:
               dead-letter-exchange: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}.dlx
               dead-letter-routing-key: credit-settlements
               dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCompleted-in-0.destination}.credit-settlements.dlq
-          creditSettlementResult-out-0:
+          creditRefunded-out-0:
+            producer:
+              use-confirm-header: true
+              delivery-mode: PERSISTENT
+              exchange-durable: true
+              exchange-auto-delete: false
+          creditPaid-out-0:
             producer:
               use-confirm-header: true
               delivery-mode: PERSISTENT

@@ -1,16 +1,22 @@
 package com.cs3219.foc.credit.service;
 
-import static com.cs3219.foc.credit.model.entity.ReservationState.*;
+import static com.cs3219.foc.credit.model.entity.ReservationState.INSUFFICIENT_BALANCE;
+import static com.cs3219.foc.credit.model.entity.ReservationState.RESERVED;
 
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.exception.ReservationConflictException;
 import com.cs3219.foc.credit.model.dto.CreditReservationResponse;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
+import com.cs3219.foc.credit.model.dto.event.CreditReservedEvent;
 import com.cs3219.foc.credit.model.entity.CreditReservation;
-import com.cs3219.foc.credit.repository.*;
+import com.cs3219.foc.credit.repository.CreditAccountRepository;
+import com.cs3219.foc.credit.repository.CreditReservationRepository;
 import com.cs3219.foc.credit.security.CurrentUserService;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,28 +25,53 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreditReservationService {
     private final CreditAccountRepository creditAccountRepository;
     private final CreditReservationRepository creditReservationRepository;
-    private final CreditTransactionLogRepository creditTransactionLogRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final CurrentUserService currentUserService;
 
     @Transactional
     public CreditReservationResponse reserve(UUID user, ReserveCreditRequest request) {
         // All reservations for an account serialize before reading its available balance.
-        creditAccountRepository.lockByUserId(user).orElseThrow(CreditAccountPendingException::new);
-        var existing = creditReservationRepository.findById(request.errandId());
-        if (existing.isPresent()) return response(existing.get(), user, request);
-        var available =
-                creditAccountRepository.findBalanceByUserId(user).orElseThrow().availableBalance();
-        var state = available >= request.amount() ? RESERVED : INSUFFICIENT_BALANCE;
-        int inserted = creditReservationRepository.reserve(
-                request.errandId(), request.operationId(), user, request.amount(), state);
-        var reservation =
-                creditReservationRepository.findById(request.errandId()).orElseThrow(ReservationConflictException::new);
-        var result = response(reservation, user, request);
-        if (inserted == 1 && state == RESERVED) {
-            creditTransactionLogRepository.record(
-                    request.operationId(), request.errandId(), user, null, request.amount(), "RESERVE");
+        creditAccountRepository.findForUpdateById(user).orElseThrow(CreditAccountPendingException::new);
+        var existingReservation =
+                creditReservationRepository.findById(request.errandId()).orElse(null);
+
+        if (existingReservation != null) {
+            validateReservation(existingReservation, user, request);
+            return buildReservationResponse(existingReservation);
         }
-        return result;
+
+        var availableBalance = creditAccountRepository
+                .findBalanceByUserId(user)
+                .orElseThrow(CreditAccountPendingException::new)
+                .availableBalance();
+
+        var state = RESERVED;
+        OffsetDateTime settledAt = null;
+        if (availableBalance < request.amount()) {
+            state = INSUFFICIENT_BALANCE;
+            settledAt = OffsetDateTime.now();
+        }
+        var reservation = CreditReservation.builder()
+                .errandId(request.errandId())
+                .operationId(request.operationId())
+                .userId(user)
+                .amount(request.amount())
+                .state(state)
+                .settledAt(settledAt)
+                .build();
+
+        try {
+            creditReservationRepository.saveAndFlush(reservation);
+        } catch (DataIntegrityViolationException exception) {
+            throw new ReservationConflictException();
+        }
+
+        if (reservation.isReserved()) {
+            eventPublisher.publishEvent(
+                    new CreditReservedEvent(request.operationId(), request.errandId(), user, request.amount()));
+        }
+
+        return buildReservationResponse(reservation);
     }
 
     @Transactional
@@ -49,12 +80,17 @@ public class CreditReservationService {
         return reserve(userId, request);
     }
 
-    private CreditReservationResponse response(CreditReservation stored, UUID user, ReserveCreditRequest request) {
+    private void validateReservation(CreditReservation stored, UUID user, ReserveCreditRequest request) {
         if (!stored.getOperationId().equals(request.operationId())
                 || !stored.getUserId().equals(user)
                 || stored.getAmount() != request.amount()) throw new ReservationConflictException();
-        // A repeat reservation retains its original decision even after refund or payment.
-        return new CreditReservationResponse(
-                (stored.getState() == INSUFFICIENT_BALANCE ? INSUFFICIENT_BALANCE : RESERVED).name());
+    }
+
+    // A repeat reservation retains its original decision even after refund or payment.
+    private CreditReservationResponse buildReservationResponse(CreditReservation stored) {
+        if (stored.isInsufficientBalance()) {
+            return new CreditReservationResponse(INSUFFICIENT_BALANCE);
+        }
+        return new CreditReservationResponse(RESERVED);
     }
 }

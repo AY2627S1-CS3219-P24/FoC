@@ -70,7 +70,6 @@ class UserCreatedRabbitIntegrationTests {
                         JsonMapper.builder().build().readTree(new String(received.getBody(), StandardCharsets.UTF_8));
                 assertThat(body.get("eventId").asText())
                         .isEqualTo(event.eventId().toString());
-                assertThat(body.get("eventType").asText()).isEqualTo("UserCreatedEvent");
                 assertThat(body.get("schemaVersion").asInt()).isEqualTo(1);
                 assertThat(body.get("payload").get("userId").asText())
                         .isEqualTo(event.payload().userId().toString());

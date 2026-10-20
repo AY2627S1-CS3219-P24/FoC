@@ -2,16 +2,18 @@ package com.cs3219.foc.credit.repository;
 
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.model.entity.CreditAccount;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 public interface CreditAccountRepository extends JpaRepository<CreditAccount, UUID> {
-    @Query(value = "SELECT * FROM credit_accounts WHERE user_id = :userId FOR UPDATE", nativeQuery = true)
-    Optional<CreditAccount> lockByUserId(@Param("userId") UUID userId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM CreditAccount a WHERE a.userId = :id")
+    Optional<CreditAccount> findForUpdateById(UUID id);
 
     @Query("""
             SELECT new com.cs3219.foc.credit.model.dto.CreditBalanceResponse(
@@ -22,21 +24,7 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
             WHERE a.userId = :userId
             GROUP BY a.userId, a.totalBalance
             """)
-    Optional<CreditBalanceResponse> findBalanceByUserId(@Param("userId") UUID userId);
-
-    @Modifying
-    @Query(
-            value =
-                    "UPDATE credit_accounts SET total_balance = total_balance - :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
-            nativeQuery = true)
-    int debitTotal(@Param("userId") UUID userId, @Param("amount") long amount);
-
-    @Modifying
-    @Query(
-            value =
-                    "UPDATE credit_accounts SET total_balance = total_balance + :amount, updated_at = CURRENT_TIMESTAMP WHERE user_id = :userId",
-            nativeQuery = true)
-    int creditTotal(@Param("userId") UUID userId, @Param("amount") long amount);
+    Optional<CreditBalanceResponse> findBalanceByUserId(UUID userId);
 
     @Modifying
     @Query(value = """
@@ -44,5 +32,5 @@ public interface CreditAccountRepository extends JpaRepository<CreditAccount, UU
                     VALUES (:userId, :initialAllocation)
                     ON CONFLICT (user_id) DO NOTHING
                     """, nativeQuery = true)
-    int initializeIfAbsent(@Param("userId") UUID userId, @Param("initialAllocation") long initialAllocation);
+    void initializeIfAbsent(UUID userId, long initialAllocation);
 }

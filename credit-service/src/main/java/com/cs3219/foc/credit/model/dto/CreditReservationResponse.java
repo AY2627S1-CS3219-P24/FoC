@@ -1,3 +1,5 @@
 package com.cs3219.foc.credit.model.dto;
 
-public record CreditReservationResponse(String outcome) {}
+import com.cs3219.foc.credit.model.entity.ReservationState;
+
+public record CreditReservationResponse(ReservationState outcome) {}

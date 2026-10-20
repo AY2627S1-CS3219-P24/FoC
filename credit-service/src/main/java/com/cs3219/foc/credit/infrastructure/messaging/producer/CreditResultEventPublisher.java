@@ -1,7 +1,9 @@
 package com.cs3219.foc.credit.infrastructure.messaging.producer;
 
 import com.cs3219.foc.credit.config.EventPublicationProperties;
-import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditPaidEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditRefundedEvent;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -16,19 +18,29 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class CreditResultEventPublisher {
-    public static final String SETTLEMENT_BINDING = "creditSettlementResult-out-0";
+    public static final String REFUND_BINDING = "creditRefunded-out-0";
+    public static final String PAYOUT_BINDING = "creditPaid-out-0";
     private final StreamBridge streamBridge;
     private final EventPublicationProperties properties;
 
-    @ApplicationModuleListener(id = "credit-settlement-rabbit")
-    public void publish(CreditSettlementResultEvent event) {
+    @ApplicationModuleListener(id = "credit-refunded-rabbit")
+    public void publish(CreditRefundedEvent event) {
+        send(REFUND_BINDING, event.eventId(), event);
+    }
+
+    @ApplicationModuleListener(id = "credit-paid-rabbit")
+    public void publish(CreditPaidEvent event) {
+        send(PAYOUT_BINDING, event.eventId(), event);
+    }
+
+    private void send(String binding, UUID eventId, Object event) {
         // Correlation is per attempt; the business event ID remains unchanged on every retry.
         var correlation = new CorrelationData();
         var message = MessageBuilder.withPayload(event)
                 .setHeader(AmqpHeaders.PUBLISH_CONFIRM_CORRELATION, correlation)
-                .setHeader("eventId", event.eventId().toString())
+                .setHeader("eventId", eventId.toString())
                 .build();
-        if (!streamBridge.send(SETTLEMENT_BINDING, message)) {
+        if (!streamBridge.send(binding, message)) {
             throw new IllegalStateException("Credit result message was not accepted for publication");
         }
         try {

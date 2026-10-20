@@ -4,33 +4,40 @@ import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(name = "credit_transaction_log")
 @Getter
+@Builder
+@AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CreditTransactionLog {
     @Id
-    @Column(name = "operation_id")
+    @Column
     private UUID operationId;
 
-    @Column(name = "errand_id")
+    @Column
     private UUID errandId;
 
-    @Column(name = "user_id")
+    @Column
     private UUID userId;
 
-    @Column(name = "courier_id")
+    @Column
     private UUID courierId;
 
-    @Column(name = "amount")
+    @Column
     private long amount;
 
-    @Column(name = "transaction_type")
-    private String transactionType;
+    @Enumerated(EnumType.STRING)
+    @Column
+    private CreditTransactionType transactionType;
 
-    @Column(name = "created_at")
+    @CreationTimestamp
+    @Column(nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 }
