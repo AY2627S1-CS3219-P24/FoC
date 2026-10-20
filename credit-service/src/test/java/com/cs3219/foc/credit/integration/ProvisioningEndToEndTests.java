@@ -300,8 +300,7 @@ class ProvisioningEndToEndTests {
                     "--spring.cloud.aws.region.static=ap-southeast-1",
                     "--spring.cloud.aws.credentials.access-key=test",
                     "--spring.cloud.aws.credentials.secret-key=test",
-                    "--spring.cloud.aws.sqs.endpoint=" + endpoint,
-                    "--spring.cloud.aws.s3.enabled=false"));
+                    "--spring.cloud.aws.sqs.endpoint=" + endpoint));
         }
 
         void startUser() {
@@ -342,6 +341,7 @@ class ProvisioningEndToEndTests {
                     "--spring.cloud.aws.sqs.listener.poll-timeout=2s",
                     "--spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1:" + userPort
                             + "/api/.well-known/jwks.json",
+                    "--spring.cloud.aws.s3.enabled=false",
                     "--events.messaging.topic-arn=" + creditTopicArn,
                     "--events.messaging.queue-name=" + "foc-credit-e2e-" + suffix));
             credit = new SpringApplicationBuilder(CreditServiceApplication.class).run(args.toArray(String[]::new));
