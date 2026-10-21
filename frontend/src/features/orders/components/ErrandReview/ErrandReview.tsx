@@ -9,13 +9,15 @@ export const ErrandReview = ({
   onEdit,
   onSubmit,
   pending,
-  error,
+  canEdit = true,
+  submitLabel,
 }: {
   values: CreateErrandValues
   onEdit: () => void
   onSubmit: () => void
   pending: boolean
-  error?: Error | null
+  canEdit?: boolean
+  submitLabel?: string
 }) => (
   <section className={styles.panel}>
     <dl className={details.details}>
@@ -25,30 +27,30 @@ export const ErrandReview = ({
         <small>{values.pickup?.address}</small>
       </dd>
       <dt>Deliver to</dt>
-      <dd>{values.delivery}</dd>
+      <dd>{values.deliveryLocation}</dd>
       <dt>Item</dt>
       <dd>{values.description}</dd>
       <dt>Notes</dt>
       <dd>{values.notes || 'None'}</dd>
       <dt>Reward</dt>
-      <dd>{values.reward} credits</dd>
+      <dd>{values.creditReward} credits</dd>
       <dt>Expiry</dt>
       <dd>{expiryLabel(values.expiryMinutes)} after posting</dd>
     </dl>
     <p className={styles.muted}>
-      {values.reward} credits will be reserved when your request is posted.
+      {values.creditReward} credits will be reserved when your request is
+      posted.
     </p>
-    {error && (
-      <p className={styles.error} role="alert">
-        {error.message} Your request details have been kept.
-      </p>
-    )}
     <div className={styles.actions}>
-      <Button className={styles.secondary} disabled={pending} onClick={onEdit}>
+      <Button
+        className={styles.secondary}
+        disabled={pending || !canEdit}
+        onClick={onEdit}
+      >
         Back to edit
       </Button>
       <Button className={styles.button} disabled={pending} onClick={onSubmit}>
-        {pending ? 'Posting…' : 'Post request'}
+        {pending ? 'Posting…' : (submitLabel ?? 'Post request')}
       </Button>
     </div>
   </section>

@@ -8,15 +8,19 @@ import {
   uploadAvatar,
 } from '../api/userProfile.api'
 import type { UserProfileDto } from '../types/auth.types'
+import { useSession } from './useSession'
 
 export const profileKey = ['current-user', 'profile'] as const
 
-export const useUserProfile = () =>
-  useQuery({
+export const useUserProfile = () => {
+  const { userId } = useSession()
+  return useQuery({
     queryKey: profileKey,
     queryFn: ({ signal }) => getUserProfile(signal),
+    enabled: !!userId,
     refetchInterval: 5 * 60_000,
   })
+}
 
 export const useProfileActions = () => {
   const client = useQueryClient()

@@ -1,30 +1,20 @@
 import { useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
-import { categories, favouriteLocations } from './requesterHome.data'
+import { categories } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
 import { Link } from '@tanstack/react-router'
 import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
-import {
-  OrderPreviewNotice,
-  OrderFeedback,
-} from '../../components/OrderFeedback/OrderFeedback'
-import { useOrders, useOrderClock } from '../../hooks/useOrders'
-import { ordersPreviewEnabled } from '../../api/orders.api'
+import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
+import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+
 import common from '../../styles/order.module.scss'
 
 export const RequesterHomePage = () => {
-  const orders = useOrders()
+  const orders = useMyErrands({ as: 'all', view: 'all', page: 0, size: 3 })
   const now = useOrderClock()
-  const recent = (orders.data ?? [])
-    .filter(
-      (order) =>
-        order.requester.id === orders.user?.id ||
-        order.courier?.id === orders.user?.id,
-    )
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-    .slice(0, 3)
+  const recent = orders.data?.items ?? []
   const [preview, setPreview] = useState<{
     title: string
     description: string
@@ -54,44 +44,22 @@ export const RequesterHomePage = () => {
 
       <section className={styles.section} aria-labelledby="favourites-heading">
         <h2 id="favourites-heading">Favourite locations</h2>
-        {!ordersPreviewEnabled && (
-          <p className={common.muted}>
-            Your favourite locations will appear here when favourites are
-            connected.
-          </p>
-        )}
-        {ordersPreviewEnabled && (
-          <ul className={styles.cards}>
-            {favouriteLocations.map((location) => (
-              <li key={location.id}>
-                <Button
-                  className={styles.card}
-                  onClick={() =>
-                    setPreview({
-                      title: location.name,
-                      description: `${location.hours}. This is a sample location; live hours and location details are not connected yet.`,
-                    })
-                  }
-                >
-                  <span>
-                    <span className={styles.cardTitle}>{location.name}</span>{' '}
-                    <span className={styles.status}>{location.hours}</span>
-                  </span>
-                  <span className={styles.arrow} aria-hidden="true">
-                    ›
-                  </span>
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ul className={styles.cards}>
+          <li>
+            <div className={styles.card} aria-disabled="true">
+              <span className={styles.cardTitle}>
+                Favourites not connected yet
+              </span>
+            </div>
+          </li>
+        </ul>
       </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
-        <OrderPreviewNotice />
+
         <OrderFeedback
-          error={orders.error ?? orders.identityError}
+          error={orders.error}
           loading={orders.isPending}
           retry={() => void orders.refetch()}
         />
@@ -99,7 +67,7 @@ export const RequesterHomePage = () => {
           <ul className={common.list}>
             {recent.map((order) => (
               <li key={order.id}>
-                <OrderCard order={order} userId={orders.user!.id} now={now} />
+                <OrderCard order={order} userId={orders.userId!} now={now} />
               </li>
             ))}
           </ul>

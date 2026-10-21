@@ -1,66 +1,58 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
-import {
-  OrderPreviewNotice,
-  OrderFeedback,
-} from '../../components/OrderFeedback/OrderFeedback'
-import { useOrderClock, useOrders } from '../../hooks/useOrders'
-import { isExpired, isTerminal } from '../../utils/orderPermissions'
-import type { OrderListSearch } from '../../types/errand.types'
+import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
+import { OrderPagination } from '../../components/OrderPagination/OrderPagination'
+import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+import type { OrderListSearch } from '../../utils/orderFilters'
 import styles from '../../styles/order.module.scss'
 
 export const MyErrandsPage = () => {
   const search = useSearch({ from: '/authenticated/user/errands' })
   const navigate = useNavigate()
-  const query = useOrders()
-  const now = useOrderClock()
-  const orders = (query.data ?? []).filter((order) => {
-    const requested = order.requester.id === query.user?.id
-    const delivering = order.courier?.id === query.user?.id
-    return (
-      (requested || delivering) &&
-      (search.participation === 'all' ||
-        (search.participation === 'requested' ? requested : delivering)) &&
-      (isTerminal(order) || isExpired(order, now)) ===
-        (search.tab === 'history')
-    )
+  const query = useMyErrands({
+    as:
+      search.participation === 'requested'
+        ? 'requester'
+        : search.participation === 'delivering'
+          ? 'courier'
+          : 'all',
+    view: search.tab,
+    page: search.page,
+    size: 20,
   })
+  const now = useOrderClock()
   return (
     <div className={styles.page}>
       <h1>My Errands</h1>
-      <OrderPreviewNotice />
       <div className={styles.toolbar}>
         <nav className={styles.tabs} aria-label="Errand history">
-          <Link
-            to="/errands"
-            search={{ ...search, tab: 'active' }}
-            aria-current={search.tab === 'active' ? 'page' : undefined}
-          >
-            Active
-          </Link>
-          <Link
-            to="/errands"
-            search={{ ...search, tab: 'history' }}
-            aria-current={search.tab === 'history' ? 'page' : undefined}
-          >
-            History
-          </Link>
+          {(['active', 'history'] as const).map((tab) => (
+            <Link
+              key={tab}
+              to="/errands"
+              search={{ ...search, tab, page: 0 }}
+              aria-current={search.tab === tab ? 'page' : undefined}
+            >
+              {tab === 'active' ? 'Active' : 'History'}
+            </Link>
+          ))}
         </nav>
         <label className={styles.filter}>
           Type
           <select
             className={styles.select}
             value={search.participation}
-            onChange={(event) => {
+            onChange={(event) =>
               void navigate({
                 to: '/errands',
                 search: {
                   ...search,
                   participation: event.target
                     .value as OrderListSearch['participation'],
+                  page: 0,
                 },
               })
-            }}
+            }
           >
             <option value="all">All</option>
             <option value="requested">Requested by me</option>
@@ -69,19 +61,22 @@ export const MyErrandsPage = () => {
         </label>
       </div>
       <OrderFeedback
-        error={query.error ?? query.identityError}
+        error={query.error}
         loading={query.isPending}
-        retry={() => {
-          void query.refetch()
-        }}
+        retry={() => void query.refetch()}
       />
-      {query.data && (
+      {query.data && query.userId && !query.error && (
         <>
-          {orders.length ? (
+          {query.data.items.length ? (
             <ul className={styles.list}>
-              {orders.map((order) => (
+              {query.data.items.map((order) => (
                 <li key={order.id}>
-                  <OrderCard order={order} userId={query.user!.id} now={now} />
+                  <OrderCard
+                    order={order}
+                    userId={query.userId!}
+                    now={now}
+                    listSearch={search}
+                  />
                 </li>
               ))}
             </ul>
@@ -101,6 +96,18 @@ export const MyErrandsPage = () => {
               .
             </div>
           )}
+          <OrderPagination
+            page={search.page}
+            total={query.data.total}
+            pending={query.isFetching}
+            onPage={(page) =>
+              void navigate({
+                to: '/errands',
+                search: { ...search, page },
+                replace: true,
+              })
+            }
+          />
         </>
       )}
     </div>

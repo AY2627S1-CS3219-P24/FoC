@@ -227,9 +227,11 @@ class OrderCreditIntegrationTests {
         UUID uncertainId;
         orders.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
         try {
-            request("POST", "", requester, creationBody(uncertainKey, 1), 500);
+            JsonNode failure = request("POST", "", requester, creationBody(uncertainKey, 1), 500);
             uncertainId =
                     orders.queryForObject("SELECT id FROM errands WHERE create_request_id=?", UUID.class, uncertainKey);
+            assertThat(failure.get("code").asText()).isEqualTo("ORDER_CREATION_ERROR");
+            assertThat(failure.get("errandId").asText()).isEqualTo(uncertainId.toString());
             awaitOrder(uncertainId, "CREATING", null);
             assertThat(credits.queryForObject(
                             "SELECT state FROM credit_reservations WHERE errand_id=?", String.class, uncertainId))
@@ -238,9 +240,12 @@ class OrderCreditIntegrationTests {
             orders.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
         }
         var simultaneous = new CyclicBarrier(2);
+        JsonNode recovery = request("GET", "/" + uncertainId, requester, null, 200);
+        assertThat(recovery.get("createRequestId").asText()).isEqualTo(uncertainKey.toString());
+        assertThat(recovery.has("expiryMinutes")).isFalse();
         Callable<JsonNode> retry = () -> {
             simultaneous.await(10, TimeUnit.SECONDS);
-            return request("POST", "", requester, creationBody(uncertainKey, 1), 200);
+            return request("POST", "/" + uncertainId + "/retry-creation", requester, null, 200);
         };
         var retryA = executor.submit(retry);
         var retryB = executor.submit(retry);

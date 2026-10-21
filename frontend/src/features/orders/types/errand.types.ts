@@ -1,4 +1,6 @@
 export const ERRAND_STATUSES = [
+  'CREATING',
+  'CREATE_FAILED',
   'OPEN',
   'ACCEPTED',
   'PICKED_UP',
@@ -8,7 +10,7 @@ export const ERRAND_STATUSES = [
 ] as const
 export type ErrandStatus = (typeof ERRAND_STATUSES)[number]
 export type OrderAction = 'accept' | 'pickup' | 'complete' | 'cancel'
-export type OrderUser = { id: string; name: string }
+export type OrderUser = { id: string; name: string | null }
 export type PickupLocation = { id: string; name: string; address: string }
 export type CreditState =
   'RESERVED' | 'SETTLEMENT_PENDING' | 'SETTLED' | 'RELEASE_PENDING' | 'RELEASED'
@@ -16,30 +18,57 @@ export type Errand = {
   id: string
   requester: OrderUser
   courier: OrderUser | null
-  pickup: PickupLocation
-  delivery: string
+  supplierId: string
+  pickup: { name: string; address: string }
+  deliveryLocation: string
   description: string
   notes: string
-  reward: number
+  creditReward: number
   status: ErrandStatus
-  creditState: CreditState
+  creditState: CreditState | null
+  creationFailureCode: string | null
   createdAt: string
+  updatedAt: string
   expiresAt: string
-  acceptedAt?: string
-  pickedUpAt?: string
-  endedAt?: string
+  acceptedAt: string | null
+  pickedUpAt: string | null
+  endedAt: string | null
+  createRequestId: string | null
 }
-export type OrderListSearch = {
-  tab: 'active' | 'history'
-  participation: 'all' | 'requested' | 'delivering'
+export type OrderErrorResponse = {
+  code: string
+  message: string
+  errandId?: string
 }
-export const parseOrderListSearch = (
-  search: Record<string, unknown>,
-): OrderListSearch => ({
-  tab: search.tab === 'history' ? 'history' : 'active',
-  participation:
-    search.participation === 'requested' ||
-    search.participation === 'delivering'
-      ? search.participation
-      : 'all',
-})
+export type OrderPage = {
+  items: Array<Errand>
+  total: number
+  page: number
+  size: number
+}
+export type CreateOrderRequest = {
+  createRequestId: string
+  supplierId: string
+  deliveryLocation: string
+  description: string
+  notes: string
+  creditReward: number
+  expiryMinutes: number
+}
+export type CreateOrderResponse = {
+  errandId: string
+  status: ErrandStatus
+  creationFailureCode: string | null
+  queryUrl: string
+}
+export type OrderActionResponse = {
+  errandId: string
+  status: ErrandStatus
+  creditState: CreditState | null
+}
+export type MineParams = {
+  as: 'all' | 'requester' | 'courier'
+  view: 'all' | 'active' | 'history'
+  page: number
+  size: number
+}

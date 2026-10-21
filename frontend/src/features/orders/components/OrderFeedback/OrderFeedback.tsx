@@ -1,7 +1,26 @@
 import { Button } from '@base-ui/react/button'
-import { ordersPreviewEnabled } from '../../api/orders.api'
+import { orderErrorMessage } from '../../utils/orderErrors'
 import styles from '../../styles/order.module.scss'
+import type { ReactNode } from 'react'
 
+export const OrderNotice = ({
+  tone,
+  title,
+  children,
+}: {
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  children?: ReactNode
+}) => (
+  <div
+    className={styles.feedback}
+    data-tone={tone}
+    role={tone === 'error' ? 'alert' : 'status'}
+  >
+    <strong>{title}</strong>
+    {children && <p>{children}</p>}
+  </div>
+)
 export const OrderFeedback = ({
   error,
   loading,
@@ -12,21 +31,13 @@ export const OrderFeedback = ({
   retry?: () => void
 }) =>
   error ? (
-    <div className={styles.feedback} role="alert">
-      <p>{error.message}</p>
+    <OrderNotice tone="error" title={orderErrorMessage(error)}>
       {retry && (
         <Button className={styles.secondary} onClick={retry}>
           Try again
         </Button>
       )}
-    </div>
+    </OrderNotice>
   ) : loading ? (
     <p role="status">Loading errands…</p>
-  ) : null
-export const OrderPreviewNotice = () =>
-  ordersPreviewEnabled ? (
-    <p className={styles.notice}>
-      UI preview · Sample data only. Changes reset on reload; no real orders or
-      credits are affected.
-    </p>
   ) : null

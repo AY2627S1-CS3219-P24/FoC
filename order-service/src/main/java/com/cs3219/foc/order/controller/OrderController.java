@@ -27,23 +27,25 @@ public class OrderController {
     @GetMapping
     public PageDto<ErrandDto> list(
             @RequestParam(required = false) UUID requesterId,
+            @RequestParam(defaultValue = "") String q,
             @PageableDefault(
                             size = 20,
                             sort = {"createdAt", "id"},
                             direction = Sort.Direction.DESC)
                     Pageable pageable) {
-        return orderService.list(requesterId, pageable);
+        return orderService.list(requesterId, q, pageable);
     }
 
     @GetMapping("/mine")
     public PageDto<ErrandDto> mine(
             @RequestParam(defaultValue = "requester") String as,
+            @RequestParam(defaultValue = "all") String view,
             @PageableDefault(
                             size = 20,
                             sort = {"createdAt", "id"},
                             direction = Sort.Direction.DESC)
                     Pageable pageable) {
-        return orderService.mine(as, pageable);
+        return orderService.mine(as, view, pageable);
     }
 
     @GetMapping("/{id}")
@@ -54,6 +56,12 @@ public class OrderController {
     @PostMapping("/{id}/accept")
     public ErrandActionResponse accept(@PathVariable UUID id) {
         return orderService.accept(id);
+    }
+
+    @PostMapping("/{id}/retry-creation")
+    public ResponseEntity<CreateErrandResponse> retryCreation(@PathVariable UUID id) {
+        CreateErrandResponse result = orderService.retryCreation(id);
+        return ResponseEntity.ok().location(URI.create(result.queryUrl())).body(result);
     }
 
     @PostMapping("/{id}/pick-up")

@@ -8,11 +8,11 @@ type RoleSwitcherProps = {
 }
 
 export const RoleSwitcher = ({ activeMode }: RoleSwitcherProps) => {
-  const currentLabel = activeMode === 'requestor' ? 'Request' : 'Deliver'
+  const currentLabel = activeMode === 'requestor' ? 'Requester' : 'Courier'
   const alternate =
     activeMode === 'requestor'
-      ? { label: 'Deliver', mode: 'courier' as const }
-      : { label: 'Request', mode: 'requestor' as const }
+      ? { label: 'Courier', mode: 'courier' as const }
+      : { label: 'Requester', mode: 'requestor' as const }
 
   return (
     <Menu.Root>

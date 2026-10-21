@@ -2,11 +2,18 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { refreshSession } from '../api/refreshSession.api'
 import type { AccessTokenResponse } from '../types/auth.types'
-import { getAccessToken, setAccessToken } from './accessTokenStore'
+import {
+  getAccessToken,
+  getSessionVersion,
+  setAccessToken,
+} from './accessTokenStore'
 import { invalidateRefresh, refreshAccessToken } from './refreshAccessToken'
 import { AuthRequestError } from './authRequest'
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
+
+const token = (sub: string, revision: number) =>
+  `header.${btoa(JSON.stringify({ sub, revision }))}.signature`
 
 afterEach(() => {
   setAccessToken(null)
@@ -36,3 +43,44 @@ it.each(['success', '401', 'service error'])(
     expect(getAccessToken()).toBe('new-login')
   },
 )
+
+it('rotates the same user token without changing the login session', async () => {
+  setAccessToken(token('A', 1))
+  const version = getSessionVersion()
+  const next = token('A', 2)
+  vi.mocked(refreshSession).mockResolvedValue({
+    accessToken: next,
+    expiresAt: 'unused',
+  })
+
+  expect(await refreshAccessToken()).toBe(next)
+  expect(getAccessToken()).toBe(next)
+  expect(getSessionVersion()).toBe(version)
+})
+
+it('rejects a refreshed identity from another account before installing its token', async () => {
+  const original = token('A', 1)
+  setAccessToken(original)
+  vi.mocked(refreshSession).mockResolvedValue({
+    accessToken: token('B', 1),
+    expiresAt: 'unused',
+  })
+
+  await expect(refreshAccessToken()).rejects.toMatchObject({
+    name: 'AuthRequestError',
+    status: 401,
+  })
+  expect(getAccessToken()).toBe(original)
+})
+
+it('allows initial cookie recovery when there is no previous identity', async () => {
+  setAccessToken(null)
+  const restored = token('B', 1)
+  vi.mocked(refreshSession).mockResolvedValue({
+    accessToken: restored,
+    expiresAt: 'unused',
+  })
+
+  expect(await refreshAccessToken()).toBe(restored)
+  expect(getAccessToken()).toBe(restored)
+})

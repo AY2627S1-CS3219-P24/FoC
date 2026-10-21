@@ -17,6 +17,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(OrderCreationAttemptException.class)
+    ResponseEntity<ErrorResponse> creationAttempt(OrderCreationAttemptException e) {
+        log.error("Order creation attempt failed errandId={}", e.getErrandId(), e.getCause());
+        boolean upstream = e.getCause() instanceof RestClientException;
+        return ResponseEntity.status(upstream ? HttpStatus.BAD_GATEWAY : HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(
+                        upstream ? "ORDER_CREATION_UNCONFIRMED" : "ORDER_CREATION_ERROR",
+                        upstream ? "Creation result is not confirmed" : "Unable to finalize order creation",
+                        e.getErrandId()));
+    }
+
     @ExceptionHandler(CreditAccountPendingException.class)
     ResponseEntity<ErrorResponse> accountPending(CreditAccountPendingException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

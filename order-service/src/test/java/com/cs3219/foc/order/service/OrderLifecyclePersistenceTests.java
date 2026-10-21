@@ -8,6 +8,8 @@ import static org.mockito.Mockito.*;
 import com.cs3219.foc.order.config.OrderProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
 import com.cs3219.foc.order.exception.OrderConflictException;
+import com.cs3219.foc.order.exception.OrderCreationAttemptException;
+import com.cs3219.foc.order.exception.OrderNotFoundException;
 import com.cs3219.foc.order.infrastructure.client.*;
 import com.cs3219.foc.order.mapper.ErrandMapper;
 import com.cs3219.foc.order.model.dto.*;
@@ -155,6 +157,76 @@ class OrderLifecyclePersistenceTests {
         return created.errandId();
     }
 
+    @Test
+    void retryMetadataIsOnlyExposedToTheRequesterInDetail() {
+        var input = request();
+        var id = service.create(input).errandId();
+        assertThat(service.get(id).createRequestId()).isEqualTo(input.createRequestId());
+        assertThat(service.mine("all", "active", PageRequest.of(0, 20))
+                        .items()
+                        .getFirst()
+                        .createRequestId())
+                .isNull();
+        as(UUID.randomUUID());
+        assertThat(service.get(id).createRequestId()).isNull();
+        as(UUID.randomUUID(), "ADMIN");
+    }
+
+    @Test
+    void mineFiltersBothRolesBeforePagingAndIncludesInternalStates() {
+        UUID own = open();
+        UUID other = UUID.randomUUID();
+        as(other);
+        UUID delivery = service.create(request()).errandId();
+        as(requester);
+        service.accept(delivery);
+        var active = service.mine("all", "active", PageRequest.of(0, 1));
+        assertThat(active.total()).isEqualTo(2);
+        assertThat(active.items()).hasSize(1);
+        assertThat(service.mine("courier", "active", PageRequest.of(0, 20)).items())
+                .extracting(ErrandDto::id)
+                .containsExactly(delivery);
+        service.cancel(own);
+        assertThat(service.mine("requester", "history", PageRequest.of(0, 20)).items())
+                .extracting(ErrandDto::id)
+                .containsExactly(own);
+        jdbc.update(
+                "UPDATE errands SET status='CREATING',credit_state=NULL,settlement_event_id=NULL,ended_at=NULL WHERE id=?",
+                own);
+        assertThat(service.mine("requester", "active", PageRequest.of(0, 20)).items())
+                .hasSize(1);
+        jdbc.update(
+                "UPDATE errands SET status='CREATE_FAILED',creation_failure_code='INSUFFICIENT_BALANCE' WHERE id=?",
+                own);
+        assertThat(service.mine("requester", "history", PageRequest.of(0, 20)).items())
+                .hasSize(1);
+        assertThatThrownBy(() -> service.mine("invalid", "all", PageRequest.of(0, 20)))
+                .isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> service.mine("all", "invalid", PageRequest.of(0, 20)))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void availableSearchIsCaseInsensitiveLiteralAndExcludesOwnAndExpiredOrders() {
+        UUID own = open();
+        UUID other = UUID.randomUUID();
+        as(other);
+        UUID visible = service.create(request()).errandId();
+        jdbc.update("UPDATE errands SET description='Printed_100%!',delivery_location='Library' WHERE id=?", visible);
+        as(requester);
+        assertThat(service.list(null, "PRINTED_100%!", PageRequest.of(0, 20)).items())
+                .extracting(ErrandDto::id)
+                .containsExactly(visible);
+        assertThat(service.list(null, "Library", PageRequest.of(0, 20)).items()).hasSize(1);
+        assertThat(service.list(null, "Printed_101%", PageRequest.of(0, 20)).items())
+                .isEmpty();
+        assertThat(service.list(null, "Cafe", PageRequest.of(0, 20)).items())
+                .extracting(ErrandDto::id)
+                .doesNotContain(own);
+        clock.time.set(START.plusSeconds(61));
+        assertThat(service.list(null, "", PageRequest.of(0, 20)).items()).isEmpty();
+    }
+
     private long count(Class<?> type) {
         return facts.events.stream().filter(type::isInstance).count();
     }
@@ -282,24 +354,26 @@ class OrderLifecyclePersistenceTests {
     void ownerAndAdminFindInternalCreationRecordsButMarketplaceDoesNot() {
         var pendingRequest = request();
         doThrow(new RestClientException("Connection lost")).when(credit).reserve(any());
-        assertThatThrownBy(() -> service.create(pendingRequest)).isInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(pendingRequest))
+                .isInstanceOf(OrderCreationAttemptException.class)
+                .hasCauseInstanceOf(RestClientException.class);
         var pending = jdbc.queryForObject(
                 "SELECT id FROM errands WHERE create_request_id=?", UUID.class, pendingRequest.createRequestId());
         doReturn(new CreditReservationResponse("INSUFFICIENT_BALANCE"))
                 .when(credit)
                 .reserve(any());
         var failed = service.create(request()).errandId();
-        assertThat(service.mine("requester", PageRequest.of(0, 20)).items())
+        assertThat(service.mine("requester", "all", PageRequest.of(0, 20)).items())
                 .extracting(ErrandDto::id)
                 .containsExactlyInAnyOrder(pending, failed);
         var outsider = UUID.randomUUID();
         as(outsider);
-        assertThat(service.list(null, PageRequest.of(0, 20)).items()).isEmpty();
+        assertThat(service.list(null, "", PageRequest.of(0, 20)).items()).isEmpty();
         assertThatThrownBy(() -> service.get(pending)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> service.list(requester, PageRequest.of(0, 20)))
+        assertThatThrownBy(() -> service.list(requester, "", PageRequest.of(0, 20)))
                 .isInstanceOf(AccessDeniedException.class);
         as(outsider, "ADMIN");
-        assertThat(service.list(requester, PageRequest.of(0, 20)).items()).hasSize(2);
+        assertThat(service.list(requester, "", PageRequest.of(0, 20)).items()).hasSize(2);
         assertThat(service.get(failed).creationFailureCode()).isEqualTo("INSUFFICIENT_BALANCE");
     }
 
@@ -644,7 +718,9 @@ class OrderLifecyclePersistenceTests {
                 .when(credit)
                 .reserve(any());
         var req = request();
-        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(OrderCreationAttemptException.class)
+                .hasCauseInstanceOf(RestClientException.class);
         UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
         var original = service.get(id);
         assertThat(original.status().name()).isEqualTo("CREATING");
@@ -664,7 +740,8 @@ class OrderLifecyclePersistenceTests {
                         req.creditReward(),
                         req.expiryMinutes())))
                 .isInstanceOf(OrderConflictException.class);
-        var recovered = service.create(req);
+        var recovered = service.retryCreation(jdbc.queryForObject(
+                "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId()));
         assertThat(recovered.errandId()).isEqualTo(id);
         assertThat(recovered.status().name()).isEqualTo(outcome.equals("RESERVED") ? "OPEN" : "CREATE_FAILED");
         assertThat(recovered.creationFailureCode()).isEqualTo(outcome.equals("RESERVED") ? null : outcome);
@@ -678,11 +755,40 @@ class OrderLifecyclePersistenceTests {
     }
 
     @Test
+    void retryCreationIsRestrictedToTheOriginalRequesterEvenForAdmins() {
+        doThrow(new RestClientException("Response lost")).when(credit).reserve(any());
+        assertThatThrownBy(() -> service.create(request())).isInstanceOf(OrderCreationAttemptException.class);
+        UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
+        clearInvocations(credit);
+        as(UUID.randomUUID(), "ADMIN");
+        assertThatThrownBy(() -> service.retryCreation(id)).isInstanceOf(AccessDeniedException.class);
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> service.retryCreation(id)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.retryCreation(UUID.randomUUID())).isInstanceOf(OrderNotFoundException.class);
+        verifyNoInteractions(credit);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"OPEN", "ACCEPTED", "PICKED_UP", "COMPLETED", "CANCELLED", "EXPIRED", "CREATE_FAILED"})
+    void retryCreationReturnsAlreadyResolvedOrdersWithoutAnotherReservation(String state) {
+        UUID id = service.create(request()).errandId();
+        jdbc.update("UPDATE errands SET status=? WHERE id=?", state, id);
+        clearInvocations(credit);
+        assertThat(service.retryCreation(id).status().name()).isEqualTo(state);
+        verifyNoInteractions(credit);
+        assertThat(facts.events).isEmpty();
+    }
+
+    @Test
     void persistentHttpFailureKeepsTheOriginalRecordAvailableForAnotherRetry() {
         doThrow(new RestClientException("Credit unavailable")).when(credit).reserve(any());
         var req = request();
-        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
-        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(OrderCreationAttemptException.class)
+                .hasCauseInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(OrderCreationAttemptException.class)
+                .hasCauseInstanceOf(RestClientException.class);
         UUID id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
         assertThat(service.get(id).status().name()).isEqualTo("CREATING");
         assertThat(service.get(id).creditState()).isNull();
@@ -696,13 +802,16 @@ class OrderLifecyclePersistenceTests {
         jdbc.execute("ALTER TABLE errands ADD CONSTRAINT reject_open CHECK(status <> 'OPEN') NOT VALID");
         UUID id;
         try {
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> service.create(req))
+                    .isInstanceOf(OrderCreationAttemptException.class)
+                    .hasCauseInstanceOf(DataIntegrityViolationException.class);
             id = jdbc.queryForObject("SELECT id FROM errands", UUID.class);
             assertThat(service.get(id).status().name()).isEqualTo("CREATING");
         } finally {
             jdbc.execute("ALTER TABLE errands DROP CONSTRAINT reject_open");
         }
-        var recovered = service.create(req);
+        var recovered = service.retryCreation(jdbc.queryForObject(
+                "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId()));
         assertThat(recovered.errandId()).isEqualTo(id);
         assertThat(recovered.status().name()).isEqualTo("OPEN");
         verify(credit, times(2)).reserve(new ReserveCreditRequest(id, id, req.creditReward()));
@@ -717,9 +826,12 @@ class OrderLifecyclePersistenceTests {
                 .when(credit)
                 .reserve(any());
         var req = request();
-        assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(OrderCreationAttemptException.class)
+                .hasCauseInstanceOf(RestClientException.class);
         clock.time.set(START.plusSeconds(61));
-        var recovered = service.create(req);
+        var recovered = service.retryCreation(jdbc.queryForObject(
+                "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId()));
         assertThat(recovered.status().name()).isEqualTo("EXPIRED");
         assertThat(service.get(recovered.errandId()).creditState().name()).isEqualTo("RELEASE_PENDING");
         assertThat(service.create(req)).isEqualTo(recovered);
@@ -735,7 +847,9 @@ class OrderLifecyclePersistenceTests {
         for (CreditReservationResponse response : responses) {
             doReturn(response).when(credit).reserve(any());
             var req = request();
-            assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
+            assertThatThrownBy(() -> service.create(req))
+                    .isInstanceOf(OrderCreationAttemptException.class)
+                    .hasCauseInstanceOf(RestClientException.class);
             UUID id = jdbc.queryForObject(
                     "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId());
             assertThat(service.get(id).status().name()).isEqualTo("CREATING");
@@ -775,7 +889,8 @@ class OrderLifecyclePersistenceTests {
             });
             try {
                 assertThat(firstWaiting.await(10, TimeUnit.SECONDS)).isTrue();
-                var recovered = service.create(req);
+                var recovered = service.retryCreation(jdbc.queryForObject(
+                        "SELECT id FROM errands WHERE create_request_id=?", UUID.class, req.createRequestId()));
                 UUID id = recovered.errandId();
                 assertThat(recovered.status().name()).isEqualTo("OPEN");
                 UUID courier = null;

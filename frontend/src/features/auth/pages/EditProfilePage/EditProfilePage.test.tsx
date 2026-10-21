@@ -26,11 +26,12 @@ const profile = {
   avatarUrl: null,
 }
 const clients: QueryClient[] = []
+const accessToken = `header.${btoa(JSON.stringify({ sub: '1', roles: ['USER'] }))}.signature`
 
 beforeEach(() => {
   vi.resetAllMocks()
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  setAccessToken('token')
+  setAccessToken(accessToken)
   vi.mocked(api.getUserProfile).mockResolvedValue(profile)
   vi.mocked(getFaculties).mockResolvedValue([
     'School of Computing',
@@ -236,7 +237,7 @@ it('requests and resends an email change in place without saving the profile or 
   expect(api.updateUserProfile).not.toHaveBeenCalled()
   expect(api.changePassword).not.toHaveBeenCalled()
   expect(logoutUser).not.toHaveBeenCalled()
-  expect(getAccessToken()).toBe('token')
+  expect(getAccessToken()).toBe(accessToken)
   expect(router.state.location.pathname).toBe('/profile/edit')
 })
 

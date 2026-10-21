@@ -35,7 +35,13 @@ import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
 import { CreateErrandPage } from '#/features/orders/pages/CreateErrandPage/CreateErrandPage'
 import { MyErrandsPage } from '#/features/orders/pages/MyErrandsPage/MyErrandsPage'
 import { OrderDetailPage } from '#/features/orders/pages/OrderDetailPage/OrderDetailPage'
-import { parseOrderListSearch } from '#/features/orders/types/errand.types'
+import {
+  parseOrderListSearch,
+  parseAdminOrderSearch,
+  parsePage,
+} from '#/features/orders/utils/orderFilters'
+import { AdminOrderListPage } from '#/features/orders/pages/AdminOrderListPage/AdminOrderListPage'
+import { AdminOrderDetailPage } from '#/features/orders/pages/AdminOrderDetailPage/AdminOrderDetailPage'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -138,7 +144,11 @@ const editProfileRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/home',
-  validateSearch: (search: Record<string, unknown>): { mode?: HomeMode } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { mode?: HomeMode; q?: string; page?: number } => ({
+    q: typeof search.q === 'string' ? search.q : undefined,
+    page: search.page == null ? undefined : parsePage(search.page),
     mode:
       search.mode === 'requestor' || search.mode === 'courier'
         ? search.mode
@@ -171,6 +181,10 @@ const orderDetailRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/errands/$orderId',
   component: OrderDetailPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...parseOrderListSearch(search),
+    posted: search.posted === true || search.posted === 'true',
+  }),
 })
 
 // Below are admin routes
@@ -196,6 +210,19 @@ const adminIndexRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/',
   component: AdminOverviewPage,
+})
+
+const adminOrderListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/orders',
+  component: AdminOrderListPage,
+  validateSearch: parseAdminOrderSearch,
+})
+const adminOrderDetailRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/orders/$orderId',
+  component: AdminOrderDetailPage,
+  validateSearch: parseAdminOrderSearch,
 })
 
 const supplierListRoute = createRoute({
@@ -262,6 +289,8 @@ export const routeTree = rootRoute.addChildren([
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,
+      adminOrderListRoute,
+      adminOrderDetailRoute,
       supplierListRoute,
       supplierCreateRoute,
       supplierEditRoute,

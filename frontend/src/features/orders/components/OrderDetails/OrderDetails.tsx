@@ -12,7 +12,7 @@ const creditLabels = {
 export const OrderDetails = ({ order }: { order: Errand }) => (
   <section className={styles.panel}>
     <h2>
-      {order.pickup.name} → {order.delivery}
+      {order.pickup.name} → {order.deliveryLocation}
     </h2>
     <dl className={styles.details}>
       <dt>Pickup location</dt>
@@ -21,7 +21,7 @@ export const OrderDetails = ({ order }: { order: Errand }) => (
         <small>{order.pickup.address}</small>
       </dd>
       <dt>Deliver to</dt>
-      <dd>{order.delivery}</dd>
+      <dd>{order.deliveryLocation}</dd>
       <dt>Item(s)</dt>
       <dd>{order.description}</dd>
       {order.notes && (
@@ -31,12 +31,23 @@ export const OrderDetails = ({ order }: { order: Errand }) => (
         </>
       )}
       <dt>Requester</dt>
-      <dd>{order.requester.name}</dd>
+      <dd>{order.requester.name ?? 'Name unavailable'}</dd>
       <dt>Courier</dt>
-      <dd>{order.courier?.name ?? 'Not assigned yet'}</dd>
+      <dd>
+        {order.courier
+          ? (order.courier.name ?? 'Name unavailable')
+          : 'Not assigned yet'}
+      </dd>
       <dt>Reward</dt>
       <dd>
-        {order.reward} credits <small>{creditLabels[order.creditState]}</small>
+        {order.creditReward} credits{' '}
+        <small>
+          {order.creditState
+            ? creditLabels[order.creditState]
+            : order.status === 'CREATE_FAILED'
+              ? 'No credits reserved'
+              : 'Reservation not confirmed'}
+        </small>
       </dd>
       {order.status === 'OPEN' && (
         <>

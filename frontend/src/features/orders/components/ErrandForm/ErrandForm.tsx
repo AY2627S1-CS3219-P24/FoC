@@ -7,8 +7,6 @@ import {
   EXPIRY_MINUTES,
 } from '../../schemas/createErrand.schema'
 import { expiryLabel } from '../../utils/orderFormat'
-import { ordersPreviewEnabled } from '../../api/orders.api'
-import { samplePickups } from '../../mocks/orders.mock'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
 import common from '../../styles/order.module.scss'
 import styles from './ErrandForm.module.scss'
@@ -43,7 +41,6 @@ export const ErrandForm = ({
             value={field.value}
             onChange={field.onChange}
             error={errors.pickup?.message}
-            sampleLocations={ordersPreviewEnabled ? samplePickups : undefined}
           />
         )}
       />
@@ -53,13 +50,15 @@ export const ErrandForm = ({
           id="delivery"
           className={common.input}
           placeholder="Building, floor and meeting point"
-          {...register('delivery')}
-          aria-invalid={!!errors.delivery}
-          aria-describedby={errors.delivery ? 'delivery-error' : undefined}
+          {...register('deliveryLocation')}
+          aria-invalid={!!errors.deliveryLocation}
+          aria-describedby={
+            errors.deliveryLocation ? 'delivery-error' : undefined
+          }
         />
-        {errors.delivery && (
+        {errors.deliveryLocation && (
           <small id="delivery-error" className={common.error}>
-            {errors.delivery.message}
+            {errors.deliveryLocation.message}
           </small>
         )}
       </div>
@@ -106,15 +105,15 @@ export const ErrandForm = ({
             min={1}
             step={1}
             className={common.input}
-            {...register('reward', { valueAsNumber: true })}
-            aria-invalid={!!errors.reward}
+            {...register('creditReward', { valueAsNumber: true })}
+            aria-invalid={!!errors.creditReward}
             aria-describedby="reward-help"
           />
           <small
             id="reward-help"
-            className={errors.reward ? common.error : common.muted}
+            className={errors.creditReward ? common.error : common.muted}
           >
-            {errors.reward?.message ??
+            {errors.creditReward?.message ??
               'Enter a positive whole number of credits.'}
           </small>
         </div>

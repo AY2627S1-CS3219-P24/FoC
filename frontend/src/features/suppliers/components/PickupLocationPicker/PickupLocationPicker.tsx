@@ -6,17 +6,15 @@ export const PickupLocationPicker = ({
   value,
   onChange,
   error,
-  sampleLocations,
   disabled,
 }: {
   value: PickupSelection | null
   onChange: (value: PickupSelection | null) => void
   error?: string
-  sampleLocations?: Array<PickupSelection>
   disabled?: boolean
 }) => {
-  const query = usePickupLocations(!sampleLocations)
-  const locations = sampleLocations ?? query.data ?? []
+  const query = usePickupLocations(true)
+  const locations = query.data ?? []
   return (
     <div className={styles.field}>
       <label htmlFor="pickup">Pickup location *</label>
@@ -29,7 +27,7 @@ export const PickupLocationPicker = ({
               null,
           )
         }
-        disabled={disabled || (!sampleLocations && query.isPending)}
+        disabled={disabled || query.isPending}
         aria-invalid={!!error}
         aria-describedby="pickup-help"
       >
@@ -42,11 +40,9 @@ export const PickupLocationPicker = ({
       </select>
       <small id="pickup-help">
         {error ??
-          (sampleLocations
-            ? 'Sample locations for the order demo.'
-            : query.isPending
-              ? 'Loading locations…'
-              : (value?.address ?? 'Choose an active campus pickup location.'))}
+          (query.isPending
+            ? 'Loading locations…'
+            : (value?.address ?? 'Choose an active campus pickup location.'))}
       </small>
       {query.error && (
         <div role="alert">
@@ -61,7 +57,7 @@ export const PickupLocationPicker = ({
           </button>
         </div>
       )}
-      {!sampleLocations && query.isSuccess && !locations.length && (
+      {query.isSuccess && !locations.length && (
         <p>No pickup locations are available.</p>
       )}
     </div>

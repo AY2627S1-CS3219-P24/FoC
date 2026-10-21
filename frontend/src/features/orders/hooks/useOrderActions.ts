@@ -1,33 +1,81 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { actOnOrder, createOrder } from '../api/orders.api'
-import { errandKeys } from './useOrders'
-import type { CreateErrandValues } from '../schemas/createErrand.schema'
-import type { OrderAction, OrderUser } from '../types/errand.types'
+import { CanceledError } from 'axios'
+import { actOnOrder, createOrder, retryCreation } from '../api/orders.api'
+import { detailKey, errandKeys } from './useOrders'
+import { useSession } from '#/features/auth/hooks/useSession'
+import { getSessionVersion } from '#/features/auth/lib/accessTokenStore'
+import { creditKeys } from '#/features/credits/hooks/useCreditBalance'
+import type { CreateOrderRequest, OrderAction } from '../types/errand.types'
 
-export const useOrderActions = (user?: OrderUser) => {
+export const useOrderActions = () => {
   const client = useQueryClient()
-  const requireUser = () => {
-    if (!user) throw new Error('Please wait for your account to load.')
-    return user
+  const { userId, version } = useSession()
+  const current = () => version === getSessionVersion()
+  const checkSession = () => {
+    if (!current()) throw new CanceledError('The login session changed')
+    if (!userId) throw new Error('Sign in to continue')
   }
-  const invalidate = () =>
-    client.invalidateQueries({ queryKey: errandKeys.user(user?.id) })
+  const inSession = async <T>(operation: () => Promise<T>): Promise<T> => {
+    checkSession()
+    try {
+      const result = await operation()
+      checkSession()
+      return result
+    } catch (error) {
+      checkSession()
+      throw error
+    }
+  }
+  const refreshLists = () => {
+    void client.invalidateQueries({
+      queryKey: errandKeys.user(userId),
+      predicate: (query) => query.queryKey[2] !== 'detail',
+    })
+  }
+  const refreshDetail = async (id: string) => {
+    if (!current()) return
+    refreshLists()
+    await client.invalidateQueries({
+      queryKey: detailKey(userId, id),
+      exact: true,
+    })
+    checkSession()
+  }
   const create = useMutation({
-    mutationFn: (values: CreateErrandValues) =>
-      createOrder(requireUser(), values),
-    onSuccess: invalidate,
+    networkMode: 'always',
+    gcTime: 0,
+    mutationFn: (input: CreateOrderRequest) =>
+      inSession(() => createOrder(input)),
     retry: false,
+    onSettled: () => {
+      if (!current()) return
+      refreshLists()
+      void client.invalidateQueries({ queryKey: creditKeys.user(userId) })
+    },
+  })
+  const retry = useMutation({
+    networkMode: 'always',
+    gcTime: 0,
+    mutationFn: (id: string) => inSession(() => retryCreation(id)),
+    retry: false,
+    onSettled: (_result, _error, id) => {
+      if (current())
+        void client.invalidateQueries({ queryKey: creditKeys.user(userId) })
+      return refreshDetail(id)
+    },
   })
   const action = useMutation({
+    networkMode: 'always',
+    gcTime: 0,
     mutationFn: ({
       id,
       action: operation,
     }: {
       id: string
       action: OrderAction
-    }) => actOnOrder(requireUser(), id, operation),
-    onSettled: invalidate,
+    }) => inSession(() => actOnOrder(id, operation)),
     retry: false,
+    onSettled: (_result, _error, { id }) => refreshDetail(id),
   })
-  return { create, action }
+  return { create, retry, action }
 }

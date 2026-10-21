@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
+import { isCancel } from 'axios'
 import { availableOrderActions } from '../../utils/orderPermissions'
 import { useOrderActions } from '../../hooks/useOrderActions'
-import type { Errand, OrderAction, OrderUser } from '../../types/errand.types'
+import { orderErrorMessage } from '../../utils/orderErrors'
+import type { Errand, OrderAction } from '../../types/errand.types'
 import styles from '../../styles/order.module.scss'
 import dialog from './OrderActions.module.scss'
 
@@ -15,28 +17,34 @@ const labels: Record<OrderAction, string> = {
 }
 export const OrderActions = ({
   order,
-  user,
+  userId,
   now,
+  onError,
 }: {
   order: Errand
-  user: OrderUser
+  userId: string
   now: number
+  onError: (error: Error | null) => void
 }) => {
-  const { action } = useOrderActions(user)
+  const { action } = useOrderActions()
   const [confirm, setConfirm] = useState<OrderAction | null>(null)
   const [message, setMessage] = useState('')
   const lock = useRef(false)
-  const allowed = availableOrderActions(order, user.id, now)
+  const allowed = availableOrderActions(order, userId, now)
   const submit = async (operation: OrderAction) => {
     if (lock.current) return
     lock.current = true
     setMessage('')
+    onError(null)
     try {
       await action.mutateAsync({ id: order.id, action: operation })
       setConfirm(null)
-      setMessage('Preview updated. No real order has been changed.')
-    } catch {
-      /* Mutation error is displayed below and input stays available. */
+      setMessage('Errand updated.')
+    } catch (error) {
+      if (isCancel(error)) return
+      onError(
+        error instanceof Error ? error : new Error('Unable to update errand'),
+      )
     } finally {
       lock.current = false
     }
@@ -52,24 +60,19 @@ export const OrderActions = ({
     return null
   return (
     <section className={styles.feedback} aria-label="Order actions">
-      {order.status === 'ACCEPTED' && order.requester.id === user.id && (
+      {order.status === 'ACCEPTED' && order.requester.id === userId && (
         <p className={styles.muted}>
-          {order.courier?.name} is collecting your item.
+          {order.courier?.name ?? 'Your Courier'} is collecting your item.
         </p>
       )}
       {order.status === 'PICKED_UP' && (
         <p className={styles.muted}>
-          {order.requester.id === user.id
+          {order.requester.id === userId
             ? 'Confirm only after you receive your item. Credit settlement starts after confirmation.'
-            : `${order.requester.name} confirms receipt after delivery.`}
+            : `${order.requester.name ?? 'The Requester'} confirms receipt after delivery.`}
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {action.error && !confirm && (
-        <p role="alert" className={styles.error}>
-          {action.error.message}
-        </p>
-      )}
       <div className={styles.actions}>
         {allowed.map((operation) => (
           <Button
@@ -108,12 +111,12 @@ export const OrderActions = ({
             </Dialog.Title>
             <Dialog.Description>
               {confirm === 'cancel'
-                ? `Your ${order.reward} reserved credits will be released after cancellation is processed.`
-                : `Confirm only after receiving your item. This completes the errand and starts settlement of ${order.reward} credits to ${order.courier?.name}.`}
+                ? `Your ${order.creditReward} reserved credits will be released after cancellation is processed.`
+                : `Confirm only after receiving your item. This completes the errand and starts settlement of ${order.creditReward} credits to ${order.courier?.name ?? 'your Courier'}.`}
             </Dialog.Description>
             {action.error && (
               <p role="alert" className={styles.error}>
-                {action.error.message}
+                {orderErrorMessage(action.error)}
               </p>
             )}
             {confirm && !allowed.includes(confirm) && (

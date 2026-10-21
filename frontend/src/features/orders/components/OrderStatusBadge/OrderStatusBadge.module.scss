@@ -10,6 +10,14 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  &[data-status='CREATING'] {
+    background: #fff1e0;
+    color: #8b4c0b;
+  }
+  &[data-status='CREATE_FAILED'] {
+    background: #fde8e8;
+    color: #b42318;
+  }
   &[data-status='OPEN'] {
     background: #e5efff;
     color: #2864cf;

@@ -20,12 +20,11 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 vi.mock('../../hooks/useOrders', () => ({
-  useOrders: () => ({
-    data: [],
-    user: { id: 'me', name: 'Alex' },
+  useMyErrands: () => ({
+    data: { items: [], total: 0, page: 0, size: 3 },
+    userId: 'me',
     isPending: false,
     error: null,
-    identityError: null,
   }),
   useOrderClock: () => 0,
 }))

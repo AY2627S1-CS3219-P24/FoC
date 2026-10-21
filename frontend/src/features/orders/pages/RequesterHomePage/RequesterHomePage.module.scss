@@ -80,6 +80,10 @@
   &:hover {
     box-shadow: 0 3px 12px #17203315;
   }
+  &[aria-disabled='true'] {
+    cursor: default;
+    box-shadow: none;
+  }
 }
 .cardTitle {
   display: block;
