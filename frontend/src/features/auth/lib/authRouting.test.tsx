@@ -25,6 +25,17 @@ import type { AccessTokenResponse } from '../types/auth.types'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
+vi.mock('#/features/orders/api/errands.api', () => ({
+  listAvailableErrands: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 0,
+    size: 20,
+  })),
+  getErrand: vi.fn(),
+  acceptErrand: vi.fn(),
+}))
+
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
 vi.mock('#/api/getFaculties.api', () => ({
