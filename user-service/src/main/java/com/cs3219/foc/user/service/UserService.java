@@ -226,7 +226,10 @@ public class UserService {
                 .build();
 
         var savedUser = userRepository.save(user);
-        events.publishEvent(UserCreatedEvent.of(UUID.randomUUID(), savedUser.getId(), OffsetDateTime.now()));
+        var eventId = UUID.randomUUID();
+        var occurredAt = OffsetDateTime.now();
+        var created = new UserCreatedEvent(eventId, 1, occurredAt, new UserCreatedEvent.Payload(savedUser.getId()));
+        events.publishEvent(created);
         emailVerification.createRegistrationVerification(savedUser);
         return buildUserProfileDto(savedUser);
     }

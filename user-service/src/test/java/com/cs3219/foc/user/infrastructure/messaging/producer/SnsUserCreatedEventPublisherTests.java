@@ -17,8 +17,8 @@ import org.springframework.messaging.MessagingException;
 class SnsUserCreatedEventPublisherTests {
     private static final String TOPIC = "arn:aws:sns:ap-southeast-1:000000000000:foc-dev-user-events";
     private final SnsOperations sns = mock(SnsOperations.class);
-    private final UserCreatedEvent event =
-            UserCreatedEvent.of(UUID.randomUUID(), UUID.randomUUID(), OffsetDateTime.now());
+    private final UserCreatedEvent event = new UserCreatedEvent(
+            UUID.randomUUID(), 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(UUID.randomUUID()));
     private final SnsUserCreatedEventPublisher publisher =
             new SnsUserCreatedEventPublisher(sns, new EventMessagingProperties(TOPIC));
 

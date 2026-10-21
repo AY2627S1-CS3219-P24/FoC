@@ -89,7 +89,10 @@ class UserCreatedSnsIntegrationTests {
                             "FilterPolicyScope", "MessageAttributes",
                             "FilterPolicy", "{\"eventType\":[\"UserCreatedEvent\"]}"))
                     .build());
-            var event = UserCreatedEvent.of(UUID.randomUUID(), UUID.randomUUID(), OffsetDateTime.now());
+            var eventId = UUID.randomUUID();
+            var userId = UUID.randomUUID();
+            var occurredAt = OffsetDateTime.now();
+            var event = new UserCreatedEvent(eventId, 1, occurredAt, new UserCreatedEvent.Payload(userId));
             try (var context = startPublisher(endpoint, topicArn)) {
                 context.getBean(SnsUserCreatedEventPublisher.class).publish(event);
             }
@@ -106,12 +109,10 @@ class UserCreatedSnsIntegrationTests {
             assertThat(received.messageAttributes().get("eventId").stringValue())
                     .isEqualTo(event.eventId().toString());
             var body = JsonMapper.builder().build().readTree(received.body());
-            var eventId = event.eventId().toString();
-            var userId = event.payload().userId().toString();
-            assertThat(body.get("eventId").asString()).isEqualTo(eventId);
+            assertThat(body.get("eventId").asString()).isEqualTo(eventId.toString());
             assertThat(body.has("eventType")).isFalse();
             assertThat(body.get("schemaVersion").asInt()).isEqualTo(1);
-            assertThat(body.get("payload").get("userId").asString()).isEqualTo(userId);
+            assertThat(body.get("payload").get("userId").asString()).isEqualTo(userId.toString());
             assertThat(body.get("payload").size()).isEqualTo(1);
 
             try (var context = startPublisher(endpoint, topicArn)) {

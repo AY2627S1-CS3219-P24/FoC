@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 
 import com.cs3219.foc.credit.CreditServiceApplication;
+import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.user.UserServiceApplication;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -436,7 +437,7 @@ class ProvisioningEndToEndTests {
                             "eventType",
                             MessageAttributeValue.builder()
                                     .dataType("String")
-                                    .stringValue("UserCreatedEvent")
+                                    .stringValue(UserCreatedEvent.TYPE)
                                     .build()))
                     .build());
         }

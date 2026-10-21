@@ -7,9 +7,5 @@ import java.util.UUID;
 public record UserCreatedEvent(UUID eventId, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
     public static final String TYPE = "UserCreatedEvent";
 
-    public static UserCreatedEvent of(UUID eventId, UUID userId, OffsetDateTime occurredAt) {
-        return new UserCreatedEvent(eventId, 1, occurredAt, new Payload(userId));
-    }
-
     public record Payload(UUID userId) {}
 }

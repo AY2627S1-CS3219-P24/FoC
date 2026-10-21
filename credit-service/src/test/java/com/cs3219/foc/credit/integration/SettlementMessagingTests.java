@@ -167,9 +167,9 @@ class SettlementMessagingTests {
                             .isEqualTo(80);
                     assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
                             .isEqualTo(3);
-                    publish(sns, orderTopic, a);
-                    publish(sns, orderTopic, b);
-                    publish(sns, orderTopic, c);
+                    publish(sns, orderTopic, ErrandCancelledEvent.TYPE, a);
+                    publish(sns, orderTopic, ErrandExpiredEvent.TYPE, b);
+                    publish(sns, orderTopic, ErrandCompletedEvent.TYPE, c);
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
                         assertThat(sql.queryForObject(
                                         "SELECT count(*) FROM credit_reservations WHERE state='REFUNDED'", Long.class))
@@ -207,7 +207,7 @@ class SettlementMessagingTests {
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
                                     creditAccountService.getBalance(courier).availableBalance())
                             .isEqualTo(55));
-                    publish(sns, orderTopic, c);
+                    publish(sns, orderTopic, ErrandCompletedEvent.TYPE, c);
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
                                     "SELECT count(*) FROM event_publication WHERE completion_date IS NULL", Long.class))
                             .isZero());
@@ -346,16 +346,7 @@ class SettlementMessagingTests {
                 new ErrandCancelledEvent.Payload(reserved(service, owner, amount), owner, amount));
     }
 
-    private void publish(SnsClient sns, String topicArn, Object event) throws Exception {
-        var eventType =
-                switch (event) {
-                    case ErrandCancelledEvent _ -> ErrandCancelledEvent.TYPE;
-                    case ErrandExpiredEvent _ -> ErrandExpiredEvent.TYPE;
-                    case ErrandCompletedEvent _ -> ErrandCompletedEvent.TYPE;
-                    default ->
-                        throw new IllegalArgumentException(
-                                "Unexpected event: " + event.getClass().getName());
-                };
+    private void publish(SnsClient sns, String topicArn, String eventType, Object event) throws Exception {
         publishBody(sns, topicArn, eventType, JsonMapper.builder().build().writeValueAsString(event));
     }
 

@@ -10,6 +10,7 @@ import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
+import com.cs3219.foc.user.model.dto.event.UserCreatedEvent.Payload;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -133,7 +134,8 @@ class CreditProvisioningPersistenceTests {
         var userId = UUID.randomUUID();
         var eventId = UUID.randomUUID();
         var occurredAt = OffsetDateTime.parse("2026-10-18T00:00:00Z");
-        var published = com.cs3219.foc.user.model.dto.event.UserCreatedEvent.of(eventId, userId, occurredAt);
+        var published =
+                new com.cs3219.foc.user.model.dto.event.UserCreatedEvent(eventId, 1, occurredAt, new Payload(userId));
         var json = JsonMapper.builder().build();
         var received = json.readValue(json.writeValueAsString(published), UserCreatedEvent.class);
         assertThat(received)
