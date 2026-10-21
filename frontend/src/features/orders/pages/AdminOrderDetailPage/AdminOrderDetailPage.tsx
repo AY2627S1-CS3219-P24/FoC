@@ -39,7 +39,7 @@ export const AdminOrderDetailPage = () => {
             </OrderNotice>
           )}
           <div className={styles.title}>
-            <h1>Errand details</h1>
+            <h1 className={styles.pageTitle}>Errand details</h1>
             <OrderStatusBadge status={order.status} />
           </div>
           <p className={styles.muted}>Errand #{order.id} · Read-only</p>

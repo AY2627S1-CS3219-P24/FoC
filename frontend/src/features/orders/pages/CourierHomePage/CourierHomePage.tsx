@@ -32,7 +32,9 @@ export const CourierHomePage = () => {
       <RoleSwitcher activeMode="courier" />
       <div className={styles.toolbar}>
         <div>
-          <h1 id="courier-heading">Find an errand</h1>
+          <h1 id="courier-heading" className={styles.pageTitle}>
+            Find an errand
+          </h1>
           <p className={styles.muted}>
             Help someone on campus and earn credits.
           </p>

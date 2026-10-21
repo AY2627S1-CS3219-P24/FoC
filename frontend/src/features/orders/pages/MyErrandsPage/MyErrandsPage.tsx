@@ -5,6 +5,7 @@ import { OrderPagination } from '../../components/OrderPagination/OrderPaginatio
 import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
 import type { OrderListSearch } from '../../utils/orderFilters'
 import styles from '../../styles/order.module.scss'
+import pageStyles from './MyErrandsPage.module.scss'
 
 export const MyErrandsPage = () => {
   const search = useSearch({ from: '/authenticated/user/errands' })
@@ -23,11 +24,12 @@ export const MyErrandsPage = () => {
   const now = useOrderClock()
   return (
     <div className={styles.page}>
-      <h1>My Errands</h1>
+      <h1 className={styles.pageTitle}>My Errands</h1>
       <div className={styles.toolbar}>
-        <nav className={styles.tabs} aria-label="Errand history">
+        <nav className={pageStyles.tabs} aria-label="Errand history">
           {(['active', 'history'] as const).map((tab) => (
             <Link
+              className={pageStyles.tab}
               key={tab}
               to="/errands"
               search={{ ...search, tab, page: 0 }}
@@ -37,7 +39,7 @@ export const MyErrandsPage = () => {
             </Link>
           ))}
         </nav>
-        <label className={styles.filter}>
+        <label className={pageStyles.filter}>
           Type
           <select
             className={styles.select}
@@ -86,11 +88,19 @@ export const MyErrandsPage = () => {
                 No {search.tab === 'history' ? 'past' : 'active'} errands match
                 this view.
               </p>
-              <Link to="/home" search={{ mode: 'requestor' }}>
+              <Link
+                className={styles.link}
+                to="/home"
+                search={{ mode: 'requestor' }}
+              >
                 Request a pickup
               </Link>{' '}
               or{' '}
-              <Link to="/home" search={{ mode: 'courier' }}>
+              <Link
+                className={styles.link}
+                to="/home"
+                search={{ mode: 'courier' }}
+              >
                 find an errand
               </Link>
               .

@@ -1,8 +1,7 @@
 import { isAxiosError } from 'axios'
+import { getApiErrorCode } from '#/lib/httpErrors'
 import type { OrderErrorResponse } from '../types/errand.types'
 
-export const orderErrorCode = (error: unknown): string | undefined =>
-  isAxiosError(error) ? error.response?.data?.code : undefined
 export const creationErrorOrderId = (error: unknown): string | undefined => {
   if (!isAxiosError<OrderErrorResponse>(error)) return undefined
   const data = error.response?.data
@@ -12,7 +11,7 @@ export const creationErrorOrderId = (error: unknown): string | undefined => {
     : undefined
 }
 export const orderErrorMessage = (error: unknown) => {
-  switch (orderErrorCode(error)) {
+  switch (getApiErrorCode(error)) {
     case 'ORDER_CREATION_UNCONFIRMED':
       return 'Creation is not confirmed. Check the order and retry if needed.'
     case 'ORDER_CREATION_ERROR':

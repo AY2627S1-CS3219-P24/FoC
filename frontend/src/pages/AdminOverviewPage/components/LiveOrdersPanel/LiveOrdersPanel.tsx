@@ -1,9 +1,9 @@
 import { Panel } from '../Panel/Panel'
 import { useLiveOrders } from '#/features/orders/hooks/useOrderOverview'
-import type { OrderStatus } from '#/features/orders/types/order.types'
+import type { AdminOverviewOrderStatus } from '#/features/orders/types/adminOverview.types'
 import styles from './LiveOrdersPanel.module.scss'
 
-const statusLabels: Record<OrderStatus, string> = {
+const statusLabels: Record<AdminOverviewOrderStatus, string> = {
   REQUESTED: 'Requested',
   ACCEPTED: 'Accepted',
   PICKED_UP: 'Picked up',

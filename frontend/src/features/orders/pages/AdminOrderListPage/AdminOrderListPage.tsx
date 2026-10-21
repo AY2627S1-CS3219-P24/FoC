@@ -6,6 +6,7 @@ import { OrderPagination } from '../../components/OrderPagination/OrderPaginatio
 import { useAdminOrders } from '../../hooks/useOrders'
 import { formatOrderTime } from '../../utils/orderFormat'
 import styles from '../../styles/order.module.scss'
+import pageStyles from './AdminOrderListPage.module.scss'
 
 export const AdminOrderListPage = () => {
   const search = useSearch({ from: '/admin/orders' })
@@ -14,7 +15,7 @@ export const AdminOrderListPage = () => {
   const error = query.error
   return (
     <div className={styles.page}>
-      <h1>Orders</h1>
+      <h1 className={styles.pageTitle}>Orders</h1>
       <AdminRequesterPicker
         requesterId={search.requesterId}
         onSelect={(requesterId) =>
@@ -31,7 +32,7 @@ export const AdminOrderListPage = () => {
         </p>
       ) : (
         <>
-          <h2 className={styles.sectionHeading}>Requested orders</h2>
+          <h2 className={pageStyles.sectionHeading}>Requested orders</h2>
           <OrderFeedback
             error={error}
             loading={query.isPending}
@@ -43,12 +44,12 @@ export const AdminOrderListPage = () => {
                 <p className={styles.panel}>This Requester has no orders.</p>
               ) : (
                 <div
-                  className={styles.tableWrap}
+                  className={pageStyles.tableWrap}
                   role="region"
                   aria-label="Requested orders table"
                   tabIndex={0}
                 >
-                  <table className={styles.table}>
+                  <table className={pageStyles.table}>
                     <thead>
                       <tr>
                         <th>Errand</th>
@@ -63,6 +64,7 @@ export const AdminOrderListPage = () => {
                         <tr key={order.id}>
                           <td>
                             <Link
+                              className={styles.link}
                               to="/admin/orders/$orderId"
                               params={{ orderId: order.id }}
                               search={search}

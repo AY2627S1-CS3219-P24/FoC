@@ -29,7 +29,6 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 vi.mock('../../hooks/useOrders', () => ({
-  errandKeys: { user: (id: string) => ['errands', id] },
   useAvailableOrders: (...args: Array<unknown>) => mocks.query(...args),
   useOrderClock: () => Date.parse('2030-01-01T00:10:00Z'),
 }))

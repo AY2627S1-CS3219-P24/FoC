@@ -3,11 +3,11 @@
   grid-template-columns: 112px minmax(0, 1fr) 16px;
   gap: 12px;
   align-items: center;
-  background: white;
+  background: var(--color-surface);
   border-radius: 12px;
   padding: 16px;
   text-decoration: none;
-  color: var(--color-text) !important;
+  color: var(--color-text);
   &:hover {
     box-shadow: 0 0 0 1px #cbd2df;
   }

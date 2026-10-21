@@ -1,7 +1,7 @@
 import { Button } from '@base-ui/react/button'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
 import { expiryLabel } from '../../utils/orderFormat'
-import details from '../OrderDetails/OrderDetails.module.scss'
+import details from '../../styles/orderDetails.module.scss'
 import styles from '../../styles/order.module.scss'
 
 export const ErrandReview = ({

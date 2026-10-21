@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
+import { getApiErrorCode } from '#/lib/httpErrors'
 import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
@@ -12,7 +13,7 @@ import {
 import { useOrder, useOrderClock } from '../../hooks/useOrders'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { clearCreation } from '../../utils/creationRequest'
-import { orderErrorCode, orderErrorMessage } from '../../utils/orderErrors'
+import { orderErrorMessage } from '../../utils/orderErrors'
 import styles from '../../styles/order.module.scss'
 
 export const OrderDetailPage = () => {
@@ -71,7 +72,7 @@ export const OrderDetailPage = () => {
       {actionError && (
         <OrderNotice
           tone={
-            orderErrorCode(actionError) === 'CREDIT_ACCOUNT_PENDING'
+            getApiErrorCode(actionError) === 'CREDIT_ACCOUNT_PENDING'
               ? 'warning'
               : 'error'
           }
@@ -104,7 +105,7 @@ export const OrderDetailPage = () => {
             </OrderNotice>
           )}
           <div className={styles.title}>
-            <h1>{title}</h1>
+            <h1 className={styles.pageTitle}>{title}</h1>
             <OrderStatusBadge status={order.status} />
           </div>
           <p className={styles.muted}>Errand #{order.id}</p>

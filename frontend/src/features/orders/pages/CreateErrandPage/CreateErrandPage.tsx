@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
+import { getApiErrorCode } from '#/lib/httpErrors'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { getSessionVersion } from '#/features/auth/lib/accessTokenStore'
 import { ErrandForm } from '../../components/ErrandForm/ErrandForm'
@@ -20,7 +21,6 @@ import {
 import {
   definiteCreationRejection,
   creationErrorOrderId,
-  orderErrorCode,
   orderErrorMessage,
 } from '../../utils/orderErrors'
 import type { PendingCreation } from '../../utils/creationRequest'
@@ -154,14 +154,14 @@ const CreationForm = ({
       ) : create.error ? (
         <OrderNotice
           tone={
-            orderErrorCode(create.error) === 'CREDIT_ACCOUNT_PENDING'
+            getApiErrorCode(create.error) === 'CREDIT_ACCOUNT_PENDING'
               ? 'warning'
               : 'error'
           }
           title={orderErrorMessage(create.error)}
         />
       ) : null}
-      <h1>
+      <h1 className={styles.pageTitle}>
         {knownOrder
           ? 'View your errand'
           : review

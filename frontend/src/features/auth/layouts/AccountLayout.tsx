@@ -4,7 +4,7 @@ import { useUserProfile } from '../hooks/useUserProfile'
 import { useSession } from '../hooks/useSession'
 import { useAuth } from '../providers/AuthProvider'
 import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
-import { orderErrorCode } from '#/features/orders/utils/orderErrors'
+import { getApiErrorCode } from '#/lib/httpErrors'
 
 export const AccountLayout = () => {
   const { data } = useUserProfile()
@@ -20,7 +20,7 @@ export const AccountLayout = () => {
       balanceLabel={
         balance.isPending
           ? 'Loading credits…'
-          : orderErrorCode(balance.error) === 'CREDIT_ACCOUNT_PENDING'
+          : getApiErrorCode(balance.error) === 'CREDIT_ACCOUNT_PENDING'
             ? 'Credit account preparing'
             : 'Balance unavailable'
       }

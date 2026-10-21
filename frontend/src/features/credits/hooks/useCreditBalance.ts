@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { getCreditBalance } from '../api/credits.api'
+import { creditQueryKeys } from '../constants/creditQueryKeys'
 
-export const creditKeys = { user: (id?: string) => ['credits', id] as const }
 export const useCreditBalance = (userId?: string) =>
   useQuery({
-    queryKey: creditKeys.user(userId),
+    queryKey: creditQueryKeys.user(userId),
     queryFn: ({ signal }) => getCreditBalance(signal),
     enabled: !!userId,
     staleTime: 0,

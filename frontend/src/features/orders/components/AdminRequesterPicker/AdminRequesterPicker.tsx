@@ -4,6 +4,7 @@ import { useUserQuery } from '#/features/users/hooks/useUserQuery'
 import { OrderFeedback } from '../OrderFeedback/OrderFeedback'
 import { Button } from '@base-ui/react/button'
 import styles from '../../styles/order.module.scss'
+import picker from './AdminRequesterPicker.module.scss'
 
 export const AdminRequesterPicker = ({
   requesterId,
@@ -26,7 +27,7 @@ export const AdminRequesterPicker = ({
   const selected = useUserQuery(requesterId)
   return (
     <section className={styles.panel} aria-label="Choose Requester">
-      <h2>Choose a Requester</h2>
+      <h2 className={styles.sectionTitle}>Choose a Requester</h2>
       {requesterId && (
         <p>
           Selected: {selected.data?.name ?? requesterId}
@@ -47,11 +48,11 @@ export const AdminRequesterPicker = ({
         loading={users.isPending}
         retry={() => void users.refetch()}
       />
-      <ul className={styles.requesters}>
+      <ul className={picker.requesters}>
         {users.data?.items.map((user) => (
           <li key={user.id}>
             <Button
-              className={styles.secondary}
+              className={`${styles.secondary} ${picker.requesterButton}`}
               disabled={users.isPlaceholderData}
               aria-pressed={user.id === requesterId}
               onClick={() => onSelect(user.id)}

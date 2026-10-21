@@ -11,7 +11,6 @@ export const ERRAND_STATUSES = [
 export type ErrandStatus = (typeof ERRAND_STATUSES)[number]
 export type OrderAction = 'accept' | 'pickup' | 'complete' | 'cancel'
 export type OrderUser = { id: string; name: string | null }
-export type PickupLocation = { id: string; name: string; address: string }
 export type CreditState =
   'RESERVED' | 'SETTLEMENT_PENDING' | 'SETTLED' | 'RELEASE_PENDING' | 'RELEASED'
 export type Errand = {

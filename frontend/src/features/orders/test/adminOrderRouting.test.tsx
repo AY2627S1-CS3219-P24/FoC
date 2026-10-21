@@ -13,6 +13,7 @@ import { getUserProfile } from '#/features/auth/api/userProfile.api'
 import { getUser } from '#/features/users/api/getUser.api'
 import { getUsers } from '#/features/users/api/getUsers.api'
 import { getOrder, listRequesterOrders } from '../api/orders.api'
+import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { orderFixture } from './orderFixtures'
 import type { User } from '#/features/users/types/user.types'
 
@@ -123,10 +124,10 @@ it('loads admin orders independently of Profile and retries an order query failu
     expect.any(AbortSignal),
   )
   expect(
-    client.getQueryData(['errands', 'admin', 'admin', requester.id, 2]),
+    client.getQueryData(errandQueryKeys.admin('admin', requester.id, 2)),
   ).toMatchObject({ items: [order], total: 65 })
   expect(
-    client.getQueryData(['errands', undefined, 'admin', requester.id, 2]),
+    client.getQueryData(errandQueryKeys.admin(undefined, requester.id, 2)),
   ).toBeUndefined()
 })
 

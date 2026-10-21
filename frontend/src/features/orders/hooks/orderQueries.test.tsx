@@ -6,10 +6,24 @@ import {
 } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { useMyErrands, useOrder } from './useOrders'
+import {
+  useAdminOrders,
+  useAvailableOrders,
+  useMyErrands,
+  useOrder,
+} from './useOrders'
+import { useOrderActions } from './useOrderActions'
+import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
+import { creditQueryKeys } from '#/features/credits/constants/creditQueryKeys'
 import { getCreditBalance } from '#/features/credits/api/credits.api'
-import { getOrder, listMyOrders } from '../api/orders.api'
+import {
+  createOrder,
+  getOrder,
+  listAvailableOrders,
+  listMyOrders,
+  listRequesterOrders,
+} from '../api/orders.api'
 import { orderFixture } from '../test/orderFixtures'
 import { replaceSession } from '#/features/auth/lib/accessTokenStore'
 import { useSession } from '#/features/auth/hooks/useSession'
@@ -25,6 +39,9 @@ vi.mock('../api/orders.api', () => ({
   listMyOrders: vi.fn(),
   listAvailableOrders: vi.fn(),
   listRequesterOrders: vi.fn(),
+  createOrder: vi.fn(),
+  retryCreation: vi.fn(),
+  actOnOrder: vi.fn(),
 }))
 vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(),
@@ -128,7 +145,7 @@ it('scopes cached orders and balances by the signed-in user', async () => {
   expect(listMyOrders).toHaveBeenCalledTimes(2)
   expect(getCreditBalance).toHaveBeenCalledTimes(2)
   expect(query.result.current.balance.data?.availableBalance).toBe(0)
-  expect(clients[0].getQueryData(['credits', 'requester'])).toEqual({
+  expect(clients[0].getQueryData(creditQueryKeys.user('requester'))).toEqual({
     availableBalance: 15,
     reservedBalance: 0,
   })
@@ -148,4 +165,65 @@ it('immediately refreshes a settled detail on remount without restarting its int
   expect(getOrder).toHaveBeenCalledTimes(2)
   await tick(10_000)
   expect(getOrder).toHaveBeenCalledTimes(2)
+})
+
+it('refreshes all current-user lists after creation without invalidating details or another user cache', async () => {
+  const order = orderFixture()
+  const params = { as: 'all', view: 'active', page: 0, size: 20 } as const
+  const page = { items: [], total: 0, page: 0, size: 20 }
+  vi.mocked(getOrder).mockResolvedValue(order)
+  vi.mocked(listAvailableOrders).mockResolvedValue(page)
+  vi.mocked(listRequesterOrders).mockResolvedValue(page)
+  vi.mocked(createOrder).mockResolvedValue({
+    errandId: order.id,
+    status: 'OPEN',
+    creationFailureCode: null,
+    queryUrl: `/api/orders/${order.id}`,
+  })
+  const { result } = renderHook(
+    () => {
+      useMyErrands(params)
+      useAvailableOrders('', 0)
+      useAdminOrders('requester', 0)
+      useOrder(order.id)
+      return useOrderActions()
+    },
+    { wrapper: wrapper() },
+  )
+  await tick()
+  expect(listMyOrders).toHaveBeenCalledTimes(1)
+  expect(listAvailableOrders).toHaveBeenCalledTimes(1)
+  expect(listRequesterOrders).toHaveBeenCalledTimes(1)
+  expect(getOrder).toHaveBeenCalledTimes(1)
+
+  const client = clients[0]
+  const otherListKeys = [
+    errandQueryKeys.mine('another-user', params),
+    errandQueryKeys.available('another-user', '', 0),
+    errandQueryKeys.admin('another-user', 'requester', 0),
+  ]
+  const otherDetailKey = errandQueryKeys.detail('another-user', order.id)
+  otherListKeys.forEach((key) => client.setQueryData(key, page))
+  client.setQueryData(otherDetailKey, order)
+
+  await act(async () => {
+    await result.current.create.mutateAsync({
+      createRequestId: 'request-id',
+      supplierId: order.supplierId,
+      deliveryLocation: order.deliveryLocation,
+      description: order.description,
+      notes: order.notes,
+      creditReward: order.creditReward,
+      expiryMinutes: 60,
+    })
+  })
+  await tick()
+
+  expect(listMyOrders).toHaveBeenCalledTimes(2)
+  expect(listAvailableOrders).toHaveBeenCalledTimes(2)
+  expect(listRequesterOrders).toHaveBeenCalledTimes(2)
+  expect(getOrder).toHaveBeenCalledTimes(1)
+  for (const key of [...otherListKeys, otherDetailKey]) {
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false)
+  }
 })

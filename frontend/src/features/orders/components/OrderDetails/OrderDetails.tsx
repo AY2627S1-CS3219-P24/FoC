@@ -1,6 +1,7 @@
 import type { Errand } from '../../types/errand.types'
 import { formatOrderTime } from '../../utils/orderFormat'
 import styles from './OrderDetails.module.scss'
+import details from '../../styles/orderDetails.module.scss'
 
 const creditLabels = {
   RESERVED: 'Reserved',
@@ -14,7 +15,7 @@ export const OrderDetails = ({ order }: { order: Errand }) => (
     <h2>
       {order.pickup.name} → {order.deliveryLocation}
     </h2>
-    <dl className={styles.details}>
+    <dl className={details.details}>
       <dt>Pickup location</dt>
       <dd>
         {order.pickup.name}

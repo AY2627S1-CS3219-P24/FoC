@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CanceledError } from 'axios'
 import { actOnOrder, createOrder, retryCreation } from '../api/orders.api'
-import { detailKey, errandKeys } from './useOrders'
+import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { getSessionVersion } from '#/features/auth/lib/accessTokenStore'
-import { creditKeys } from '#/features/credits/hooks/useCreditBalance'
+import { creditQueryKeys } from '#/features/credits/constants/creditQueryKeys'
 import type { CreateOrderRequest, OrderAction } from '../types/errand.types'
 
 export const useOrderActions = () => {
@@ -28,15 +28,14 @@ export const useOrderActions = () => {
   }
   const refreshLists = () => {
     void client.invalidateQueries({
-      queryKey: errandKeys.user(userId),
-      predicate: (query) => query.queryKey[2] !== 'detail',
+      queryKey: errandQueryKeys.lists(userId),
     })
   }
   const refreshDetail = async (id: string) => {
     if (!current()) return
     refreshLists()
     await client.invalidateQueries({
-      queryKey: detailKey(userId, id),
+      queryKey: errandQueryKeys.detail(userId, id),
       exact: true,
     })
     checkSession()
@@ -50,7 +49,7 @@ export const useOrderActions = () => {
     onSettled: () => {
       if (!current()) return
       refreshLists()
-      void client.invalidateQueries({ queryKey: creditKeys.user(userId) })
+      void client.invalidateQueries({ queryKey: creditQueryKeys.user(userId) })
     },
   })
   const retry = useMutation({
@@ -60,7 +59,9 @@ export const useOrderActions = () => {
     retry: false,
     onSettled: (_result, _error, id) => {
       if (current())
-        void client.invalidateQueries({ queryKey: creditKeys.user(userId) })
+        void client.invalidateQueries({
+          queryKey: creditQueryKeys.user(userId),
+        })
       return refreshDetail(id)
     },
   })
