@@ -13,7 +13,7 @@ import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.infrastructure.mail.AccountMailListener;
-import com.cs3219.foc.user.mapper.UserMapperImpl;
+import com.cs3219.foc.user.integration.AbstractIntegrationTest;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
@@ -25,11 +25,15 @@ import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.EmailTokenRepository;
 import com.cs3219.foc.user.repository.RefreshTokenRepository;
 import com.cs3219.foc.user.repository.UserRepository;
+import com.cs3219.foc.user.security.AuthenticatedUserResolver;
+import com.cs3219.foc.user.security.AuthenticationContextService;
 import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
+import com.cs3219.foc.user.support.TestMappers;
 import java.net.URI;
 import java.sql.DriverManager;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -37,24 +41,26 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -64,39 +70,26 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /** Runs the real migrations and service transactions in a disposable PostgreSQL database. */
-@DataJpaTest(showSql = false)
-@Testcontainers
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@EnableConfigurationProperties({AuthProperties.class, AccountMailProperties.class})
-@Import({
-    UserService.class,
-    PasswordService.class,
-    TokenService.class,
-    AuthService.class,
-    EmailVerificationService.class,
-    EmailChangeService.class,
-    EmailTokenService.class,
-    AccountMailListener.class,
-    UserMapperImpl.class,
-    UserProfilePersistenceTests.Fixtures.class
-})
-@ActiveProfiles("test")
-class UserProfilePersistenceTests {
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+        replace = AutoConfigureTestDatabase.Replace.NONE)
+@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
+@org.springframework.context.annotation.Import(UserProfilePersistenceTests.TestConfig.class)
+class UserProfilePersistenceTests extends AbstractIntegrationTest {
+
+    @Autowired
+    private PostgreSQLContainer postgres;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     private UserRepository repository;
@@ -131,14 +124,8 @@ class UserProfilePersistenceTests {
     @Autowired
     private EmailTokenRepository emailTokenRepository;
 
-    @MockitoBean
+    @Autowired
     private JavaMailSender mailSender;
-
-    @MockitoBean
-    private AvatarStorageService avatarStorageService;
-
-    @MockitoBean
-    private CurrentUserService currentUserService;
 
     @Autowired
     private ThreadPoolTaskExecutor taskExecutor;
@@ -153,9 +140,6 @@ class UserProfilePersistenceTests {
     void cleanUsers() throws Exception {
         reset(mailSender);
         repository.deleteAll();
-        when(avatarStorageService.createPresignedUrl(any()))
-                .thenAnswer(
-                        call -> call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
     }
 
     private User createUser(String email) {
@@ -709,11 +693,11 @@ class UserProfilePersistenceTests {
         createDatabase(database);
         try {
             var config = Flyway.configure()
-                    .dataSource(databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword())
+                    .dataSource(databaseUrl(database), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration");
             config.target("3").load().migrate();
             try (var connection = DriverManager.getConnection(
-                            databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword());
+                            databaseUrl(database), postgres.getUsername(), postgres.getPassword());
                     var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at, faculty)
@@ -744,11 +728,11 @@ class UserProfilePersistenceTests {
         createDatabase(database);
         try {
             var config = Flyway.configure()
-                    .dataSource(databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword())
+                    .dataSource(databaseUrl(database), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration");
             config.target("2").load().migrate();
             try (var connection = DriverManager.getConnection(
-                            databaseUrl(database), POSTGRES.getUsername(), POSTGRES.getPassword());
+                            databaseUrl(database), postgres.getUsername(), postgres.getPassword());
                     var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at)
@@ -774,7 +758,7 @@ class UserProfilePersistenceTests {
 
     private void createDatabase(String database) throws Exception {
         try (var connection = DriverManager.getConnection(
-                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                        postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
                 var statement = connection.createStatement()) {
             statement.execute("CREATE DATABASE " + database);
         }
@@ -782,21 +766,33 @@ class UserProfilePersistenceTests {
 
     private void dropDatabase(String database) throws Exception {
         try (var connection = DriverManager.getConnection(
-                        POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                        postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
                 var statement = connection.createStatement()) {
             statement.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
         }
     }
 
     private String databaseUrl(String database) {
-        var jdbc = POSTGRES.getJdbcUrl();
-        var current = "/" + POSTGRES.getDatabaseName();
+        var jdbc = postgres.getJdbcUrl();
+        var current = "/" + postgres.getDatabaseName();
         var index = jdbc.lastIndexOf(current);
         return jdbc.substring(0, index) + "/" + database + jdbc.substring(index + current.length());
     }
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class Fixtures {
+    @org.springframework.boot.test.context.TestConfiguration
+    @EnableTransactionManagement
+    @EnableAsync
+    @EnableJpaRepositories(basePackageClasses = UserRepository.class)
+    @Import({
+        EmailVerificationService.class,
+        EmailChangeService.class,
+        EmailTokenService.class,
+        AccountMailListener.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
+    static class TestConfig {
         @Bean
         ThreadPoolTaskExecutor taskExecutor() {
             var executor = new ThreadPoolTaskExecutor();
@@ -806,8 +802,22 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
+        AccountMailProperties accountMailProperties() {
+            return new AccountMailProperties(
+                    "test@example.com",
+                    URI.create("http://localhost:3000"),
+                    Duration.ofMinutes(30),
+                    Duration.ofSeconds(60));
+        }
+
+        @Bean
         Clock clock() {
             return Clock.systemUTC();
+        }
+
+        @Bean
+        JavaMailSender mailSender() {
+            return mock(JavaMailSender.class);
         }
 
         @Bean
@@ -816,19 +826,66 @@ class UserProfilePersistenceTests {
         }
 
         @Bean
-        AuthenticationManager authenticationManager(UserRepository repository, PasswordEncoder encoder) {
-            var provider = new DaoAuthenticationProvider(new CustomUserDetailsService(repository));
-            provider.setPasswordEncoder(encoder);
-            return new ProviderManager(provider);
+        PasswordService passwordService(
+                UserRepository userRepository,
+                RefreshTokenRepository refreshTokenRepository,
+                PasswordEncoder encoder,
+                EmailTokenService emailTokenService,
+                EmailTokenRepository emailTokenRepository,
+                ApplicationEventPublisher events) {
+            return new PasswordService(
+                    userRepository,
+                    refreshTokenRepository,
+                    encoder,
+                    emailTokenService,
+                    emailTokenRepository,
+                    events,
+                    mock(CurrentUserService.class));
         }
 
         @Bean
-        JwtEncoder jwtEncoder() {
-            // JWT cryptography is outside the scope of these persistence tests.
-            return parameters -> Jwt.withTokenValue("test-access-token")
+        TokenService tokenService(RefreshTokenRepository refreshTokenRepository, UserRepository userRepository) {
+            var properties = new AuthProperties(
+                    Duration.ofMinutes(5),
+                    Duration.ofDays(30),
+                    new ClassPathResource("unused-private.pem"),
+                    new ClassPathResource("unused-public.pem"),
+                    "test",
+                    false);
+            // Exercise credentials and database sessions without testing JWT cryptography here.
+            JwtEncoder encoder = parameters -> Jwt.withTokenValue("test-access-token")
                     .header("alg", "ES256")
                     .subject("test-user")
                     .build();
+            return new TokenService(refreshTokenRepository, userRepository, Clock.systemUTC(), properties, encoder);
+        }
+
+        @Bean
+        AuthService authService(UserRepository userRepository, TokenService tokenService, PasswordEncoder encoder) {
+            var provider = new DaoAuthenticationProvider(new CustomUserDetailsService(userRepository));
+            provider.setPasswordEncoder(encoder);
+            AuthenticationManager manager = new ProviderManager(provider);
+            return new AuthService(manager, tokenService, userRepository);
+        }
+
+        @Bean
+        UserService userService(
+                UserRepository repository,
+                EmailVerificationService verification,
+                EmailChangeService emailChangeService) {
+            var avatarStorageService = mock(AvatarStorageService.class);
+            when(avatarStorageService.createPresignedUrl(any()))
+                    .thenAnswer(call ->
+                            call.getArgument(0) == null ? null : "https://images.example/" + call.getArgument(0));
+            return new UserService(
+                    repository,
+                    new BCryptPasswordEncoder(),
+                    TestMappers.mapper(),
+                    mock(ApplicationEventPublisher.class),
+                    verification,
+                    emailChangeService,
+                    avatarStorageService,
+                    mock(CurrentUserService.class));
         }
     }
 }

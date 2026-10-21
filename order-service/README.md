@@ -921,3 +921,13 @@ Credit's reservation controller delegates to `CreditReservationService`; its res
 ## 12. Runtime configuration
 
 Production requires `AWS_REGION`, `EVENTS_MESSAGING_TOPIC_ARN`, and `EVENTS_MESSAGING_QUEUE_NAME`. Production SNS/SQS provisioning, permissions, and runtime wiring are added separately in [deployment PR #42](https://github.com/AY2627S1-CS3219-P24/FoC/pull/42).
+
+## 13. Tests
+
+With Docker running, from the repository root:
+
+```bash
+./gradlew :order-service:test
+```
+
+Cross-service tests: [e2e-tests](../e2e-tests/README.md).

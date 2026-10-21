@@ -12,8 +12,4 @@ There is no existing-user backfill. New registrations produce events; users inse
 
 ## Tests
 
-Run `./gradlew :user-service:check` with Java 25 and Docker. Testcontainers starts
-PostgreSQL and Floci as needed. Spring Boot's `@ServiceConnection` supplies database
-connection details, so local runs and CI need no database environment variables or
-separately managed database. Persistence tests use `@DataJpaTest`; publication tests
-use `@SpringBootTest` to include Spring Modulith's event registry and retry behavior.
+Run `./gradlew :user-service:check` from the repository root with Docker running. Testcontainers starts PostgreSQL and Floci, and Spring Boot's service connection supplies the database, so runs need no database environment variables. Cross-service tests: [e2e-tests](../e2e-tests/README.md).

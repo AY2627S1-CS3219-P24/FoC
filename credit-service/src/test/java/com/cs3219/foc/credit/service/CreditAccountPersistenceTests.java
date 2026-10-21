@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
+import com.cs3219.foc.credit.integration.AbstractIntegrationTest;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
@@ -15,43 +16,33 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Uses real PostgreSQL migrations and service transactions in a disposable PostgreSQL database. */
-@DataJpaTest(showSql = false, properties = "credits.initial-allocation=20")
-@Testcontainers
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@EnableConfigurationProperties(CreditProperties.class)
-@Import({
-    CreditAccountService.class,
-    CurrentUserService.class,
-    AuthenticationContextService.class,
-    AuthenticatedUserResolver.class
-})
-@ActiveProfiles("test")
-class CreditAccountPersistenceTests {
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+/** Uses real PostgreSQL migrations and service transactions in a disposable database. */
+@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+        replace = AutoConfigureTestDatabase.Replace.NONE)
+@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
+@org.springframework.context.annotation.Import(CreditAccountPersistenceTests.TestConfig.class)
+@TestPropertySource(properties = "credits.initial-allocation=20")
+class CreditAccountPersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
     private CreditAccountService service;
@@ -60,13 +51,16 @@ class CreditAccountPersistenceTests {
     private CreditAccountRepository repository;
 
     @Autowired
-    private JpaTransactionManager transactionManager;
+    private DataSource dataSource;
 
     @Autowired
+    private JpaTransactionManager transactionManager;
+
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void cleanAccounts() {
+        jdbc = new JdbcTemplate(dataSource);
         repository.deleteAll();
     }
 
@@ -190,6 +184,18 @@ class CreditAccountPersistenceTests {
         assertThat(repository.existsById(owner)).isFalse();
         assertThat(service.initializeAccount(owner)).isTrue();
     }
+
+    @TestConfiguration
+    @EnableTransactionManagement
+    @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
+    @Import({
+        CreditAccountService.class,
+        PropertiesConfig.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
+    static class TestConfig {}
 
     @TestConfiguration
     @EnableConfigurationProperties(CreditProperties.class)

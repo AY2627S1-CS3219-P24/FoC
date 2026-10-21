@@ -4,46 +4,35 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
+import com.cs3219.foc.credit.integration.AbstractIntegrationTest;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
+import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.concurrent.*;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.*;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@DataJpaTest(showSql = false)
-@Testcontainers
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@EnableConfigurationProperties(CreditProperties.class)
-@Import({
-    CreditReservationService.class,
-    CreditAccountService.class,
-    CreditSettlementService.class,
-    CurrentUserService.class,
-    AuthenticationContextService.class,
-    AuthenticatedUserResolver.class
-})
-@ActiveProfiles("test")
-class CreditReservationPersistenceTests {
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+        replace = AutoConfigureTestDatabase.Replace.NONE)
+@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
+@org.springframework.context.annotation.Import(CreditReservationPersistenceTests.TestConfig.class)
+class CreditReservationPersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
     private CreditReservationService reserve;
@@ -55,10 +44,13 @@ class CreditReservationPersistenceTests {
     private CreditAccountService creditAccountService;
 
     @Autowired
+    private DataSource dataSource;
+
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void clean() {
+        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE credit_accounts CASCADE");
     }
 
@@ -192,4 +184,18 @@ class CreditReservationPersistenceTests {
         assertThat(reserve.reserve(user, first).outcome()).isEqualTo("RESERVED");
         assertThat(count("credit_transaction_log")).isEqualTo(3);
     }
+
+    @TestConfiguration
+    @EnableConfigurationProperties(CreditProperties.class)
+    @EnableTransactionManagement
+    @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
+    @Import({
+        CreditReservationService.class,
+        CreditAccountService.class,
+        CreditSettlementService.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
+    static class TestConfig {}
 }

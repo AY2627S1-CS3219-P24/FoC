@@ -68,4 +68,5 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty 'foc.root', rootProject.projectDir.absolutePath
 }

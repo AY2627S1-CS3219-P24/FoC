@@ -9,27 +9,31 @@ import com.cs3219.foc.order.config.OrderProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
 import com.cs3219.foc.order.exception.OrderConflictException;
 import com.cs3219.foc.order.infrastructure.client.*;
-import com.cs3219.foc.order.mapper.ErrandMapperImpl;
+import com.cs3219.foc.order.integration.AbstractIntegrationTest;
+import com.cs3219.foc.order.mapper.ErrandMapper;
 import com.cs3219.foc.order.model.dto.*;
 import com.cs3219.foc.order.model.dto.event.*;
+import com.cs3219.foc.order.repository.ErrandRepository;
 import com.cs3219.foc.order.security.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.*;
 import org.springframework.security.access.AccessDeniedException;
@@ -37,56 +41,40 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@DataJpaTest(showSql = false)
-@Testcontainers
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@EnableConfigurationProperties(OrderProperties.class)
-@Import({
-    OrderService.class,
-    CurrentUserService.class,
-    AuthenticationContextService.class,
-    AuthenticatedUserResolver.class,
-    ErrandMapperImpl.class,
-    OrderLifecyclePersistenceTests.Facts.class
-})
-@ActiveProfiles("test")
+@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
+@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+        replace = AutoConfigureTestDatabase.Replace.NONE)
+@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
+@org.springframework.context.annotation.Import(OrderLifecyclePersistenceTests.TestConfig.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class OrderLifecyclePersistenceTests {
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
-
+class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     private static final Instant START = Instant.parse("2030-01-01T00:00:00Z");
 
     @Autowired
     private OrderService service;
 
-    @MockitoBean
+    @Autowired
+    private DataSource dataSource;
+
+    @Autowired
     private SupplierClient suppliers;
 
-    @MockitoBean
+    @Autowired
     private CreditClient credit;
 
-    @MockitoBean
+    @Autowired
     private UserClient users;
 
-    @MockitoBean
-    private Clock clock;
-
-    private final AtomicReference<Instant> now = new AtomicReference<>(START);
+    @Autowired
+    private TestClock clock;
 
     @Autowired
     private Facts facts;
@@ -94,17 +82,14 @@ class OrderLifecyclePersistenceTests {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
-    @Autowired
     private JdbcTemplate jdbc;
-
     private UUID requester;
 
     @BeforeEach
     void prepare() {
+        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE errands, event_publication");
-        now.set(START);
-        when(clock.instant()).thenAnswer(call -> now.get());
-        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
+        clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit);
         doAnswer(call -> {
@@ -557,7 +542,7 @@ class OrderLifecyclePersistenceTests {
             });
             try {
                 assertThat(acceptedButUncommitted.await(10, TimeUnit.SECONDS)).isTrue();
-                now.set(START.plusSeconds(61));
+                clock.time.set(START.plusSeconds(61));
                 var expiry = executor.submit(service::expireOpenOrders);
                 // Observe a PostgreSQL lock wait, rather than merely starting two threads together.
                 await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(jdbc.queryForObject(
@@ -586,7 +571,7 @@ class OrderLifecyclePersistenceTests {
         var courier = UUID.randomUUID();
         as(courier);
         service.accept(accepted);
-        now.set(START.plusSeconds(61));
+        clock.time.set(START.plusSeconds(61));
         assertThatThrownBy(() -> service.accept(expired)).isInstanceOf(OrderConflictException.class);
         SecurityContextHolder.clearContext();
         service.expireOpenOrders();
@@ -603,7 +588,7 @@ class OrderLifecyclePersistenceTests {
     @Test
     void synchronousReservationFinishingAfterExpiryIsReleasedWithoutOpening() {
         doAnswer(call -> {
-                    now.set(START.plusSeconds(61));
+                    clock.time.set(START.plusSeconds(61));
                     return new CreditReservationResponse("RESERVED");
                 })
                 .when(credit)
@@ -714,7 +699,7 @@ class OrderLifecyclePersistenceTests {
                 .reserve(any());
         var req = request();
         assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
-        now.set(START.plusSeconds(61));
+        clock.time.set(START.plusSeconds(61));
         var recovered = service.create(req);
         assertThat(recovered.status().name()).isEqualTo("EXPIRED");
         assertThat(service.get(recovered.errandId()).creditState().name()).isEqualTo("RELEASE_PENDING");
@@ -787,7 +772,7 @@ class OrderLifecyclePersistenceTests {
                 } else if (targetStatus.equals("CANCELLED")) {
                     service.cancel(id);
                 } else {
-                    now.set(START.plusSeconds(61));
+                    clock.time.set(START.plusSeconds(61));
                     service.expireOpenOrders();
                 }
                 if (!targetStatus.equals("ACCEPTED")) {
@@ -833,6 +818,25 @@ class OrderLifecyclePersistenceTests {
         assertThat(service.get(id).status().name()).isEqualTo("OPEN");
     }
 
+    static class TestClock extends Clock {
+        final AtomicReference<Instant> time = new AtomicReference<>(START);
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(instant(), zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return time.get();
+        }
+    }
+
     static class Facts {
         final List<Object> events = new CopyOnWriteArrayList<>();
 
@@ -849,6 +853,49 @@ class OrderLifecyclePersistenceTests {
         @EventListener
         public void expired(ErrandExpiredEvent e) {
             events.add(e);
+        }
+    }
+
+    @org.springframework.boot.test.context.TestConfiguration
+    @EnableTransactionManagement
+    @EnableConfigurationProperties(OrderProperties.class)
+    @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
+    @Import({
+        OrderService.class,
+        CurrentUserService.class,
+        AuthenticationContextService.class,
+        AuthenticatedUserResolver.class
+    })
+    static class TestConfig {
+        @Bean
+        CreditClient creditClient() {
+            return mock(CreditClient.class);
+        }
+
+        @Bean
+        @org.springframework.context.annotation.Primary
+        TestClock testClock() {
+            return new TestClock();
+        }
+
+        @Bean
+        Facts facts() {
+            return new Facts();
+        }
+
+        @Bean
+        SupplierClient supplierClient() {
+            return mock(SupplierClient.class);
+        }
+
+        @Bean
+        UserClient userClient() {
+            return mock(UserClient.class);
+        }
+
+        @Bean
+        ErrandMapper mapper() {
+            return Mappers.getMapper(ErrandMapper.class);
         }
     }
 }

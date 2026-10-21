@@ -8,6 +8,7 @@ import com.cs3219.foc.supplier.config.TimeConfig;
 import com.cs3219.foc.supplier.exception.StorageException;
 import com.cs3219.foc.supplier.exception.SupplierImageException;
 import com.cs3219.foc.supplier.infrastructure.storage.*;
+import com.cs3219.foc.supplier.integration.AbstractIntegrationTest;
 import com.cs3219.foc.supplier.mapper.*;
 import com.cs3219.foc.supplier.model.dto.event.SupplierImageDeletionRequestedEvent;
 import com.cs3219.foc.supplier.model.entity.*;
@@ -37,74 +38,23 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.modulith.events.IncompleteEventPublications;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.*;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.*;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
-@Testcontainers
-@ActiveProfiles("dev")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
         classes = ImageStorageIntegrationTests.Config.class,
-        webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        properties = {"spring.cloud.aws.s3.path-style-access-enabled=true"})
-class ImageStorageIntegrationTests {
-    @Container
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
-
+        webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@org.springframework.context.annotation.Import(AbstractIntegrationTest.Aws.class)
+class ImageStorageIntegrationTests extends AbstractIntegrationTest {
     static final String BUCKET = "foc-supplier-integration";
-
-    @Container
-    static final GenericContainer<?> FLOCI = new GenericContainer<>(DockerImageName.parse("floci/floci:2.3.0-compat"))
-            .withExposedPorts(4566)
-            .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true")
-            .withEnv("AWS_REGION", "ap-southeast-1");
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        var endpoint = URI.create("http://" + FLOCI.getHost() + ":" + FLOCI.getMappedPort(4566));
-        try (var s3 = S3Client.builder()
-                .endpointOverride(endpoint)
-                .region(Region.AP_SOUTHEAST_1)
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test")))
-                .forcePathStyle(true)
-                .build()) {
-            s3.createBucket(CreateBucketRequest.builder()
-                    .bucket(BUCKET)
-                    .createBucketConfiguration(CreateBucketConfiguration.builder()
-                            .locationConstraint(BucketLocationConstraint.AP_SOUTHEAST_1)
-                            .build())
-                    .build());
-            s3.putPublicAccessBlock(PutPublicAccessBlockRequest.builder()
-                    .bucket(BUCKET)
-                    .publicAccessBlockConfiguration(PublicAccessBlockConfiguration.builder()
-                            .blockPublicAcls(true)
-                            .blockPublicPolicy(true)
-                            .ignorePublicAcls(true)
-                            .restrictPublicBuckets(true)
-                            .build())
-                    .build());
-        }
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("storage.s3.bucket", () -> BUCKET);
-        registry.add("spring.cloud.aws.s3.region", () -> "ap-southeast-1");
-        registry.add("spring.cloud.aws.s3.endpoint", endpoint::toString);
-    }
 
     @Configuration
     @ConfigurationPropertiesScan("com.cs3219.foc.supplier.config")
