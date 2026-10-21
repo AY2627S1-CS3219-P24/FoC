@@ -4,6 +4,7 @@ import { useRef } from 'react'
 import { useAuth } from '#/features/auth/providers/AuthProvider'
 import { useLogin } from '#/features/auth/hooks/useLogin'
 import { AuthRequestError } from '#/features/auth/lib/authRequest'
+import { getHomePath } from '#/features/auth/utils/getHomePath'
 
 import type { LoginFormValues } from './schemas/login.schema'
 import { LoginForm } from './components/LoginForm/LoginForm'
@@ -25,7 +26,7 @@ export const LoginPage = () => {
     login.mutate(values, {
       onSuccess: (tokens) => {
         auth.completeLogin(tokens.accessToken)
-        void navigate({ to: '/home', replace: true })
+        void navigate({ to: getHomePath(), replace: true })
       },
       onError: () => {
         submissionInProgress.current = false

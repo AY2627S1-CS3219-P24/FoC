@@ -86,6 +86,18 @@ const fill = async () => {
 }
 
 describe('LoginPage', () => {
+  it('redirect to admin dashboard after admin users login', async () => {
+    const adminToken = `header.${btoa(JSON.stringify({ roles: ['USER', 'ADMIN'] }))}.signature`
+    loginMock.mockResolvedValue({ ...tokens, accessToken: adminToken })
+    const router = await setup()
+    const user = await fill()
+
+    await user.click(screen.getByRole('button', { name: 'Log In' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin'))
+
+    expect(getAccessToken()).toBe(adminToken)
+  })
+
   it('blocks rapid, pending and successful resubmissions', async () => {
     let resolveRequest!: (value: AccessTokenResponse) => void
     loginMock.mockImplementation(
