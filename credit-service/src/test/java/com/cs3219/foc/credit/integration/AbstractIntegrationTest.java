@@ -44,9 +44,9 @@ public abstract class AbstractIntegrationTest {
                     .withEnv("FLOCI_INIT_HOOKS_TIMEOUT_SECONDS", "180")
                     .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("foc.test.floci")))
                     .withFileSystemBind(
-                            Path.of(System.getProperty("foc.root"), "docker/floci/init-storage.sh")
+                            Path.of(System.getProperty("foc.root"), "infra/docker/floci/init-resources.sh")
                                     .toString(),
-                            "/etc/localstack/init/ready.d/10-foc-storage.sh",
+                            "/etc/localstack/init/ready.d/10-foc-resources.sh",
                             BindMode.READ_ONLY)
                     .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"))
                     .withStartupTimeout(Duration.ofMinutes(4));
