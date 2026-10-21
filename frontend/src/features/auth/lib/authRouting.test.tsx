@@ -22,8 +22,13 @@ import { refreshSession } from '../api/refreshSession.api'
 import { logoutUser } from '../api/logoutUser.api'
 import { setAccessToken, getAccessToken } from './accessTokenStore'
 import type { AccessTokenResponse } from '../types/auth.types'
+import { getCreditBalance } from '#/features/credits/api/creditBalance.api'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+
+vi.mock('#/features/credits/api/creditBalance.api', () => ({
+  getCreditBalance: vi.fn(),
+}))
 
 vi.mock('#/features/orders/api/errands.api', () => ({
   listAvailableErrands: vi.fn(async () => ({
@@ -70,6 +75,10 @@ beforeEach(() => {
   setAccessToken(null)
   refresh.mockReset()
   vi.mocked(logoutUser).mockReset()
+  vi.mocked(getCreditBalance).mockReset().mockResolvedValue({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 
@@ -99,6 +108,37 @@ const setup = (path: string) => {
   )
   return router
 }
+
+it.each([
+  ['/home?mode=courier', 17],
+  ['/home?mode=requestor', 0],
+] as const)(
+  'shows the available credit balance on %s',
+  async (path, balance) => {
+    setAccessToken('token')
+    vi.mocked(getCreditBalance).mockResolvedValue({
+      availableBalance: balance,
+      reservedBalance: 3,
+    })
+    setup(path)
+
+    expect(await screen.findByText(`${balance} credits`)).toBeInTheDocument()
+    expect(screen.queryByText('3 credits')).not.toBeInTheDocument()
+  },
+)
+
+it('keeps the header usable when the credit balance is unavailable', async () => {
+  setAccessToken('token')
+  vi.mocked(getCreditBalance).mockRejectedValue(
+    new Error('Credit account pending'),
+  )
+  setup('/home?mode=courier')
+
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  await waitFor(() => expect(getCreditBalance).toHaveBeenCalled())
+  expect(screen.getByText('Balance unavailable')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+})
 
 it('switches between requestor and courier modes through the menu', async () => {
   setAccessToken('token')
