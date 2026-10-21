@@ -20,7 +20,7 @@ for service in user supplier order credit; do
   aws_local sns create-topic --name "$prefix-$service-events" >/dev/null
 
   dlq_url=$(aws_local sqs create-queue --queue-name "$prefix-$service-dlq" --query QueueUrl --output text)
-  aws_local sqs set-queue-attributes --queue-url "$dlq_url" --attributes MessageRetentionPeriod=1209600 >/dev/null
+  aws_local sqs set-queue-attributes --queue-url "$dlq_url" --attributes MessageRetentionPeriod=1209600,SqsManagedSseEnabled=true >/dev/null
   dlq_arn=$(aws_local sqs get-queue-attributes --queue-url "$dlq_url" --attribute-names QueueArn --query Attributes.QueueArn --output text)
 
   queue_url=$(aws_local sqs create-queue --queue-name "$prefix-$service-events" --query QueueUrl --output text)
@@ -60,7 +60,7 @@ allow_sns() {
   sources=$2
   queue_arn=$(queue_arn_for "$consumer")
   queue_url=$(queue_url_for "$consumer")
-  policy=$(printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"sns.amazonaws.com"},"Action":"sqs:SendMessage","Resource":"%s","Condition":{"ArnEquals":{"aws:SourceArn":%s}}}]}' "$queue_arn" "$sources")
+  policy=$(printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"sns.amazonaws.com"},"Action":"sqs:SendMessage","Resource":"%s","Condition":{"ArnEquals":{"aws:SourceArn":%s},"StringEquals":{"aws:SourceAccount":"000000000000"}}}]}' "$queue_arn" "$sources")
   escaped=$(printf '%s' "$policy" | sed 's/\\/\\\\/g; s/"/\\"/g')
   printf '%s\n' "{\"Policy\":\"$escaped\"}" > /tmp/foc-queue-policy.json
   aws_local sqs set-queue-attributes --queue-url "$queue_url" --attributes file:///tmp/foc-queue-policy.json >/dev/null

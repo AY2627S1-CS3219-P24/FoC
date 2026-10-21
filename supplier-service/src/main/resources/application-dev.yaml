@@ -2,11 +2,7 @@ spring:
   cloud:
     aws:
       region:
-        static: ap-southeast-1
-      sns:
-        endpoint: http://localhost:4566
-      sqs:
-        endpoint: http://localhost:4566
+        static: ${AWS_REGION:ap-southeast-1}
       credentials:
         access-key: test
         secret-key: test

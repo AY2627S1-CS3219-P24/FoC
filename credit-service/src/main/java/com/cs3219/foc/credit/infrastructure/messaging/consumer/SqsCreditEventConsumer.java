@@ -17,7 +17,7 @@ public class SqsCreditEventConsumer {
     private final UserCreatedConsumer userCreatedConsumer;
     private final ErrandSettlementConsumer errandSettlementConsumer;
 
-    @SqsListener("${events.messaging.queue-name}")
+    @SqsListener(value = "${events.messaging.queue-name}", acknowledgementMode = "ON_SUCCESS")
     public void consume(@Header("eventType") String eventType, String body) {
         switch (eventType) {
             case UserCreatedEvent.TYPE -> {

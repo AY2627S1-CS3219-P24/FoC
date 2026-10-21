@@ -8,6 +8,8 @@ spring:
     aws:
       sqs:
         queue-not-found-strategy: fail
+        listener:
+          poll-timeout: 20s
   modulith:
     events:
       registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
@@ -43,7 +45,3 @@ server:
 orders:
   expiry-scan-delay: 10s
   expiry-batch-size: 100
-events:
-  messaging:
-    topic-arn: arn:aws:sns:ap-southeast-1:000000000000:foc-dev-order-events
-    queue-name: foc-dev-order-events

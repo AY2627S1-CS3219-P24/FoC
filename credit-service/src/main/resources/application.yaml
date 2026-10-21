@@ -8,6 +8,8 @@ spring:
     aws:
       sqs:
         queue-not-found-strategy: fail
+        listener:
+          poll-timeout: 20s
   modulith:
     events:
       registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener

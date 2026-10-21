@@ -1,8 +1,13 @@
+events:
+  messaging:
+    topic-arn: arn:aws:sns:${AWS_REGION:ap-southeast-1}:000000000000:foc-dev-order-events
+    queue-name: foc-dev-order-events
+
 spring:
   cloud:
     aws:
       region:
-        static: ap-southeast-1
+        static: ${AWS_REGION:ap-southeast-1}
       sns:
         endpoint: http://localhost:4566
       sqs:

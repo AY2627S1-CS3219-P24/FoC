@@ -37,7 +37,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'io.awspring.cloud:spring-cloud-aws-starter-sns'
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter-sqs'
+    testImplementation 'software.amazon.awssdk:sqs'
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation "org.bouncycastle:bcprov-jdk18on:1.86"

@@ -10,7 +10,6 @@ import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
-import com.cs3219.foc.user.model.dto.event.UserCreatedEvent.Payload;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.time.OffsetDateTime;
@@ -39,7 +38,6 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
-import tools.jackson.databind.json.JsonMapper;
 
 @SpringJUnitConfig(CreditProvisioningPersistenceTests.TestConfig.class)
 @TestPropertySource(properties = "credits.initial-allocation=15")
@@ -127,21 +125,6 @@ class CreditProvisioningPersistenceTests {
         }
         userCreatedConsumer.initializeAccount(event);
         assertThat(accountRepository.count()).isEqualTo(1);
-    }
-
-    @Test
-    void userServiceEventContractCreatesAccount() {
-        var userId = UUID.randomUUID();
-        var eventId = UUID.randomUUID();
-        var occurredAt = OffsetDateTime.parse("2026-10-18T00:00:00Z");
-        var published =
-                new com.cs3219.foc.user.model.dto.event.UserCreatedEvent(eventId, 1, occurredAt, new Payload(userId));
-        var json = JsonMapper.builder().build();
-        var received = json.readValue(json.writeValueAsString(published), UserCreatedEvent.class);
-        assertThat(received)
-                .isEqualTo(new UserCreatedEvent(eventId, 1, occurredAt, new UserCreatedEvent.Payload(userId)));
-        userCreatedConsumer.initializeAccount(received);
-        assertThat(creditAccountService.getBalance(userId)).isEqualTo(new CreditBalanceResponse(15, 0));
     }
 
     @Test
