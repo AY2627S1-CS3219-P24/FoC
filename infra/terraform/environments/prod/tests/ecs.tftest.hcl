@@ -14,7 +14,8 @@ mock_provider "aws" {
   }
   mock_data "aws_partition" {
     defaults = {
-      partition = "aws"
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
     }
   }
   mock_data "aws_ssm_parameter" {
@@ -77,6 +78,7 @@ run "admin_credentials_stay_on_the_admin_task" {
       order    = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-order-events"
       credit   = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-credit-events"
     }
+    messaging_kms_key_arn = "arn:aws:kms:ap-southeast-1:123456789012:key/00000000-0000-0000-0000-000000000001"
     services = {
       user = {
         port = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
@@ -112,5 +114,19 @@ run "admin_credentials_stay_on_the_admin_task" {
       ]
     ]))
     error_message = "Database creation tasks must not receive admin credentials."
+  }
+
+  assert {
+    condition = alltrue([
+      for service, policy in aws_iam_role_policy.messaging : (
+        length([
+          for statement in jsondecode(policy.policy).Statement : statement
+          if can(statement.Condition.StringEquals["kms:ViaService"])
+          && contains(["sns.ap-southeast-1.amazonaws.com", "sqs.ap-southeast-1.amazonaws.com"], statement.Condition.StringEquals["kms:ViaService"])
+          && statement.Resource == "arn:aws:kms:ap-southeast-1:123456789012:key/00000000-0000-0000-0000-000000000001"
+        ]) == 2
+      )
+    ])
+    error_message = "Task roles must use the messaging key only through SNS and SQS."
   }
 }

@@ -227,6 +227,23 @@ Set `AWS_REGION` to `ap-southeast-1`. Leave
 
 Terraform attaches each image policy to its owning ECS task role.
 
+## Messaging
+
+Each service has an SNS topic, an SQS queue, and a DLQ. Topics and queues use
+`${name_prefix}-${service}-events`. DLQs use `${name_prefix}-${service}-dlq`.
+Topics and queues use a rotating customer-managed KMS key. Queue policies allow
+SNS delivery only from the same account and the subscribed topics, and deny
+non-TLS access. Failed messages move to the DLQ after five receives.
+
+`event_subscriptions` in `terraform.tfvars` selects the event types. Production
+routes `UserCreatedEvent` from User to Credit, errand completion, cancellation,
+and expiry from Order to Credit, and `CreditSettlementResultEvent` from Credit
+to Order. Subscriptions deliver raw JSON.
+
+Copy `deployment.topics` and `deployment.queue_names` into the topic and queue
+variables in `.env.prod.example`. ECS task roles can publish to their own topic,
+consume their own queue, and use the messaging key only through SNS or SQS.
+
 The deployment and setup workflows share the production lock. Set up a new environment in this order:
 
 1. Update infrastructure with `start_services` false in `terraform.tfvars`. It plans and applies that file.

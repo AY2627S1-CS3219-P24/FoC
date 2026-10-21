@@ -1,3 +1,8 @@
+variable "region" {
+  description = "AWS region for messaging encryption and topic policies."
+  type        = string
+}
+
 variable "name_prefix" {
   description = "Environment prefix for AWS resource names."
   type        = string

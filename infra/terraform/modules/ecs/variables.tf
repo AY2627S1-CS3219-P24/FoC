@@ -92,6 +92,11 @@ variable "queue_arns" {
   type        = map(string)
 }
 
+variable "messaging_kms_key_arn" {
+  description = "Customer-managed key that encrypts SNS and SQS messages."
+  type        = string
+}
+
 variable "database_host" {
   description = "PostgreSQL endpoint hostname."
   type        = string

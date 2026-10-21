@@ -70,6 +70,18 @@ resource "aws_iam_role_policy" "messaging" {
           "sqs:GetQueueUrl"
         ]
         Resource = var.queue_arns[each.key]
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sns.${var.region}.${data.aws_partition.current.dns_suffix}" } }
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.region}.${data.aws_partition.current.dns_suffix}" } }
       }
     ]
   })

@@ -59,6 +59,7 @@ module "network" {
 
 module "messaging" {
   source              = "../../modules/messaging"
+  region              = local.region
   name_prefix         = var.name_prefix
   service_names       = local.messaging_services
   event_subscriptions = var.event_subscriptions
@@ -95,6 +96,7 @@ module "ecs" {
   service_discovery_service_arns   = module.network.service_discovery_service_arns
   topic_arns                       = module.messaging.topic_arns
   queue_arns                       = module.messaging.queue_arns
+  messaging_kms_key_arn            = module.messaging.kms_key_arn
   database_host                    = module.rds.address
   database_master_secret_arn       = module.rds.master_user_secret_arn
   database_bootstrap_sql           = file("${path.module}/../../../scripts/db/bootstrap.sql")

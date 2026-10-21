@@ -27,8 +27,9 @@ Set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_NAME`, and
 `INITIAL_ADMIN_PASSWORD` in `.env.prod`. The email must use `u.nus.edu` or
 `nus.edu.sg`, and the password must contain at least eight characters.
 
-Before starting the services, [provision S3 storage](../infra/terraform/README.md)
-and set `AWS_REGION`, `FOC_USER_BUCKET`, and `FOC_SUPPLIER_BUCKET` in `.env.prod`.
+Before starting the services, [provision storage and messaging](../infra/terraform/README.md)
+and set `AWS_REGION`, the image bucket names, and the topic and queue variables in `.env.prod`
+from the Terraform outputs.
 
 ## First deployment
 

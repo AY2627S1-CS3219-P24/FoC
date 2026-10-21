@@ -14,7 +14,8 @@ mock_provider "aws" {
   }
   mock_data "aws_partition" {
     defaults = {
-      partition = "aws"
+      partition  = "aws"
+      dns_suffix = "amazonaws.com"
     }
   }
   mock_data "aws_ssm_parameter" {

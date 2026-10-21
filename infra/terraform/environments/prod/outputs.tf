@@ -28,6 +28,7 @@ output "deployment" {
     parameter_prefix            = module.ecs.parameter_prefix
     grafana_cloudwatch_role_arn = module.ecs.grafana_cloudwatch_role_arn
     queues                      = module.messaging.queue_urls
+    queue_names                 = module.messaging.queue_names
     topics                      = module.messaging.topic_arns
   }
 }

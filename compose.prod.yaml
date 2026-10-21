@@ -119,6 +119,8 @@ services:
       FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_order
       FOC_DATABASE_USERNAME: ${POSTGRES_USER}
       FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      EVENTS_MESSAGING_TOPIC_ARN: ${ORDER_EVENTS_TOPIC_ARN}
+      EVENTS_MESSAGING_QUEUE_NAME: ${ORDER_EVENTS_QUEUE_NAME}
     depends_on:
       postgres:
         condition: service_healthy
