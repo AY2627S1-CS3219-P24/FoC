@@ -156,12 +156,16 @@ class SettlementMessagingTests {
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
                                     creditAccountService.getBalance(courier).availableBalance())
                             .isEqualTo(55));
+                    var originalResultId = awaitPayoutResult(channel, queue, c.eventId(), null);
                     publish(channel, completed, c); // Acknowledging a duplicate must not transfer credits again.
+                    awaitPayoutResult(channel, queue, c.eventId(), originalResultId);
                     await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(sql.queryForObject(
                                     "SELECT count(*) FROM event_publication WHERE completion_date IS NULL", Long.class))
                             .isZero());
                     assertThat(sql.queryForObject("SELECT count(*) FROM credit_transaction_log", Long.class))
                             .isEqualTo(6);
+                    assertThat(creditAccountService.getBalance(courier).availableBalance())
+                            .isEqualTo(55);
                     // Registry writes are part of the same transaction as settlement and its audit row.
                     var d = cancelled(reserve, owner, 10);
                     var service = context.getBean(CreditSettlementService.class);
@@ -229,7 +233,9 @@ class SettlementMessagingTests {
                     channel.exchangeDelete(input + ".dlx");
                 }
                 channel.queueDelete(queue);
+                channel.queueDelete(queue + ".dlq");
                 channel.exchangeDelete(output);
+                channel.exchangeDelete(output + ".dlx");
                 sql.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
         }
@@ -239,6 +245,26 @@ class SettlementMessagingTests {
         var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), amount);
         assertThat(service.reserve(owner, request).outcome()).isEqualTo("RESERVED");
         return request.errandId();
+    }
+
+    private UUID awaitPayoutResult(Channel channel, String queue, UUID operationId, UUID previousResultId) {
+        var json = JsonMapper.builder().build();
+        // Result messages are emitted after the settlement transaction commits, including duplicate decisions.
+        var result = await().atMost(Duration.ofSeconds(20))
+                .until(
+                        () -> {
+                            var message = channel.basicGet(queue, true);
+                            return message == null ? null : json.readTree(message.getBody());
+                        },
+                        event -> event != null
+                                && event.get("payload")
+                                        .get("operationId")
+                                        .asText()
+                                        .equals(operationId.toString())
+                                && !UUID.fromString(event.get("eventId").asText())
+                                        .equals(previousResultId));
+        assertThat(result.get("payload").get("outcome").asText()).isEqualTo("PAID");
+        return UUID.fromString(result.get("eventId").asText());
     }
 
     private ErrandCancelledEvent cancelled(CreditReservationService service, UUID owner, long amount) {

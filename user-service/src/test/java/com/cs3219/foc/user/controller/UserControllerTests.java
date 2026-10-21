@@ -16,6 +16,7 @@ import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
+import com.cs3219.foc.user.model.dto.UserBriefDto;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.security.JsonAccessDeniedHandler;
@@ -116,6 +117,24 @@ class UserControllerTests {
                         """))
                 .andExpect(status().isNoContent());
         verify(passwordService).resetPassword("reset-token", " NewPassword2 ");
+    }
+
+    @Test
+    @WithMockUser
+    void userBriefRequiresLoginAndReturnsOnlyBasicFields() throws Exception {
+        when(service.getUserBriefs(List.of(userId))).thenReturn(List.of(new UserBriefDto(userId, "Alex Tan")));
+        mvc.perform(get("/users/brief")
+                        .param("ids", userId.toString())
+                        .with(jwt().jwt(token -> token.subject(userId.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(userId.toString()))
+                .andExpect(jsonPath("$[0].name").value("Alex Tan"))
+                .andExpect(jsonPath("$[0].email").doesNotExist())
+                .andExpect(jsonPath("$[0].roles").doesNotExist());
+        mvc.perform(get("/users/brief")
+                        .param("ids", "not-a-uuid")
+                        .with(jwt().jwt(token -> token.subject(userId.toString()))))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -224,6 +243,7 @@ class UserControllerTests {
 
     @Test
     void rejectsUnauthenticatedReadAndUpdate() throws Exception {
+        mvc.perform(get("/users/brief").param("ids", userId.toString())).andExpect(status().isUnauthorized());
         mvc.perform(get("/users/me")).andExpect(status().isUnauthorized());
         mvc.perform(put("/users/me")
                         .contentType(MediaType.APPLICATION_JSON)

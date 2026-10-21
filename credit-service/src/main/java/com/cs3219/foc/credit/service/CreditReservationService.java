@@ -7,6 +7,7 @@ import com.cs3219.foc.credit.exception.ReservationConflictException;
 import com.cs3219.foc.credit.model.dto.CreditReservationResponse;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
 import com.cs3219.foc.credit.model.entity.CreditReservation;
+import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.repository.*;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import java.util.UUID;
@@ -26,11 +27,15 @@ public class CreditReservationService {
     public CreditReservationResponse reserve(UUID user, ReserveCreditRequest request) {
         // All reservations for an account serialize before reading its available balance.
         creditAccountRepository.lockByUserId(user).orElseThrow(CreditAccountPendingException::new);
+        return reserveLocked(user, request);
+    }
+
+    private CreditReservationResponse reserveLocked(UUID user, ReserveCreditRequest request) {
         var existing = creditReservationRepository.findById(request.errandId());
         if (existing.isPresent()) return response(existing.get(), user, request);
-        var available =
+        long available =
                 creditAccountRepository.findBalanceByUserId(user).orElseThrow().availableBalance();
-        var state = available >= request.amount() ? RESERVED : INSUFFICIENT_BALANCE;
+        ReservationState state = available >= request.amount() ? RESERVED : INSUFFICIENT_BALANCE;
         int inserted = creditReservationRepository.reserve(
                 request.errandId(), request.operationId(), user, request.amount(), state);
         var reservation =

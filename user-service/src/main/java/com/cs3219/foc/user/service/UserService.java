@@ -8,6 +8,7 @@ import com.cs3219.foc.user.model.dto.PageDto;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserProfileRequest;
 import com.cs3219.foc.user.model.dto.UpdateUserRequest;
+import com.cs3219.foc.user.model.dto.UserBriefDto;
 import com.cs3219.foc.user.model.dto.UserDto;
 import com.cs3219.foc.user.model.dto.UserProfileDto;
 import com.cs3219.foc.user.model.dto.UserSearchCriteria;
@@ -51,6 +52,17 @@ public class UserService {
     private static final String UNASSIGNED_FACULTY = "UNASSIGNED";
 
     private static final List<String> SORTABLE_PROPERTIES = List.of("name", "email", "createdAt", "updatedAt");
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("isAuthenticated()")
+    public List<UserBriefDto> getUserBriefs(List<UUID> ids) {
+        if (ids.isEmpty() || ids.size() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provide 1-200 user IDs");
+        }
+        return userRepository.findAllById(ids.stream().distinct().toList()).stream()
+                .map(userMapper::toUserBriefDto)
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('ADMIN')")
