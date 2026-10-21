@@ -157,6 +157,8 @@ it('reports an offline creation attempt without scheduling an automatic replay',
   await user.click(screen.getByRole('button', { name: 'Post request' }))
   await screen.findByText('Creation is not confirmed')
   expect(api.createOrder).toHaveBeenCalledTimes(1)
+  expect(screen.queryByText(/Last attempt failed:/)).not.toBeInTheDocument()
+  expect(screen.queryByText('offline', { exact: true })).not.toBeInTheDocument()
   onlineManager.setOnline(true)
   await waitFor(() =>
     expect(
@@ -544,25 +546,116 @@ it('does not navigate or clear account A submission when its result arrives afte
   expect(loadCreation('other-user')).toBeNull()
 })
 
-it('keeps an unknown original submission after a later rejection instead of silently enabling a new request', async () => {
-  const rejected = new AxiosError('Supplier inactive')
+it('shows the latest rejection while preserving the unknown original submission and clears it on the next attempt', async () => {
+  const rejected = new AxiosError('Technical request failure')
   rejected.response = {
     status: 400,
-    data: { code: 'INVALID_REQUEST' },
+    data: {
+      code: 'ORDER_REQUEST_FAILED',
+      message: 'Supplier is not available',
+    },
   } as never
+  let finishRetry!: (
+    result: Awaited<ReturnType<typeof api.createOrder>>,
+  ) => void
+  const retryResult = new Promise<Awaited<ReturnType<typeof api.createOrder>>>(
+    (resolve) => {
+      finishRetry = resolve
+    },
+  )
   vi.mocked(api.createOrder)
     .mockRejectedValueOnce(new AxiosError('timeout', 'ECONNABORTED'))
     .mockRejectedValueOnce(rejected)
+    .mockReturnValueOnce(retryResult)
   setup(<CreateErrandPage />)
   const user = await fillCreation()
   await user.click(screen.getByRole('button', { name: 'Post request' }))
+  await screen.findByText('Creation is not confirmed')
+  const original = vi.mocked(api.createOrder).mock.calls[0][0]
   await user.click(
     await screen.findByRole('button', { name: 'Retry original request' }),
   )
-  await waitFor(() => expect(api.createOrder).toHaveBeenCalledTimes(2))
-  expect(loadCreation('requester')).not.toBeNull()
+  await waitFor(() =>
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Last attempt failed: Supplier is not available',
+    ),
+  )
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Creation is not confirmed',
+  )
+  expect(screen.getByRole('status')).toHaveAttribute('data-tone', 'warning')
+  expect(vi.mocked(api.createOrder).mock.calls[1][0]).toEqual(original)
+  expect(loadCreation('requester')?.input).toEqual(original)
   expect(screen.getByRole('button', { name: 'Back to edit' })).toBeDisabled()
+  expect(
+    screen.queryByText('Technical request failure'),
+  ).not.toBeInTheDocument()
+
+  await user.click(
+    screen.getByRole('button', { name: 'Retry original request' }),
+  )
+  await waitFor(() =>
+    expect(screen.queryByText(/Last attempt failed:/)).not.toBeInTheDocument(),
+  )
+  expect(screen.getByRole('button', { name: 'Posting…' })).toBeDisabled()
+  expect(loadCreation('requester')?.input).toEqual(original)
+  expect(vi.mocked(api.createOrder).mock.calls[2][0]).toEqual(original)
+
+  finishRetry({
+    errandId: orderFixture().id,
+    status: 'OPEN',
+    creationFailureCode: null,
+    queryUrl: `/api/orders/${orderFixture().id}`,
+  })
+  await waitFor(() => expect(state.navigate).toHaveBeenCalled())
+  expect(
+    screen.queryByText('Creation is not confirmed'),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText(/Last attempt failed:/)).not.toBeInTheDocument()
+  expect(loadCreation('requester')).toBeNull()
 })
+
+it('shows the public supplier rejection on an initial creation attempt', async () => {
+  const rejected = new AxiosError('Technical request failure')
+  rejected.response = {
+    status: 400,
+    data: {
+      code: 'ORDER_REQUEST_FAILED',
+      message: 'Supplier is not available',
+    },
+  } as never
+  vi.mocked(api.createOrder).mockRejectedValueOnce(rejected)
+  setup(<CreateErrandPage />)
+  const user = await fillCreation()
+  await user.click(screen.getByRole('button', { name: 'Post request' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Supplier is not available',
+  )
+  expect(
+    screen.queryByText('Technical request failure'),
+  ).not.toBeInTheDocument()
+})
+
+it.each([undefined, '   ', 123])(
+  'uses the generic rejection message when the public message is invalid: %j',
+  async (message) => {
+    const rejected = new AxiosError('Technical request failure')
+    rejected.response = {
+      status: 400,
+      data: { code: 'ORDER_REQUEST_FAILED', message },
+    } as never
+    vi.mocked(api.createOrder).mockRejectedValueOnce(rejected)
+    setup(<CreateErrandPage />)
+    const user = await fillCreation()
+    await user.click(screen.getByRole('button', { name: 'Post request' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to complete the request. Please try again.',
+    )
+    expect(
+      screen.queryByText('Technical request failure'),
+    ).not.toBeInTheDocument()
+  },
+)
 
 it('keeps the action disabled until current detail refreshes without waiting for balances or lists', async () => {
   state.user = { id: 'courier', name: 'Sam' }

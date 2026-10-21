@@ -10,7 +10,7 @@ export const creationErrorOrderId = (error: unknown): string | undefined => {
     ? data.errandId
     : undefined
 }
-export const orderErrorMessage = (error: unknown) => {
+export const orderErrorReason = (error: unknown): string | undefined => {
   switch (getApiErrorCode(error)) {
     case 'ORDER_CREATION_UNCONFIRMED':
       return 'Creation is not confirmed. Check the order and retry if needed.'
@@ -26,10 +26,22 @@ export const orderErrorMessage = (error: unknown) => {
       return 'This errand could not be found.'
     case 'INVALID_REQUEST':
       return 'Please check the request details.'
+    case 'ORDER_REQUEST_FAILED': {
+      const message = isAxiosError<{ message?: unknown } | null | undefined>(
+        error,
+      )
+        ? error.response?.data?.message
+        : undefined
+      return typeof message === 'string' && message.trim()
+        ? message.trim()
+        : undefined
+    }
     default:
-      return 'Unable to complete the request. Please try again.'
+      return undefined
   }
 }
+export const orderErrorMessage = (error: unknown) =>
+  orderErrorReason(error) ?? 'Unable to complete the request. Please try again.'
 export const inaccessibleOrder = (error: unknown) =>
   isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0)
 export const definiteCreationRejection = (error: unknown) =>

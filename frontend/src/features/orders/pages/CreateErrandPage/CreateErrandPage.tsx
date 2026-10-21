@@ -22,6 +22,7 @@ import {
   definiteCreationRejection,
   creationErrorOrderId,
   orderErrorMessage,
+  orderErrorReason,
 } from '../../utils/orderErrors'
 import type { PendingCreation } from '../../utils/creationRequest'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
@@ -67,6 +68,7 @@ const CreationForm = ({
   const [localError, setLocalError] = useState<string | null>(null)
   const [knownOrder, setKnownOrder] = useState<KnownOrder | null>(null)
   const { create } = useOrderActions()
+  const retryFailureReason = orderErrorReason(create.error)
   const navigate = useNavigate()
   const lock = useRef(false)
   const openOrder = async (destination: KnownOrder) => {
@@ -150,6 +152,12 @@ const CreationForm = ({
         <OrderNotice tone="warning" title="Creation is not confirmed">
           Credits may already be reserved. Retry the original request to check
           and continue it.
+          {retryFailureReason && (
+            <>
+              <br />
+              Last attempt failed: {retryFailureReason}
+            </>
+          )}
         </OrderNotice>
       ) : create.error ? (
         <OrderNotice
