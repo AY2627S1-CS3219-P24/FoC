@@ -5,6 +5,18 @@ spring:
         region: ${AWS_REGION:ap-southeast-2}
         endpoint: ${FOC_S3_ENDPOINT:}
         path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
+    stream:
+      bindings:
+        supplierChanged-out-0:
+          destination: foc.supplier-changed.v1
+          content-type: application/json
+      rabbit:
+        bindings:
+          supplierChanged-out-0:
+            producer:
+              exchange-type: fanout
+              exchange-durable: true
+              exchange-auto-delete: false
   modulith:
     events:
       registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener

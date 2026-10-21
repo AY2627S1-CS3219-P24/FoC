@@ -36,3 +36,21 @@ EXPOSE 8082
 FROM runtime AS credit-service
 COPY --from=build /workspace/credit-service/build/libs/*.jar /app/app.jar
 EXPOSE 8083
+
+FROM node:22-alpine AS realtime-build
+WORKDIR /workspace/realtime-service
+COPY realtime-service/package.json realtime-service/package-lock.json ./
+RUN npm ci
+COPY realtime-service/ ./
+RUN npm run build
+
+FROM node:22-alpine AS realtime-service
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apk add --no-cache curl
+COPY realtime-service/package.json realtime-service/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=realtime-build /workspace/realtime-service/dist ./dist
+USER node
+EXPOSE 8084
+CMD ["node", "dist/index.js"]

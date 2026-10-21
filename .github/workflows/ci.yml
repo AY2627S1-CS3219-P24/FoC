@@ -42,7 +42,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Backend check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: realtime-service/package-lock.json
+      - name: Java Services check
         run: ./gradlew check --no-daemon
         env:
           CI: true
@@ -53,6 +58,15 @@ jobs:
           FOC_TEST_RABBIT_PORT: "5672"
           FOC_TEST_RABBIT_USERNAME: foc_test
           FOC_TEST_RABBIT_PASSWORD: foc_test
+      - name: Install realtime service dependencies
+        working-directory: realtime-service
+        run: npm ci
+      - name: Test realtime service
+        working-directory: realtime-service
+        run: npm test
+      - name: Build realtime service
+        working-directory: realtime-service
+        run: npm run build
 
   frontend:
     runs-on: ubuntu-latest
@@ -78,3 +92,4 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+

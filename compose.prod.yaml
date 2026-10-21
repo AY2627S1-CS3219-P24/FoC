@@ -187,6 +187,30 @@ services:
       retries: 12
       start_period: 40s
 
+  realtime-service:
+    restart: unless-stopped
+    build:
+      context: .
+      target: realtime-service
+    environment:
+      NODE_ENV: production
+      PORT: 8084
+      JWKS_URL: http://user-service:8080/api/.well-known/jwks.json
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+      USER_UPDATES_DESTINATION: user.updates
+      SUPPLIER_CHANGED_DESTINATION: foc.supplier-changed.v1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8084/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
   api-gateway:
     restart: unless-stopped
     build:
@@ -213,6 +237,8 @@ services:
       order-service:
         condition: service_healthy
       credit-service:
+        condition: service_healthy
+      realtime-service:
         condition: service_healthy
 
 volumes:
