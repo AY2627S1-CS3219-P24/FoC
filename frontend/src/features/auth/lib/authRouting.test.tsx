@@ -39,6 +39,13 @@ vi.mock('#/features/orders/api/errands.api', () => ({
   })),
   getErrand: vi.fn(),
   acceptErrand: vi.fn(),
+  listCourierErrands: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 0,
+    size: 20,
+  })),
+  pickUpErrand: vi.fn(),
 }))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
@@ -138,6 +145,22 @@ it('keeps the header usable when the credit balance is unavailable', async () =>
   await waitFor(() => expect(getCreditBalance).toHaveBeenCalled())
   expect(screen.getByText('Balance unavailable')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+})
+
+it('opens My Errands from the header and returns to courier Home', async () => {
+  setAccessToken('token')
+  const router = setup('/home?mode=courier')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'Find an errand' })
+
+  await user.click(screen.getByRole('link', { name: 'My Errands' }))
+  await screen.findByRole('heading', { name: 'My Errands' })
+  expect(router.state.location.pathname).toBe('/my-errands')
+  await screen.findByText('No assigned errands on this page.')
+
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(router.state.location.href).toBe('/home?mode=courier')
 })
 
 it('switches between requestor and courier modes through the menu', async () => {

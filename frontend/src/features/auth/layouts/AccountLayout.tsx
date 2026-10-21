@@ -24,7 +24,7 @@ export const AccountLayout = () => {
             Home
           </Link>
           <span aria-disabled="true">Locations</span>
-          <span aria-disabled="true">My Errands</span>
+          <Link to="/my-errands">My Errands</Link>
         </>
       }
       onAccountClick={() => {
