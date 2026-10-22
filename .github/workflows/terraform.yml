@@ -26,12 +26,12 @@ jobs:
         working-directory: infra/terraform/environments/prod
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.1"
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
           aws-region: ap-southeast-1
@@ -63,7 +63,7 @@ jobs:
           printf 'Review the infrastructure plan artifact before approving the production job.\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           cat review/plan.txt >> "$GITHUB_STEP_SUMMARY"
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: environment-plan
           path: infra/terraform/environments/prod/review/
@@ -79,16 +79,16 @@ jobs:
         working-directory: infra/terraform/environments/prod
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.1"
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
           aws-region: ap-southeast-1
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: environment-plan
           path: infra/terraform/environments/prod/review
