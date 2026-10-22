@@ -128,6 +128,14 @@ replace the single core host and cause downtime; review the saved plan before ap
 Setting `start_services=false` stops all application services, including Order.
 Setting it to `true` runs one task for each of the five services.
 
+For a quick runtime toggle, open GitHub Actions → **Start or stop services** →
+**Run workflow** on `main`, then choose `start` or `stop`. It sets all five ECS
+services to one or zero tasks and waits for them to stabilize, using the existing
+production role and shared workflow lock. It requires `ecs:UpdateService` and
+`ecs:DescribeServices` on that role. Stopping services leaves EC2 and RDS running
+and incurring costs. The action changes live task counts; a later infrastructure
+apply or **Deploy Production** restores the count configured by `start_services`.
+
 ECR images are retained until manually removed. Keep the images referenced by
 active services and the previous successful deployment when pruning.
 
