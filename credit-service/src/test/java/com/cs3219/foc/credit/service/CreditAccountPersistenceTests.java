@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -33,14 +34,15 @@ import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Uses real PostgreSQL migrations and service transactions in a disposable database. */
-@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
-@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+@DataJpaTest
+@AutoConfigureTestDatabase(
         replace = AutoConfigureTestDatabase.Replace.NONE)
-@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
-@org.springframework.context.annotation.Import(CreditAccountPersistenceTests.TestConfig.class)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(CreditAccountPersistenceTests.TestConfig.class)
 @TestPropertySource(properties = "credits.initial-allocation=20")
 class CreditAccountPersistenceTests extends AbstractIntegrationTest {
 

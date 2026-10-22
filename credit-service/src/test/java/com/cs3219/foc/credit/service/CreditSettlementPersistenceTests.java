@@ -18,6 +18,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
@@ -27,12 +28,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.*;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
-@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+@DataJpaTest
+@AutoConfigureTestDatabase(
         replace = AutoConfigureTestDatabase.Replace.NONE)
-@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
-@org.springframework.context.annotation.Import(CreditSettlementPersistenceTests.TestConfig.class)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(CreditSettlementPersistenceTests.TestConfig.class)
 class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
 
     @Autowired

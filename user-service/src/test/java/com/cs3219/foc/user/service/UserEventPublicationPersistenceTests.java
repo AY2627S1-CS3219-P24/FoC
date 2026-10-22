@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
@@ -147,7 +148,7 @@ class UserEventPublicationPersistenceTests extends AbstractIntegrationTest {
 
     @Configuration
     @EnableAutoConfiguration
-    @org.springframework.boot.autoconfigure.AutoConfigurationPackage(basePackages = "com.cs3219.foc.user")
+    @AutoConfigurationPackage(basePackages = "com.cs3219.foc.user")
     @EnableAsync
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)

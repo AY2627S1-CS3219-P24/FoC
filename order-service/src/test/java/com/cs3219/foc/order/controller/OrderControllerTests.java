@@ -20,6 +20,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -207,7 +208,7 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id).with(jwt())).andExpect(status().isNotFound());
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     @EnableWebMvc
     @EnableWebSecurity
     @Import({OrderController.class, SecurityConfig.class, GlobalExceptionHandler.class})

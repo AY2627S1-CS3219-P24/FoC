@@ -48,7 +48,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -73,16 +75,17 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /** Runs the real migrations and service transactions in a disposable PostgreSQL database. */
-@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
-@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+@DataJpaTest
+@AutoConfigureTestDatabase(
         replace = AutoConfigureTestDatabase.Replace.NONE)
-@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
-@org.springframework.context.annotation.Import(UserProfilePersistenceTests.TestConfig.class)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(UserProfilePersistenceTests.TestConfig.class)
 class UserProfilePersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
@@ -779,7 +782,7 @@ class UserProfilePersistenceTests extends AbstractIntegrationTest {
         return jdbc.substring(0, index) + "/" + database + jdbc.substring(index + current.length());
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     @EnableTransactionManagement
     @EnableAsync
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)

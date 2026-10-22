@@ -52,7 +52,7 @@ import software.amazon.awssdk.services.s3.model.*;
 @SpringBootTest(
         classes = ImageStorageIntegrationTests.Config.class,
         webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@org.springframework.context.annotation.Import(AbstractIntegrationTest.Aws.class)
+@Import(AbstractIntegrationTest.Aws.class)
 class ImageStorageIntegrationTests extends AbstractIntegrationTest {
     static final String BUCKET = "foc-supplier-integration";
 

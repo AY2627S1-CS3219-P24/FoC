@@ -64,12 +64,12 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 @SpringBootTest(
         classes = ImageStorageIntegrationTests.Config.class,
         webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@org.springframework.context.annotation.Import(AbstractIntegrationTest.Aws.class)
+@Import(AbstractIntegrationTest.Aws.class)
 class ImageStorageIntegrationTests extends AbstractIntegrationTest {
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     SnsClient sns;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     SqsClient sqs;
 
     static final String BUCKET = "foc-user-integration";

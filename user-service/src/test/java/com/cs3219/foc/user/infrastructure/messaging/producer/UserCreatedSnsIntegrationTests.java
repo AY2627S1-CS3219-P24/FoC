@@ -8,6 +8,9 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.SubscribeRequest;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -19,16 +22,16 @@ import software.amazon.awssdk.services.sqs.model.SetQueueAttributesRequest;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Publishes through the production SNS client to Floci, without starting a consumer. */
-@org.springframework.boot.test.context.SpringBootTest
-@org.springframework.context.annotation.Import(AbstractIntegrationTest.Aws.class)
+@SpringBootTest
+@Import(AbstractIntegrationTest.Aws.class)
 class UserCreatedSnsIntegrationTests extends AbstractIntegrationTest {
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     SnsClient sns;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     SqsClient sqs;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     SnsUserCreatedEventPublisher publisher;
 
     @Test

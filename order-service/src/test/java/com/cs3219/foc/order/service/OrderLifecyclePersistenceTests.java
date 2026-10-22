@@ -28,7 +28,9 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -44,16 +46,17 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
-@org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
-@org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase(
+@DataJpaTest
+@AutoConfigureTestDatabase(
         replace = AutoConfigureTestDatabase.Replace.NONE)
-@org.springframework.transaction.annotation.Transactional(propagation = Propagation.NOT_SUPPORTED)
-@org.springframework.context.annotation.Import(OrderLifecyclePersistenceTests.TestConfig.class)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(OrderLifecyclePersistenceTests.TestConfig.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     private static final Instant START = Instant.parse("2030-01-01T00:00:00Z");
@@ -856,7 +859,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         }
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     @EnableTransactionManagement
     @EnableConfigurationProperties(OrderProperties.class)
     @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
@@ -873,7 +876,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         }
 
         @Bean
-        @org.springframework.context.annotation.Primary
+        @Primary
         TestClock testClock() {
             return new TestClock();
         }
