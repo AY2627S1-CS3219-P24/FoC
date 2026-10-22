@@ -16,8 +16,13 @@ export const createSocketIoServer = (jwksUrl: string) => {
     const socketServer = new Server();
     socketServer.use(async (socket, next) => {
         const accessToken = socket.handshake.auth.token as string;
-        const payload = await verifyAccessToken(accessToken, jwksUrl);
-        socket.data.userId = payload.sub;
+        try {
+            const payload = await verifyAccessToken(accessToken, jwksUrl);
+            socket.data.userId = payload.sub;
+        } catch {
+            next(new Error('Unauthorized'));
+            return;
+        }
         next();
     });
     socketServer.on('connection', (socket) => {

@@ -1,8 +1,13 @@
-import { QueryClient } from '@tanstack/react-query'
+import { createElement } from 'react'
+import { act, renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { connectRealtime } from '#/lib/realtime'
 import { describe, expect, it, vi } from 'vitest'
 import { supplierKeys } from './useSuppliers'
-import { applySupplierChanged } from './useSupplierChanges'
+import { applySupplierChanged, useSupplierChanges } from './useSupplierChanges'
 import type { Supplier } from '../types/supplier.types'
+
+vi.mock('#/lib/realtime', () => ({ connectRealtime: vi.fn() }))
 
 const createSupplier = (id: string, active: boolean): Supplier => ({
   id,
@@ -79,5 +84,34 @@ describe('applySupplierChanged', () => {
     expect(
       queryClient.getQueryData(supplierKeys.detail('supplier-1')),
     ).toBeUndefined()
+  })
+})
+
+describe('useSupplierChanges', () => {
+  it('invalidates supplier queries on initial connection and reconnection', () => {
+    const listeners = new Map<string, (payload?: unknown) => void>()
+    const socket = {
+      on: vi.fn((event, listener) => listeners.set(event, listener)),
+      off: vi.fn(),
+    }
+    vi.mocked(connectRealtime).mockReturnValue(
+      socket as unknown as ReturnType<typeof connectRealtime>,
+    )
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { unmount } = renderHook(() => useSupplierChanges(), {
+      wrapper: ({ children }) =>
+        createElement(QueryClientProvider, { client }, children),
+    })
+
+    act(() => {
+      listeners.get('connect')!()
+      listeners.get('connect')!()
+    })
+    expect(invalidate).toHaveBeenCalledTimes(2)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: supplierKeys.all })
+
+    unmount()
+    client.clear()
   })
 })

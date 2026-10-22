@@ -3,14 +3,29 @@ import type { Socket } from 'socket.io-client'
 import { getAccessToken } from '#/features/auth/lib/accessTokenStore'
 import { refreshAccessToken } from '#/features/auth/lib/refreshAccessToken'
 
-export const connectRealtime = (): Socket => {
-  const socket = io({ auth: { token: getAccessToken() } })
-  socket.on('connect_error', () => {
-    void refreshAccessToken().then((token) => {
-      if (!token) return
+export const connectRealtime = (signal: AbortSignal): Socket => {
+  const socket = io({ autoConnect: false, auth: { token: getAccessToken() } })
+
+  const onConnectError = async () => {
+    try {
+      const token = await refreshAccessToken()
+      if (signal.aborted || !token) return
       socket.auth = { token }
       socket.connect()
-    })
-  })
+    } catch {}
+  }
+  const onAbort = () => {
+    socket.off('connect_error', onConnectError)
+    socket.disconnect()
+  }
+
+  socket.on('connect_error', onConnectError)
+
+  if (signal.aborted) {
+    onAbort()
+  } else {
+    signal.addEventListener('abort', onAbort, { once: true })
+    socket.connect()
+  }
   return socket
 }

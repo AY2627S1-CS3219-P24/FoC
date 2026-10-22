@@ -39,12 +39,20 @@ export const applySupplierChanged = (
 export const useSupplierChanges = () => {
   const queryClient = useQueryClient()
   useEffect(() => {
-    const socket = connectRealtime()
-    socket.on('supplier.changed', (payload: SupplierChangedPayload) =>
-      applySupplierChanged(queryClient, payload),
-    )
+    const controller = new AbortController()
+    const socket = connectRealtime(controller.signal)
+    const onConnect = () => {
+      void queryClient.invalidateQueries({ queryKey: supplierKeys.all })
+    }
+    const onSupplierChanged = (payload: SupplierChangedPayload) =>
+      applySupplierChanged(queryClient, payload)
+
+    socket.on('connect', onConnect)
+    socket.on('supplier.changed', onSupplierChanged)
     return () => {
-      socket.disconnect()
+      socket.off('connect', onConnect)
+      socket.off('supplier.changed', onSupplierChanged)
+      controller.abort()
     }
   }, [queryClient])
 }
