@@ -25,6 +25,12 @@ Run a single suite:
 
 API tests cover credit and order workflows, messaging, and recovery. Browser tests cover authentication and supplier management. `./gradlew check` includes both suites.
 
+## GitHub Actions
+
+The **E2E** workflow runs automatically on pushes to `main`, including merged pull requests. Pull request CI runs the backend and frontend checks.
+
+To check a branch manually, open **Actions → E2E → Run workflow**, select the branch from the **Branch** dropdown, and click **Run workflow**. GitHub enables manual runs once `e2e.yml` exists on the default branch. The selected branch must also contain this workflow.
+
 ## Reports
 
 - JUnit: `e2e-tests/build/reports/tests/test/`
