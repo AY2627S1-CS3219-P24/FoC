@@ -7,11 +7,13 @@ import static org.mockito.Mockito.*;
 import com.cs3219.foc.user.config.AccountMailProperties;
 import com.cs3219.foc.user.config.AuthProperties;
 import com.cs3219.foc.user.exception.EmailVerificationException;
+import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.InvalidEmailTokenException;
 import com.cs3219.foc.user.exception.InvalidPasswordException;
 import com.cs3219.foc.user.exception.InvalidPasswordResetTokenException;
 import com.cs3219.foc.user.exception.InvalidRefreshTokenException;
 import com.cs3219.foc.user.infrastructure.mail.AccountMailListener;
+import com.cs3219.foc.user.integration.AbstractIntegrationTest;
 import com.cs3219.foc.user.model.dto.ChangePasswordRequest;
 import com.cs3219.foc.user.model.dto.LoginRequest;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
@@ -28,13 +30,11 @@ import com.cs3219.foc.user.security.AuthenticationContextService;
 import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.security.CustomUserDetailsService;
 import com.cs3219.foc.user.support.TestMappers;
-import jakarta.persistence.EntityManagerFactory;
 import java.net.URI;
 import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -43,29 +43,25 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -76,18 +72,23 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Runs the real migrations and service transactions in a disposable PostgreSQL schema. */
-@SpringJUnitConfig(UserProfilePersistenceTests.TestConfig.class)
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
-class UserProfilePersistenceTests {
-    private static final String SCHEMA =
-            "profile_test_" + UUID.randomUUID().toString().replace("-", "");
+/** Runs the real migrations and service transactions in a disposable PostgreSQL database. */
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(UserProfilePersistenceTests.TestConfig.class)
+class UserProfilePersistenceTests extends AbstractIntegrationTest {
+
+    @Autowired
+    private PostgreSQLContainer postgres;
 
     @Autowired
     private DataSource dataSource;
@@ -143,17 +144,6 @@ class UserProfilePersistenceTests {
         repository.deleteAll();
     }
 
-    @AfterAll
-    static void dropTestSchema() throws Exception {
-        try (var connection = DriverManager.getConnection(
-                        System.getenv("FOC_TEST_DATABASE_URL"),
-                        System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                        System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                var statement = connection.createStatement()) {
-            statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-        }
-    }
-
     private User createUser(String email) {
         return repository.saveAndFlush(User.builder()
                 .name("Alex Tan")
@@ -168,6 +158,46 @@ class UserProfilePersistenceTests {
         user.setPasswordHash(passwordEncoder.encode("CurrentPassword1"));
         user.setEmailVerified(true);
         return repository.saveAndFlush(user);
+    }
+
+    @Test
+    void provisionsVerifiedAdminWithoutVerificationMailAndPreservesItOnRerun() {
+        assertThat(service.initializeAdmin(new RegisterUserRequest(" ADMIN@U.NUS.EDU ", " Admin ", " password123 ")))
+                .isTrue();
+
+        var admin = repository.findByEmail("admin@u.nus.edu").orElseThrow();
+        assertThat(admin.getName()).isEqualTo("Admin");
+        assertThat(admin.getRoles()).containsExactly(UserRole.USER, UserRole.ADMIN);
+        assertThat(admin.isEmailVerified()).isTrue();
+        assertThat(passwordEncoder.matches(" password123 ", admin.getPasswordHash()))
+                .isTrue();
+        assertThat(authService.login(new LoginRequest("admin@u.nus.edu", " password123 ")))
+                .isNotNull();
+        assertThat(emailTokenRepository.count()).isZero();
+        verifyNoInteractions(mailSender);
+
+        assertThat(service.initializeAdmin(new RegisterUserRequest("admin@u.nus.edu", "Changed", "replacement123")))
+                .isFalse();
+
+        var unchanged = repository.findByEmail("admin@u.nus.edu").orElseThrow();
+        assertThat(unchanged.getId()).isEqualTo(admin.getId());
+        assertThat(unchanged.getPasswordHash()).isEqualTo(admin.getPasswordHash());
+        assertThat(unchanged.getName()).isEqualTo(admin.getName());
+        assertThat(repository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void provisioningNeverPromotesOrResetsAnExistingUser() {
+        var user = createPasswordUser("admin@u.nus.edu");
+
+        assertThatThrownBy(
+                        () -> service.initializeAdmin(new RegisterUserRequest(user.getEmail(), "Admin", "password123")))
+                .isInstanceOf(EntityAlreadyExistsException.class);
+
+        var unchanged = repository.findById(user.getId()).orElseThrow();
+        assertThat(unchanged.getRoles()).containsExactly(UserRole.USER);
+        assertThat(unchanged.getPasswordHash()).isEqualTo(user.getPasswordHash());
+        verifyNoInteractions(mailSender);
     }
 
     @Test
@@ -661,21 +691,16 @@ class UserProfilePersistenceTests {
 
     @Test
     void facultyMigrationNormalizesKnownValuesAndClearsUnknownValues() throws Exception {
-        var schema = "faculty_test_" + UUID.randomUUID().toString().replace("-", "");
-        var source = new DriverManagerDataSource(
-                System.getenv("FOC_TEST_DATABASE_URL"),
-                System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-        try (var connection = source.getConnection();
-                var statement = connection.createStatement()) {
-            try {
-                var config = Flyway.configure()
-                        .dataSource(source)
-                        .schemas(schema)
-                        .defaultSchema(schema)
-                        .locations("classpath:db/migration");
-                config.target("3").load().migrate();
-                connection.setSchema(schema);
+        var database = "faculty_" + UUID.randomUUID().toString().replace("-", "");
+        createDatabase(database);
+        try {
+            var config = Flyway.configure()
+                    .dataSource(databaseUrl(database), postgres.getUsername(), postgres.getPassword())
+                    .locations("classpath:db/migration");
+            config.target("3").load().migrate();
+            try (var connection = DriverManager.getConnection(
+                            databaseUrl(database), postgres.getUsername(), postgres.getPassword());
+                    var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at, faculty)
                         VALUES
@@ -693,29 +718,24 @@ class UserProfilePersistenceTests {
                     assertThat(rows.getString(1)).isNull();
                     assertThat(rows.next()).isFalse();
                 }
-            } finally {
-                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
+        } finally {
+            dropDatabase(database);
         }
     }
 
     @Test
     void migrationPreservesAnExistingAccount() throws Exception {
-        var schema = "profile_test_" + UUID.randomUUID().toString().replace("-", "");
-        var source = new DriverManagerDataSource(
-                System.getenv("FOC_TEST_DATABASE_URL"),
-                System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-        try (var connection = source.getConnection();
-                var statement = connection.createStatement()) {
-            try {
-                var config = Flyway.configure()
-                        .dataSource(source)
-                        .schemas(schema)
-                        .defaultSchema(schema)
-                        .locations("classpath:db/migration");
-                config.target("2").load().migrate();
-                connection.setSchema(schema);
+        var database = "profile_" + UUID.randomUUID().toString().replace("-", "");
+        createDatabase(database);
+        try {
+            var config = Flyway.configure()
+                    .dataSource(databaseUrl(database), postgres.getUsername(), postgres.getPassword())
+                    .locations("classpath:db/migration");
+            config.target("2").load().migrate();
+            try (var connection = DriverManager.getConnection(
+                            databaseUrl(database), postgres.getUsername(), postgres.getPassword());
+                    var statement = connection.createStatement()) {
                 statement.execute("""
                         INSERT INTO users (id, email, name, roles, password_hash, created_at, updated_at)
                         VALUES ('00000000-0000-0000-0000-000000000001', 'old@example.com', 'Existing User',
@@ -732,13 +752,36 @@ class UserProfilePersistenceTests {
                     assertThat(rows.getString("avatar_key")).isNull();
                     assertThat(rows.next()).isFalse();
                 }
-            } finally {
-                statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
             }
+        } finally {
+            dropDatabase(database);
         }
     }
 
-    @Configuration
+    private void createDatabase(String database) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+                var statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+        }
+    }
+
+    private void dropDatabase(String database) throws Exception {
+        try (var connection = DriverManager.getConnection(
+                        postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+                var statement = connection.createStatement()) {
+            statement.execute("DROP DATABASE IF EXISTS " + database + " WITH (FORCE)");
+        }
+    }
+
+    private String databaseUrl(String database) {
+        var jdbc = postgres.getJdbcUrl();
+        var current = "/" + postgres.getDatabaseName();
+        var index = jdbc.lastIndexOf(current);
+        return jdbc.substring(0, index) + "/" + database + jdbc.substring(index + current.length());
+    }
+
+    @TestConfiguration
     @EnableTransactionManagement
     @EnableAsync
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
@@ -825,42 +868,6 @@ class UserProfilePersistenceTests {
             provider.setPasswordEncoder(encoder);
             AuthenticationManager manager = new ProviderManager(provider);
             return new AuthService(manager, tokenService, userRepository);
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("classpath:db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(dataSource);
-            factory.setPackagesToScan("com.cs3219.foc.user.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            // Match Spring Boot's default conversion of createdAt to created_at.
-            factory.setJpaPropertyMap(Map.of(
-                    "hibernate.hbm2ddl.auto", "validate",
-                    "hibernate.physical_naming_strategy",
-                            "org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
         }
 
         @Bean

@@ -1,39 +1,29 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.1"
+          terraform_wrapper: false
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+      - name: Validate and test Terraform
+        working-directory: infra/terraform/environments/prod
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+          terraform test
+
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: foc_test
-          POSTGRES_USER: foc
-          POSTGRES_PASSWORD: foc
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U foc -d foc_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      rabbitmq:
-        image: rabbitmq:4-management-alpine
-        env:
-          RABBITMQ_DEFAULT_USER: foc_test
-          RABBITMQ_DEFAULT_PASS: foc_test
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,16 +33,17 @@ jobs:
           distribution: temurin
           java-version: "25"
       - name: Backend check
-        run: ./gradlew check --no-daemon
+        run: ./gradlew :user-service:check :supplier-service:check :order-service:check :credit-service:check --no-daemon
         env:
           CI: true
-          FOC_TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/foc_test
-          FOC_TEST_DATABASE_USERNAME: foc
-          FOC_TEST_DATABASE_PASSWORD: foc
-          FOC_TEST_RABBIT_HOST: localhost
-          FOC_TEST_RABBIT_PORT: "5672"
-          FOC_TEST_RABBIT_USERNAME: foc_test
-          FOC_TEST_RABBIT_PASSWORD: foc_test
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-results
+          path: |
+            *-service/build/reports/tests/
+            *-service/build/test-results/
 
   frontend:
     runs-on: ubuntu-latest

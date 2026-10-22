@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.cs3219.foc.credit.config.SecurityConfig;
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.exception.GlobalExceptionHandler;
+import com.cs3219.foc.credit.exception.ValidationFailedException;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.CreditBalanceResponse;
 import com.cs3219.foc.credit.service.CreditAccountService;
@@ -28,9 +29,15 @@ import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.web.context.WebApplicationContext;
 
-@WebMvcTest({CreditController.class, CreditReservationController.class})
+@WebMvcTest(
+        value = {CreditController.class, CreditReservationController.class},
+        properties = {
+            "events.messaging.topic-arn=arn:aws:sns:ap-southeast-1:000000000000:foc-test-credit-events",
+            "events.messaging.queue-name=foc-test-credit-events"
+        })
 @Import(CreditControllerTests.TestConfig.class)
 class CreditControllerTests {
     @Autowired
@@ -159,6 +166,57 @@ class CreditControllerTests {
                         .content("{\"operationId\":\"" + UUID.randomUUID() + "\",\"errandId\":\"" + UUID.randomUUID()
                                 + "\",\"amount\":" + amount + "}"))
                 .andExpect(status().isBadRequest());
+        verifyNoInteractions(creditReservationService);
+    }
+
+    @Test
+    void reservationReportsFieldValidationErrors() throws Exception {
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt())
+                        .contentType("application/json")
+                        .content("{\"amount\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.operationId").value("must not be null"))
+                .andExpect(jsonPath("$.fieldErrors.errandId").value("must not be null"))
+                .andExpect(jsonPath("$.fieldErrors.amount").value("must be greater than 0"));
+        verifyNoInteractions(creditReservationService);
+    }
+
+    @Test
+    void customValidationFailureReportsFieldMessages() throws Exception {
+        var request = new ReserveCreditRequest(UUID.randomUUID(), UUID.randomUUID(), 80);
+        var errors = new BeanPropertyBindingResult(request, "reserveCreditRequest");
+        errors.rejectValue("amount", "invalid", "Invalid credit amount");
+        when(creditReservationService.reserve(any()))
+                .thenThrow(new ValidationFailedException("Credit validation failed", errors));
+
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt())
+                        .contentType("application/json")
+                        .content("{\"operationId\":\"" + request.operationId() + "\",\"errandId\":\""
+                                + request.errandId() + "\",\"amount\":80}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "code": "VALIDATION_FAILED",
+                          "message": "Credit validation failed",
+                          "fieldErrors": { "amount": "Invalid credit amount" }
+                        }
+                        """));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "null", "{", "{\"operationId\":\"invalid-uuid\"}", "{\"amount\":1.5}"})
+    void reservationReportsUnreadableRequests(String body) throws Exception {
+        mvc.perform(post("/credits/reservations")
+                        .with(jwt())
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request body is missing or contains invalid fields"));
         verifyNoInteractions(creditReservationService);
     }
 

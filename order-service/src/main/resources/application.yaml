@@ -4,79 +4,12 @@ spring:
       accept-float-as-int: false
   application:
     name: order-service
-  rabbitmq:
-    publisher-confirm-type: correlated
-    publisher-returns: true
-    connection-timeout: 5s
   cloud:
-    function:
-      definition: creditSettlementResult
-    stream:
-      default:
-        consumer:
-          max-attempts: 3
-          back-off-initial-interval: 1000
-          back-off-max-interval: 2000
-      bindings:
-        errandCompleted-out-0:
-          destination: foc.errand-completed.v1
-          content-type: application/json
-          producer:
-            required-groups: credit-settlements
-            error-channel-enabled: true
-        errandCancelled-out-0:
-          destination: foc.errand-cancelled.v1
-          content-type: application/json
-          producer:
-            required-groups: credit-settlements
-            error-channel-enabled: true
-        errandExpired-out-0:
-          destination: foc.errand-expired.v1
-          content-type: application/json
-          producer:
-            required-groups: credit-settlements
-            error-channel-enabled: true
-        creditSettlementResult-in-0:
-          destination: foc.credit-settlement-result.v1
-          group: order-credit-settlements
-          content-type: application/json
-      rabbit:
-        default:
-          producer:
-            use-confirm-header: true
-            auto-bind-dlq: true
-            delivery-mode: PERSISTENT
-            exchange-durable: true
-            exchange-auto-delete: false
-          consumer:
-            acknowledge-mode: AUTO
-            prefetch: 10
-            exchange-durable: true
-            exchange-auto-delete: false
-            auto-bind-dlq: true
-            republish-to-dlq: false
-            requeue-rejected: false
-        bindings:
-          errandCompleted-out-0:
-            producer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandCompleted-out-0.destination}.dlx
-              dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCompleted-out-0.destination}.credit-settlements.dlq
-          errandCancelled-out-0:
-            producer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandCancelled-out-0.destination}.dlx
-              dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandCancelled-out-0.destination}.credit-settlements.dlq
-          errandExpired-out-0:
-            producer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.errandExpired-out-0.destination}.dlx
-              dead-letter-routing-key: credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.errandExpired-out-0.destination}.credit-settlements.dlq
-          creditSettlementResult-in-0:
-            consumer:
-              dead-letter-exchange: ${spring.cloud.stream.bindings.creditSettlementResult-in-0.destination}.dlx
-              dead-letter-routing-key: order-credit-settlements
-              dead-letter-queue-name: ${spring.cloud.stream.bindings.creditSettlementResult-in-0.destination}.order-credit-settlements.dlq
+    aws:
+      sqs:
+        queue-not-found-strategy: fail
+        listener:
+          poll-timeout: 20s
   modulith:
     events:
       registry-trigger-annotation: org.springframework.modulith.events.ApplicationModuleListener
@@ -94,8 +27,6 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-  flyway:
-    default-schema: orders
   threads:
     virtual:
       enabled: true
@@ -112,3 +43,8 @@ server:
 orders:
   expiry-scan-delay: 10s
   expiry-batch-size: 100
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
