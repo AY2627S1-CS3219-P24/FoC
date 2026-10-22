@@ -22,6 +22,7 @@ server:
 logging:
   level:
     root: WARN
+    foc.test.floci: INFO
 
 storage:
   s3:

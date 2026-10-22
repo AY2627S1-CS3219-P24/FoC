@@ -1,6 +1,8 @@
 package com.cs3219.foc.supplier.integration;
 
 import java.nio.file.Path;
+import java.time.Duration;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -8,11 +10,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistrar;
+import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 
 @ActiveProfiles("test")
 @Import(AbstractIntegrationTest.Containers.class)
@@ -38,11 +41,15 @@ public abstract class AbstractIntegrationTest {
                     .withEnv("FOC_USER_BUCKET", "foc-user-integration")
                     .withEnv("FOC_SUPPLIER_BUCKET", "foc-supplier-integration")
                     .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true")
-                    .withCopyFileToContainer(
-                            MountableFile.forHostPath(
-                                    Path.of(System.getProperty("foc.root"), "infra/docker/floci/init-resources.sh")),
-                            "/etc/localstack/init/ready.d/10-foc-resources.sh")
-                    .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"));
+                    .withEnv("FLOCI_INIT_HOOKS_TIMEOUT_SECONDS", "180")
+                    .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("foc.test.floci")))
+                    .withFileSystemBind(
+                            Path.of(System.getProperty("foc.root"), "infra/docker/floci/init-resources.sh")
+                                    .toString(),
+                            "/etc/localstack/init/ready.d/10-foc-resources.sh",
+                            BindMode.READ_ONLY)
+                    .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"))
+                    .withStartupTimeout(Duration.ofMinutes(4));
         }
 
         @Bean
