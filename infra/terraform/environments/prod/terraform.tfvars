@@ -5,9 +5,9 @@ image_bucket_names = {
   supplier = "foc-prod-supplier"
 }
 
-domain_name        = "foc.example.edu"
-acme_email         = "team@example.edu"
-mail_from          = "noreply@mail.example.edu"
+domain_name        = "cs3219-p24.mooo.com"
+acme_email         = "kristupas.arifovas@gmail.com"
+mail_from          = "kristupas.arifovas@gmail.com"
 start_services     = false
 core_instance_type = "t3a.medium"
 db_instance_class  = "db.t4g.micro"
