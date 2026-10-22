@@ -369,7 +369,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
     @Test
     void registrationsAreDeliveredWhenTheCreditConsumerRestarts() {
         var container =
-                ENVIRONMENT.getContainerByServiceName("credit-service-1").orElseThrow();
+                environment().getContainerByServiceName("credit-service-1").orElseThrow();
         DockerClientFactory.instance()
                 .client()
                 .stopContainerCmd(container.getContainerId())
