@@ -39,8 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Uses real PostgreSQL migrations and service transactions in a disposable database. */
 @DataJpaTest
-@AutoConfigureTestDatabase(
-        replace = AutoConfigureTestDatabase.Replace.NONE)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(CreditAccountPersistenceTests.TestConfig.class)
 @TestPropertySource(properties = "credits.initial-allocation=20")
