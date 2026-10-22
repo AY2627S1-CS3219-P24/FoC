@@ -12,6 +12,11 @@ const config = defineConfig({
       '/api/suppliers': 'http://localhost:8081',
       '/api/orders': 'http://localhost:8082',
       '/api/credits': 'http://localhost:8083',
+      '/socket.io': {
+        target: 'http://127.0.0.1:8084',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })

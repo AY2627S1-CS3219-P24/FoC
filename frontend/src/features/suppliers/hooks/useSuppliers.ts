@@ -21,6 +21,7 @@ import type {
 
 export const supplierKeys = {
   all: ['suppliers'] as const,
+  lists: () => [...supplierKeys.all, 'list'] as const,
   list: (filters: SupplierFilters) =>
     [...supplierKeys.all, 'list', filters] as const,
   detail: (id: string) => [...supplierKeys.all, 'detail', id] as const,

@@ -3,9 +3,12 @@ package com.cs3219.foc.supplier.service;
 import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.mapper.SupplierMapper;
 import com.cs3219.foc.supplier.model.dto.SupplierDto;
+import com.cs3219.foc.supplier.model.dto.event.SupplierChange;
+import com.cs3219.foc.supplier.model.dto.event.SupplierChangedEvent;
 import com.cs3219.foc.supplier.model.dto.event.SupplierImageDeletionRequestedEvent;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +81,8 @@ public class SupplierImageService {
 
         supplier.setImageKey(newKey);
         supplierRepository.flush();
+        eventPublisher.publishEvent(
+                SupplierChangedEvent.of(supplier.getId(), SupplierChange.IMAGE_CHANGED, OffsetDateTime.now()));
 
         if (previousKey != null) {
             var deletion = new SupplierImageDeletionRequestedEvent(previousKey);

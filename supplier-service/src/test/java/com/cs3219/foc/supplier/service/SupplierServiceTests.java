@@ -10,6 +10,8 @@ import com.cs3219.foc.supplier.exception.SupplierNotFoundException;
 import com.cs3219.foc.supplier.model.dto.OpeningHoursDto;
 import com.cs3219.foc.supplier.model.dto.SupplierRequest;
 import com.cs3219.foc.supplier.model.dto.SupplierSearchCriteria;
+import com.cs3219.foc.supplier.model.dto.event.SupplierChange;
+import com.cs3219.foc.supplier.model.dto.event.SupplierChangedEvent;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.model.entity.SupplierOpeningHours;
@@ -27,6 +29,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -36,15 +40,28 @@ class SupplierServiceTests {
     private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T15:00:00Z"), ZoneId.of("Asia/Singapore"));
     private SupplierRepository repository;
     private CurrentUserService currentUserService;
+    private ApplicationEventPublisher events;
     private SupplierService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(SupplierRepository.class);
         currentUserService = mock(CurrentUserService.class);
+        events = mock(ApplicationEventPublisher.class);
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
         service = new SupplierService(
-                repository, TestMappers.mapper(), clock, mock(SupplierImageStorageService.class), currentUserService);
+                repository,
+                TestMappers.mapper(),
+                clock,
+                mock(SupplierImageStorageService.class),
+                currentUserService,
+                events);
+    }
+
+    private SupplierChangedEvent publishedEvent() {
+        var captor = ArgumentCaptor.forClass(SupplierChangedEvent.class);
+        verify(events).publishEvent(captor.capture());
+        return captor.getValue();
     }
 
     private static SupplierRequest request(String name, String building) {
@@ -88,9 +105,17 @@ class SupplierServiceTests {
 
     @Test
     void createsActiveSupplierWithWeeklyHours() {
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
+            Supplier supplier = invocation.getArgument(0);
+            supplier.setId(supplierId);
+            return supplier;
+        });
         var created = service.createSupplier(request("CoffeeBean", "COM3"));
         assertThat(created.name()).isEqualTo("CoffeeBean");
         assertThat(created.active()).isTrue();
+        var published = publishedEvent();
+        assertThat(published.payload().supplierId()).isEqualTo(supplierId);
+        assertThat(published.payload().change()).isEqualTo(SupplierChange.CREATED);
         assertThat(created.openingHours())
                 .extracting(OpeningHoursDto::dayOfWeek)
                 .containsExactly(DayOfWeek.MONDAY, DayOfWeek.SATURDAY);
@@ -114,12 +139,28 @@ class SupplierServiceTests {
         assertThat(updated.openingHours())
                 .extracting(OpeningHoursDto::dayOfWeek)
                 .containsExactly(DayOfWeek.MONDAY, DayOfWeek.SATURDAY);
+        var published = publishedEvent();
+        assertThat(published.payload().supplierId()).isEqualTo(supplierId);
+        assertThat(published.payload().change()).isEqualTo(SupplierChange.UPDATED);
     }
 
     @Test
     void togglesActiveFlag() {
         when(repository.findForUpdateById(supplierId)).thenReturn(Optional.of(existingSupplier()));
         assertThat(service.setSupplierActive(supplierId, true).active()).isTrue();
+        assertThat(publishedEvent().payload().change()).isEqualTo(SupplierChange.ACTIVATED);
+        assertThat(publishedEvent().payload().supplierId()).isEqualTo(supplierId);
+    }
+
+    @Test
+    void deactivationPublishesSupplierChangedEvent() {
+        var supplier = existingSupplier();
+        supplier.setActive(true);
+        when(repository.findForUpdateById(supplierId)).thenReturn(Optional.of(supplier));
+        service.setSupplierActive(supplierId, false);
+        var published = publishedEvent();
+        assertThat(published.payload().supplierId()).isEqualTo(supplierId);
+        assertThat(published.payload().change()).isEqualTo(SupplierChange.DEACTIVATED);
     }
 
     @Test

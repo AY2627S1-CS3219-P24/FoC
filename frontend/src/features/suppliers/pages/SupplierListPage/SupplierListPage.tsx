@@ -8,6 +8,7 @@ import { Toast } from '@base-ui/react/toast'
 import { Toggle } from '@base-ui/react/toggle'
 import { ToggleGroup } from '@base-ui/react/toggle-group'
 import { useSetSupplierActive, useSuppliers } from '../../hooks/useSuppliers'
+import { useSupplierChanges } from '../../hooks/useSupplierChanges'
 import {
   categoryLabels,
   formatLocation,
@@ -27,6 +28,8 @@ import styles from './SupplierListPage.module.scss'
 const SEARCH_DEBOUNCE_MS = 300
 
 export const SupplierListPage = () => {
+  useSupplierChanges()
+
   // filters live in the URL, back or forward or shared links will keepp the filters
   const filters = useSearch({ from: '/admin/suppliers' })
   const selectedCategories = toSupplierFilters(filters).category ?? []

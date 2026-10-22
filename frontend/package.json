@@ -30,6 +30,7 @@
     "react-data-table-component": "^8.11.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "7.88.0",
+    "socket.io-client": "^4.8.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {

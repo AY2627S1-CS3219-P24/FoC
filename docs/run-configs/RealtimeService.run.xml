@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="RealtimeService" type="js.build_tools.npm">
+    <package-json value="$PROJECT_DIR$/realtime-service/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="dev" />
+    </scripts>
+    <node-interpreter value="project" />
+    <package-manager value="npm" />
+    <envs>
+      <env name="NODE_ENV" value="development" />
+      <env name="PORT" value="8084" />
+      <env name="JWKS_URL" value="http://localhost:8080/api/.well-known/jwks.json" />
+      <env name="RABBITMQ_URL" value="amqp://foc:pass@localhost:5672" />
+      <env name="USER_UPDATES_DESTINATION" value="user.updates" />
+      <env name="SUPPLIER_CHANGED_DESTINATION" value="foc.supplier-changed.v1" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>
