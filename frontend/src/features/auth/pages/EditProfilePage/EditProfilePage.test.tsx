@@ -15,6 +15,12 @@ import { getFaculties } from '#/api/getFaculties.api'
 vi.mock('../../api/userProfile.api')
 vi.mock('#/api/getFaculties.api')
 vi.mock('../../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+vi.mock('#/features/credits/api/credits.api', () => ({
+  getCreditBalance: vi.fn(async () => ({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })),
+}))
 
 const profile = {
   id: '1',

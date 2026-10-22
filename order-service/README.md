@@ -29,14 +29,14 @@ flowchart LR
     Order -->|HTTP: get supplier and pickup information| Supplier[Supplier Service]
     Order -->|HTTP: get participant names| User[User Service]
     Order -->|HTTP: check account / reserve credits| Credit[Credit Service]
-    Order -.->|Order completed / cancelled / expired events| MQ[RabbitMQ]
+    Order -.->|Order completed / cancelled / expired events| MQ[SNS/SQS]
     MQ -.->|Deliver order events| Credit
     Credit -.->|Payment / release results| MQ
     MQ -.->|Deliver credit results| Order
     Credit -->|Credit data| CreditDB[(Credit DB)]
 ```
 
-Solid arrows show synchronous HTTP calls or local database access; dotted arrows show asynchronous messages. RabbitMQ delivers order events to Credit for payment or release, then delivers Credit's results to Order to update its credit-processing state. Order commits a completion, cancellation or expiry and its event-publication registration together; the event is sent after commit.
+Solid arrows show synchronous HTTP calls or local database access; dotted arrows show asynchronous messages. SNS/SQS delivers order events to Credit for payment or release, then delivers Credit's results to Order to update its credit-processing state. Order commits a completion, cancellation or expiry and its event-publication registration together; the event is sent after commit.
 
 This is a dependency overview; each request makes only the synchronous calls it needs. Participant names are fetched for lists and details. The business-flow diagrams below show execution order, and [Section 8](#8-database-design) describes the database tables.
 
@@ -46,7 +46,7 @@ This is a dependency overview; each request makes only the synchronous calls it 
 | Credit | Account balances, reservation decisions, payment, release and financial idempotency |
 | Supplier | Supplier existence, `active` status and pickup information |
 | User | Current participant names through a batch basic-information endpoint |
-| RabbitMQ | Asynchronous integration through Spring Cloud Stream |
+| SNS/SQS | Asynchronous integration through Spring Cloud AWS |
 | Spring Modulith | Transactional event-publication registration and publication recovery |
 
 HTTP clients forward the caller's JWT. Background consumers and scheduled jobs use business identities from events and stored orders; events do not contain JWTs. Each service owns its event records and database schema.
@@ -108,7 +108,7 @@ While an order is `CREATING`, a null credit state means Order has not confirmed 
 
 ## 3. Business flows
 
-In the diagrams, “register event” means save the event publication in the same local transaction as the business change. Transport to RabbitMQ happens after that transaction commits. For completion and cancellation, publication and the HTTP response can proceed independently. Creation waits for synchronous reservation and Order finalization.
+In the diagrams, “register event” means save the event publication in the same local transaction as the business change. Transport to SNS/SQS happens after that transaction commits. For completion and cancellation, publication and the HTTP response can proceed independently. Creation waits for synchronous reservation and Order finalization.
 
 ### 3.1 Create an errand
 
@@ -189,7 +189,7 @@ sequenceDiagram
     actor Requester
     participant Order
     participant DB as Order DB
-    participant MQ as RabbitMQ
+    participant MQ as SNS/SQS
     participant Credit
     Requester->>Order: POST /api/orders/id/complete
     Order->>DB: Lock order and verify Requester
@@ -219,7 +219,7 @@ sequenceDiagram
     actor Requester
     participant Order
     participant DB as Order DB
-    participant MQ as RabbitMQ
+    participant MQ as SNS/SQS
     participant Credit
     Requester->>Order: POST /api/orders/id/cancel
     Order->>DB: Lock order and verify Requester
@@ -249,7 +249,7 @@ sequenceDiagram
     participant Job as Expiry job
     participant Order
     participant DB as Order DB
-    participant MQ as RabbitMQ
+    participant MQ as SNS/SQS
     participant Credit
     Job->>Order: Scan for expired OPEN orders
     Order->>DB: Read a batch of candidate IDs
@@ -372,7 +372,7 @@ sequenceDiagram
     participant Credit
     participant Order
     participant DB as Order DB
-    participant MQ as RabbitMQ
+    participant MQ as SNS/SQS
     Credit-->>Order: Synchronous RESERVED response
     Order->>DB: Lock order and confirm it is still CREATING
     Order->>Order: expires_at has been reached
@@ -440,7 +440,7 @@ Order uses `PESSIMISTIC_WRITE` on the order row for lifecycle changes and result
 
 Credit locks the Requester's account before deciding a reservation. Terminal credit handling locks the reservation; payment locks affected accounts in a consistent user-ID order. The ledger and stored reservation decision protect financial effects against redelivery.
 
-HTTP calls happen outside order write/row-lock transactions. Broker confirmation is awaited after the business transaction commits.
+HTTP calls happen outside order write/row-lock transactions. SNS publication is awaited after the business transaction commits.
 
 ### Identifier responsibilities
 
@@ -481,12 +481,12 @@ Each service commits independently. Credit's committed reservation is not rolled
 ```mermaid
 flowchart TD
     A[Business change and event publication] --> B[Commit both in one local transaction]
-    B --> C[Modulith listener sends through Spring Cloud Stream]
-    C --> D{Broker acknowledged and message routed}
+    B --> C[Modulith listener sends through Spring Cloud AWS]
+    C --> D{SNS accepted publication}
     D -->|No| E[Keep publication record for retry]
     E --> C
     D -->|Yes| F[Complete publication record]
-    C --> G[RabbitMQ delivery to consumer]
+    C --> G[SNS/SQS delivery to consumer]
     G --> H[Consumer runs its local business transaction]
     H --> I{Processing outcome}
     I -->|Exception| J[Rollback and bounded retry]
@@ -495,9 +495,9 @@ flowchart TD
     L --> M[Publish any registered result after commit]
 ```
 
-Publishers check `StreamBridge.send`, broker confirms and returned messages. Durable queues and persistent messages carry accepted publications. `required-groups` declares destination queues, and producer/consumer declarations use matching DLX/DLQ arguments.
+Publishers use `SnsOperations.sendNotification` and propagate publication failures to the transactional registry. An accepted SNS publish completes the publication; SNS filters route raw JSON to the subscribed SQS queue. SQS acknowledges only successful processing. Failed messages become visible again and move to the consumer’s DLQ after five receives. The Floci bootstrap provisions local topics, subscriptions, queues, and redrive configuration. Production infrastructure is added separately in [deployment PR #42](https://github.com/AY2627S1-CS3219-P24/FoC/pull/42).
 
-Consumer retries allow three attempts with one- then two-second backoff. Retries address processing errors; they are not an account-provisioning wait. Consumers tolerate duplicate deliveries instead of assuming exactly-once transport.
+Consumers tolerate duplicate deliveries.
 
 Each service's publication recovery job retries its own failed publication records. Order's only business-state scanning job is `OPEN` expiry. Pending payment and release progress through messages. An uncertain creation can resume through the original POST; records with no further retry or persistent failures may require manual investigation.
 
@@ -770,21 +770,21 @@ Authentication-filter failures and other framework errors can use Spring's own r
 
 ## 10. Event contracts
 
-All four contracts use an envelope containing `eventId`, `eventType`, `schemaVersion`, `occurredAt` and `payload`. Schema version is `1`. Each service keeps its own record definitions with matching JSON fields.
+All four contracts use a JSON envelope containing `eventId`, `schemaVersion`, `occurredAt` and `payload`. `eventType` and `eventId` are SNS message attributes. Schema version is `1`. Each service keeps its own record definitions with matching JSON fields.
 
 ### 10.1 Destinations and payloads
 
 | Event | Producer → consumer | Destination | Payload fields |
 | --- | --- | --- | --- |
-| `ErrandCompletedEvent` | Order → Credit | `foc.errand-completed.v1` | `errandId`, `requesterId`, `amount`, `courierId` |
-| `ErrandCancelledEvent` | Order → Credit | `foc.errand-cancelled.v1` | `errandId`, `requesterId`, `amount` |
-| `ErrandExpiredEvent` | Order → Credit | `foc.errand-expired.v1` | `errandId`, `requesterId`, `amount` |
-| `CreditSettlementResultEvent` | Credit → Order | `foc.credit-settlement-result.v1` | `operationId`, `errandId`, `requesterId`, `amount`, `outcome`, `settlementType`, `courierId` |
+| `ErrandCompletedEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount`, `courierId` |
+| `ErrandCancelledEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount` |
+| `ErrandExpiredEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount` |
+| `CreditSettlementResultEvent` | Credit → Order | `Credit SNS topic → Order SQS queue` | `operationId`, `errandId`, `requesterId`, `amount`, `outcome`, `settlementType`, `courierId` |
 
-| Consumer | Group |
+| Consumer | Queue |
 | --- | --- |
-| Credit completion/cancellation/expiry | `credit-settlements` |
-| Order settlement result | `order-credit-settlements` |
+| Credit completion/cancellation/expiry | `${name_prefix}-credit-events` |
+| Order settlement result | `${name_prefix}-order-events` |
 
 Terminal order events record completed lifecycle changes. Creation reservation uses HTTP and has no integration event contract.
 
@@ -795,7 +795,6 @@ The terminal event ID is saved as `settlement_event_id`:
 ```json
 {
   "eventId": "55555555-5555-4555-8555-555555555555",
-  "eventType": "ErrandCompletedEvent",
   "schemaVersion": 1,
   "occurredAt": "2026-10-20T12:05:00Z",
   "payload": {
@@ -812,7 +811,6 @@ Credit reports the original terminal event ID in `payload.operationId`:
 ```json
 {
   "eventId": "66666666-6666-4666-8666-666666666666",
-  "eventType": "CreditSettlementResultEvent",
   "schemaVersion": 1,
   "occurredAt": "2026-10-20T12:05:00Z",
   "payload": {
@@ -874,7 +872,7 @@ order-service/
     │   │   │   └── UserClient.java
     │   │   └── messaging/
     │   │       ├── producer/
-    │   │       │   └── ErrandEventPublisher.java
+    │   │       │   └── SnsErrandEventPublisher.java
     │   │       └── consumer/
     │   │           └── CreditSettlementResultConsumer.java
     │   ├── scheduler/
@@ -910,12 +908,26 @@ order-service/
 | `ErrandRepository` | Creation-key lookup, row locks, paging and expiry candidates |
 | `ErrandMapper` | Full detail mapping with supplied names and local action-response mapping |
 | HTTP clients | Readiness, synchronous reservation, supplier data and batch names; forward caller JWT |
-| Event producer | Post-commit transport with broker confirmation and returned-message checks |
+| Event producer | Post-commit SNS publication with failures propagated to the registry |
 | Result consumers | Validate incoming messages and delegate to the service |
 | Scheduled jobs | Expire `OPEN` orders and retry failed framework publications |
 | Security | JWT verification, current identity/roles and authentication context for HTTP forwarding |
-| Configuration | Expiry batch properties, service URLs and publication-confirm/retry properties |
+| Configuration | Expiry batch properties, service URLs and messaging topic/queue and publication-retry properties |
 | Exceptions | Domain errors, account-readiness rejection and HTTP error translation |
 | Flyway migrations | Business schema, constraints, indexes and framework publication registry |
 
 Credit's reservation controller delegates to `CreditReservationService`; its result publisher sends settlement results. User's `/api/users/brief` returns only ID/name for authenticated callers. These integrations keep account ownership, financial effects and user data within their owning services.
+
+## 12. Runtime configuration
+
+Production requires `AWS_REGION`, `EVENTS_MESSAGING_TOPIC_ARN`, and `EVENTS_MESSAGING_QUEUE_NAME`. Production SNS/SQS provisioning, permissions, and runtime wiring are added separately in [deployment PR #42](https://github.com/AY2627S1-CS3219-P24/FoC/pull/42).
+
+## 13. Tests
+
+With Docker running, from the repository root:
+
+```bash
+./gradlew :order-service:test
+```
+
+Cross-service tests: [e2e-tests](../e2e-tests/README.md).

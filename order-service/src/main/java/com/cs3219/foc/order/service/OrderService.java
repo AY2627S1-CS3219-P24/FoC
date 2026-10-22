@@ -270,7 +270,6 @@ public class OrderService {
             end(lockedErrand, COMPLETED, SETTLEMENT_PENDING);
             events.publishEvent(new ErrandCompletedEvent(
                     lockedErrand.getSettlementEventId(),
-                    "ErrandCompletedEvent",
                     1,
                     lockedErrand.getEndedAt(),
                     new ErrandCompletedEvent.Payload(
@@ -293,7 +292,6 @@ public class OrderService {
             end(lockedErrand, CANCELLED, RELEASE_PENDING);
             events.publishEvent(new ErrandCancelledEvent(
                     lockedErrand.getSettlementEventId(),
-                    "ErrandCancelledEvent",
                     1,
                     lockedErrand.getEndedAt(),
                     new ErrandCancelledEvent.Payload(id, actor, lockedErrand.getCreditReward())));
@@ -375,7 +373,6 @@ public class OrderService {
         end(errand, EXPIRED, RELEASE_PENDING);
         events.publishEvent(new ErrandExpiredEvent(
                 errand.getSettlementEventId(),
-                "ErrandExpiredEvent",
                 1,
                 errand.getEndedAt(),
                 new ErrandExpiredEvent.Payload(errand.getId(), errand.getRequesterId(), errand.getCreditReward())));

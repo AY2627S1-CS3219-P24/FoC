@@ -19,7 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
@@ -117,8 +120,9 @@ class OrderControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(0)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").value("Invalid request fields"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.creditReward").value("must be greater than 0"));
         mvc.perform(get("/orders/not-a-uuid").with(jwt()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
@@ -127,6 +131,34 @@ class OrderControllerTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value("Invalid request fields"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void reportsAllInvalidRequestFields() throws Exception {
+        mvc.perform(post("/orders")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"creditReward\":0,\"expiryMinutes\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.createRequestId").value("must not be null"))
+                .andExpect(jsonPath("$.fieldErrors.supplierId").value("must not be null"))
+                .andExpect(jsonPath("$.fieldErrors.creditReward").value("must be greater than 0"));
+        verifyNoInteractions(service);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "null", "{", "{\"createRequestId\":\"invalid-uuid\"}"})
+    void reportsUnreadableRequests(String body) throws Exception {
+        mvc.perform(post("/orders")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request body is missing or contains invalid fields"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
         verifyNoInteractions(service);
     }
 
@@ -223,7 +255,7 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id).with(jwt())).andExpect(status().isNotFound());
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport
     @EnableWebSecurity

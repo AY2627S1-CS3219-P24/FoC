@@ -28,3 +28,5 @@ Thumbs.db
 **/tfplan
 **/backend.hcl
 **/*.auto.tfvars
+
+!**/src/test/resources/keys/*.pem

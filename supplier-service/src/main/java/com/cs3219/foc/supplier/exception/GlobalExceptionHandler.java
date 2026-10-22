@@ -1,16 +1,22 @@
 package com.cs3219.foc.supplier.exception;
 
 import com.cs3219.foc.supplier.model.dto.ErrorResponse;
+import com.cs3219.foc.supplier.model.dto.ErrorResponseWithFieldErrors;
 import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.TreeMap;
 import org.springframework.core.ResolvableType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -39,7 +45,8 @@ public class GlobalExceptionHandler {
 
     /** when it is a bad query || path parameters. eg. an unknown category or id. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         var message = "Invalid value for " + ex.getName() + ": " + ex.getValue();
         // for the list parameters like ?category=A&category=B, look at element type
         var parameterType = ResolvableType.forMethodParameter(ex.getParameter());
@@ -49,15 +56,36 @@ public class GlobalExceptionHandler {
         if (type != null && type.isEnum()) {
             message += " (expected one of " + Arrays.toString(type.getEnumConstants()) + ")";
         }
-        return ResponseEntity.badRequest().body(new ErrorResponse(message));
+        return new ErrorResponseWithFieldErrors("INVALID_REQUEST", message, Map.of(ex.getName(), message));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ErrorResponse> handleInvalidRequest(MethodArgumentNotValidException ex) {
-        var message = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + " " + error.getDefaultMessage())
-                .sorted()
-                .collect(Collectors.joining("; "));
-        return ResponseEntity.badRequest().body(new ErrorResponse(message));
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleRequestValidation(MethodArgumentNotValidException exception) {
+        var fieldErrors = extractFieldErrors(exception.getBindingResult());
+
+        return new ErrorResponseWithFieldErrors("VALIDATION_FAILED", "Validation failed", fieldErrors);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleUnreadableRequest(HttpMessageNotReadableException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST", "Request body is missing or contains invalid fields", Map.of());
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleMissingFile(MissingServletRequestPartException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST",
+                "Image file is required",
+                Map.of(exception.getRequestPartName(), "must be provided"));
+    }
+
+    private static Map<String, String> extractFieldErrors(Errors errors) {
+        var fieldErrors = new TreeMap<String, String>();
+        errors.getFieldErrors().forEach(error -> fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return fieldErrors;
     }
 }

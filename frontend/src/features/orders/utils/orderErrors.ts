@@ -25,6 +25,7 @@ export const orderErrorReason = (error: unknown): string | undefined => {
     case 'ORDER_NOT_FOUND':
       return 'This errand could not be found.'
     case 'INVALID_REQUEST':
+    case 'VALIDATION_FAILED':
       return 'Please check the request details.'
     case 'ORDER_REQUEST_FAILED': {
       const message = isAxiosError<{ message?: unknown } | null | undefined>(

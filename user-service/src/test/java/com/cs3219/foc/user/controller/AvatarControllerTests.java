@@ -106,7 +106,9 @@ class AvatarControllerTests {
         mvc.perform(multipart(HttpMethod.PUT, "/users/me/avatar")
                         .with(jwt().jwt(token -> token.subject(userId.toString()))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Image file is required"));
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Image file is required"))
+                .andExpect(jsonPath("$.fieldErrors.file").value("must be provided"));
         verifyNoInteractions(avatarService);
     }
 

@@ -10,22 +10,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pg_data_prod:/var/lib/postgresql
+      - ./infra/docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  rabbitmq:
-    restart: unless-stopped
-    image: rabbitmq:4-management-alpine
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-    volumes:
-      - rabbitmq_data_prod:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -37,26 +24,23 @@ services:
       target: user-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_USER_BUCKET: ${FOC_USER_BUCKET}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
+      MAIL_FROM: ${MAIL_FROM}
       FOC_FRONTEND_URL: ${FOC_FRONTEND_URL:-https://localhost}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_user
+      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
+      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      EVENTS_MESSAGING_TOPIC_ARN: ${USER_EVENTS_TOPIC_ARN}
     secrets:
       - jwt_private_key
       - jwt_public_key
     depends_on:
       postgres:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/api/actuator/health"]
@@ -66,26 +50,17 @@ services:
       start_period: 40s
 
   admin-init:
+    extends:
+      service: user-service
     profiles: ["setup"]
     restart: "no"
-    image: postgres:18-alpine
     environment:
-      PGHOST: postgres
-      PGPORT: 5432
-      PGDATABASE: ${POSTGRES_DB}
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod,admin-init
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-System Administrator}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
-    volumes:
-      - ./docker/postgres/init-admin.sh:/scripts/init-admin.sh:ro
-    command: ["/bin/sh", "/scripts/init-admin.sh"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      user-service:
-        condition: service_healthy
+    healthcheck:
+      test: ["NONE"]
 
   supplier-service:
     restart: unless-stopped
@@ -94,17 +69,14 @@ services:
       target: supplier-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_supplier
+      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
+      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       postgres:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -122,11 +94,11 @@ services:
     environment:
       PGHOST: postgres
       PGPORT: 5432
-      PGDATABASE: ${POSTGRES_DB}
+      PGDATABASE: foc_supplier
       PGUSER: ${POSTGRES_USER}
       PGPASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - ./docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
+      - ./infra/docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
       - ./data/csv:/seed:ro
     command: ["/bin/sh", "/scripts/seed-suppliers.sh", "/seed"]
     depends_on:
@@ -142,15 +114,15 @@ services:
       target: order-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
+      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_order
+      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
+      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      EVENTS_MESSAGING_TOPIC_ARN: ${ORDER_EVENTS_TOPIC_ARN}
+      EVENTS_MESSAGING_QUEUE_NAME: ${ORDER_EVENTS_QUEUE_NAME}
     depends_on:
       postgres:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -168,15 +140,15 @@ services:
       target: credit-service
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
+      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_credit
+      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
+      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      EVENTS_MESSAGING_TOPIC_ARN: ${CREDIT_EVENTS_TOPIC_ARN}
+      EVENTS_MESSAGING_QUEUE_NAME: ${CREDIT_EVENTS_QUEUE_NAME}
     depends_on:
       postgres:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
       user-service:
         condition: service_healthy
@@ -198,9 +170,9 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-localhost}
     volumes:
-      - ./docker/nginx/certs:/etc/nginx/certs
+      - ./infra/docker/nginx/certs:/etc/nginx/certs
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--insecure", "--max-time", "3", "--output", "/dev/null", "https://127.0.0.1/index.html"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "--output", "/dev/null", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -217,7 +189,6 @@ services:
 
 volumes:
   pg_data_prod:
-  rabbitmq_data_prod:
 
 secrets:
   jwt_private_key:

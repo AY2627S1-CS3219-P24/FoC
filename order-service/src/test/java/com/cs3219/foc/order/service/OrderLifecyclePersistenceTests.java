@@ -11,56 +11,55 @@ import com.cs3219.foc.order.exception.OrderConflictException;
 import com.cs3219.foc.order.exception.OrderCreationAttemptException;
 import com.cs3219.foc.order.exception.OrderNotFoundException;
 import com.cs3219.foc.order.infrastructure.client.*;
+import com.cs3219.foc.order.integration.AbstractIntegrationTest;
 import com.cs3219.foc.order.mapper.ErrandMapper;
 import com.cs3219.foc.order.model.dto.*;
 import com.cs3219.foc.order.model.dto.event.*;
 import com.cs3219.foc.order.repository.ErrandRepository;
 import com.cs3219.foc.order.security.*;
-import jakarta.persistence.EntityManagerFactory;
-import java.sql.DriverManager;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.*;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
-@SpringJUnitConfig(OrderLifecyclePersistenceTests.TestConfig.class)
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(OrderLifecyclePersistenceTests.TestConfig.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class OrderLifecyclePersistenceTests {
-    private static final String SCHEMA =
-            "orders_test_" + UUID.randomUUID().toString().replace("-", "");
+class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     private static final Instant START = Instant.parse("2030-01-01T00:00:00Z");
 
     @Autowired
@@ -125,17 +124,6 @@ class OrderLifecyclePersistenceTests {
     @AfterEach
     void clearActor() {
         SecurityContextHolder.clearContext();
-    }
-
-    @AfterAll
-    static void cleanupSchema() throws Exception {
-        try (var c = DriverManager.getConnection(
-                        System.getenv("FOC_TEST_DATABASE_URL"),
-                        System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                        System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                var st = c.createStatement()) {
-            st.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-        }
     }
 
     private static void as(UUID id, String... roles) {
@@ -246,7 +234,6 @@ class OrderLifecyclePersistenceTests {
         UUID operationId = jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
         return new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -459,7 +446,6 @@ class OrderLifecyclePersistenceTests {
         SecurityContextHolder.clearContext();
         var result = new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -532,7 +518,6 @@ class OrderLifecyclePersistenceTests {
                 .orElseThrow();
         var refund = new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 OffsetDateTime.now(clock),
                 new CreditSettlementResultEvent.Payload(
@@ -554,7 +539,6 @@ class OrderLifecyclePersistenceTests {
                 List.of("operationId", "requesterId", "amount", "courierId", "settlementType", "outcome")) {
             var result = new CreditSettlementResultEvent(
                     UUID.randomUUID(),
-                    "CreditSettlementResultEvent",
                     1,
                     OffsetDateTime.now(clock),
                     new CreditSettlementResultEvent.Payload(
@@ -585,7 +569,6 @@ class OrderLifecyclePersistenceTests {
         for (String outcome : List.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")) {
             var conflict = new CreditSettlementResultEvent(
                     UUID.randomUUID(),
-                    "CreditSettlementResultEvent",
                     1,
                     OffsetDateTime.now(clock),
                     new CreditSettlementResultEvent.Payload(
@@ -915,7 +898,6 @@ class OrderLifecyclePersistenceTests {
                             jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
                     service.handleSettlementResult(new CreditSettlementResultEvent(
                             UUID.randomUUID(),
-                            "CreditSettlementResultEvent",
                             1,
                             OffsetDateTime.now(clock),
                             new CreditSettlementResultEvent.Payload(
@@ -991,7 +973,7 @@ class OrderLifecyclePersistenceTests {
         }
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     @EnableTransactionManagement
     @EnableConfigurationProperties(OrderProperties.class)
     @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
@@ -1008,7 +990,8 @@ class OrderLifecyclePersistenceTests {
         }
 
         @Bean
-        TestClock clock() {
+        @Primary
+        TestClock testClock() {
             return new TestClock();
         }
 
@@ -1030,39 +1013,6 @@ class OrderLifecyclePersistenceTests {
         @Bean
         ErrandMapper mapper() {
             return Mappers.getMapper(ErrandMapper.class);
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("filesystem:" + System.getProperty("foc.root")
-                            + "/order-service/src/main/resources/db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(source);
-            factory.setPackagesToScan("com.cs3219.foc.order.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
         }
     }
 }

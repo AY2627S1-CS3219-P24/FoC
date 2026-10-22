@@ -22,6 +22,7 @@ import { refreshSession } from '../api/refreshSession.api'
 import { logoutUser } from '../api/logoutUser.api'
 import { setAccessToken, getAccessToken } from './accessTokenStore'
 import type { AccessTokenResponse } from '../types/auth.types'
+import { getCreditBalance } from '#/features/credits/api/credits.api'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 vi.mock('#/features/credits/api/credits.api', () => ({
@@ -74,6 +75,10 @@ beforeEach(() => {
   setAccessToken(null)
   refresh.mockReset()
   vi.mocked(logoutUser).mockReset()
+  vi.mocked(getCreditBalance).mockReset().mockResolvedValue({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 
@@ -103,6 +108,53 @@ const setup = (path: string) => {
   )
   return router
 }
+
+it.each([
+  ['/home?mode=courier', 17],
+  ['/home?mode=requestor', 0],
+] as const)(
+  'shows the available credit balance on %s',
+  async (path, balance) => {
+    setAccessToken(tokens().accessToken)
+    vi.mocked(getCreditBalance).mockResolvedValue({
+      availableBalance: balance,
+      reservedBalance: 3,
+    })
+    setup(path)
+
+    expect(await screen.findByText(`${balance} credits`)).toBeInTheDocument()
+    expect(screen.queryByText('3 credits')).not.toBeInTheDocument()
+  },
+)
+
+it('keeps the header usable when the credit balance is unavailable', async () => {
+  setAccessToken(tokens().accessToken)
+  vi.mocked(getCreditBalance).mockRejectedValue(
+    new Error('Credit account pending'),
+  )
+  setup('/home?mode=courier')
+
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  await waitFor(() => expect(getCreditBalance).toHaveBeenCalled())
+  expect(screen.getByText('Balance unavailable')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+})
+
+it('opens My Errands from the header and returns to courier Home', async () => {
+  setAccessToken(tokens().accessToken)
+  const router = setup('/home?mode=courier')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'Find an errand' })
+
+  await user.click(screen.getByRole('link', { name: 'My Errands' }))
+  await screen.findByRole('heading', { name: 'My Errands' })
+  expect(router.state.location.pathname).toBe('/errands')
+  await screen.findByText('No active errands match this view.')
+
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(router.state.location.href).toBe('/home?mode=courier')
+})
 
 it('switches between requestor and courier modes through the menu', async () => {
   setAccessToken(tokens().accessToken)
