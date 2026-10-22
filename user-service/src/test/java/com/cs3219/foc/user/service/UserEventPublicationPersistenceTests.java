@@ -5,64 +5,67 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.UserServiceApplication;
 import com.cs3219.foc.user.infrastructure.messaging.producer.SnsUserCreatedEventPublisher;
-import com.cs3219.foc.user.mapper.UserMapper;
+import com.cs3219.foc.user.mapper.UserMapperImpl;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
 import com.cs3219.foc.user.model.dto.event.UserCreatedEvent;
-import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CurrentUserService;
-import jakarta.persistence.EntityManagerFactory;
-import java.sql.DriverManager;
 import java.time.Duration;
-import java.util.Map;
 import java.util.UUID;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.modulith.events.FailedEventPublications;
 import org.springframework.modulith.events.ResubmissionOptions;
 import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.test.annotation.DirtiesContext.HierarchyMode;
-import org.springframework.test.context.TestContext;
-import org.springframework.test.context.TestExecutionListeners;
-import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.AopTestUtils;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
+@ActiveProfiles("test")
 @SpringBootTest(
         classes = UserEventPublicationPersistenceTests.TestConfig.class,
         properties = {
-            "spring.flyway.enabled=false", "spring.modulith.events.jdbc.schema-initialization.enabled=false",
-            "spring.modulith.events.staleness.published=0s", "spring.modulith.events.staleness.processing=0s",
-            "spring.modulith.events.staleness.resubmitted=0s", "spring.cloud.aws.s3.enabled=false",
-            "spring.cloud.aws.sns.enabled=false", "spring.cloud.aws.sqs.enabled=false"
+            "spring.modulith.events.staleness.published=0s",
+            "spring.modulith.events.staleness.processing=0s",
+            "spring.modulith.events.staleness.resubmitted=0s"
         })
-@TestExecutionListeners(
-        listeners = UserEventPublicationPersistenceTests.SchemaCleanup.class,
-        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
+@Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class UserEventPublicationPersistenceTests {
-    private static final String SCHEMA =
-            "publication_" + UUID.randomUUID().toString().replace("-", "");
+    @Container
+    @ServiceConnection
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+
+    @MockitoBean
+    private EmailVerificationService emailVerificationService;
+
+    @MockitoBean
+    private EmailChangeService emailChangeService;
+
+    @MockitoBean
+    private AvatarStorageService avatarStorageService;
+
+    @MockitoBean
+    private CurrentUserService currentUserService;
 
     @Autowired
     private UserService userService;
@@ -74,18 +77,15 @@ class UserEventPublicationPersistenceTests {
     private FailedEventPublications publications;
 
     @Autowired
-    private DataSource dataSource;
-
-    @Autowired
     private JpaTransactionManager transactionManager;
 
+    @Autowired
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void clean() {
         publisher = AopTestUtils.getUltimateTargetObject(publisher);
         reset(publisher);
-        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE event_publication, refresh_tokens, users CASCADE");
     }
 
@@ -164,30 +164,11 @@ class UserEventPublicationPersistenceTests {
                 .isEqualTo(first.occurredAt().toInstant());
     }
 
-    static class SchemaCleanup extends AbstractTestExecutionListener {
-        @Override
-        public int getOrder() {
-            return Ordered.HIGHEST_PRECEDENCE;
-        }
-
-        @Override
-        public void afterTestClass(TestContext context) throws Exception {
-            context.markApplicationContextDirty(HierarchyMode.CURRENT_LEVEL);
-            try (var connection = DriverManager.getConnection(
-                            System.getenv("FOC_TEST_DATABASE_URL"),
-                            System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                            System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                    var statement = connection.createStatement()) {
-                statement.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-            }
-        }
-    }
-
-    @Configuration
+    @Configuration(proxyBeanMethods = false)
     @EnableAutoConfiguration
+    @AutoConfigurationPackage(basePackageClasses = UserServiceApplication.class)
     @EnableAsync
-    @EnableTransactionManagement
-    @EnableJpaRepositories(basePackageClasses = UserRepository.class)
+    @Import({UserService.class, UserMapperImpl.class})
     static class TestConfig {
         @Bean
         SnsUserCreatedEventPublisher publisher() {
@@ -195,52 +176,8 @@ class UserEventPublicationPersistenceTests {
         }
 
         @Bean
-        UserService userService(UserRepository repository, ApplicationEventPublisher events) {
-            return new UserService(
-                    repository,
-                    new BCryptPasswordEncoder(4),
-                    Mappers.getMapper(UserMapper.class),
-                    events,
-                    mock(EmailVerificationService.class),
-                    mock(EmailChangeService.class),
-                    mock(AvatarStorageService.class),
-                    mock(CurrentUserService.class));
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("classpath:db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(source);
-            factory.setPackagesToScan("com.cs3219.foc.user.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setJpaPropertyMap(Map.of(
-                    "hibernate.hbm2ddl.auto",
-                    "validate",
-                    "hibernate.physical_naming_strategy",
-                    "org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
+        PasswordEncoder passwordEncoder() {
+            return new BCryptPasswordEncoder(4);
         }
     }
 }

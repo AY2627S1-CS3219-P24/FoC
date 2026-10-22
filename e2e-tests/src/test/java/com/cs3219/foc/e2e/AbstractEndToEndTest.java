@@ -34,6 +34,7 @@ abstract class AbstractEndToEndTest {
                         .toFile())
                 .withBuild(true)
                 .withPull(false)
+                .withTailChildContainers(true)
                 .withExposedService(
                         "api-gateway-1",
                         443,

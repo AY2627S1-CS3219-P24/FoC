@@ -17,6 +17,7 @@ dependencies {
     testRuntimeOnly 'org.postgresql:postgresql:42.7.13'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:6.0.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:6.0.3'
+    testRuntimeOnly 'ch.qos.logback:logback-classic:1.5.38'
 }
 
 tasks.named('test') {

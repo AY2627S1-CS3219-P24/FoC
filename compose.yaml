@@ -8,6 +8,7 @@ services:
     environment:
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_SERVICES_S3_ENFORCE_AUTH: "true"
+      FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "180"
       FLOCI_HOSTNAME: localhost
       AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_USER_BUCKET: ${FOC_USER_BUCKET:-foc-dev-user}
@@ -17,9 +18,10 @@ services:
       - ./docker/floci/init-storage.sh:/etc/localstack/init/ready.d/10-foc-storage.sh:ro
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/foc-resources-ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      interval: 2s
+      timeout: 5s
+      retries: 90
+      start_period: 60s
   postgres:
     image: postgres:18-alpine
     ports:

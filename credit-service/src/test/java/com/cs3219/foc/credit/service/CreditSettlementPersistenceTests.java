@@ -6,40 +6,46 @@ import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
-import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
-import jakarta.persistence.EntityManagerFactory;
-import java.sql.DriverManager;
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.*;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@SpringJUnitConfig(CreditSettlementPersistenceTests.TestConfig.class)
-@TestPropertySource(properties = "credits.initial-allocation=15")
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
+@DataJpaTest(showSql = false)
+@Testcontainers
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@EnableConfigurationProperties(CreditProperties.class)
+@Import({
+    CreditReservationService.class,
+    CreditAccountService.class,
+    CreditSettlementService.class,
+    CurrentUserService.class,
+    AuthenticationContextService.class,
+    AuthenticatedUserResolver.class,
+    CreditSettlementPersistenceTests.Results.class
+})
+@ActiveProfiles("test")
 class CreditSettlementPersistenceTests {
-    private static final String SCHEMA =
-            "credit_rewards_test_" + UUID.randomUUID().toString().replace("-", "");
+    @Container
+    @ServiceConnection
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
     @Autowired
     private CreditReservationService reserve;
@@ -51,25 +57,11 @@ class CreditSettlementPersistenceTests {
     private CreditAccountService creditAccountService;
 
     @Autowired
-    private DataSource dataSource;
-
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void clean() {
-        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE credit_accounts CASCADE");
-    }
-
-    @AfterAll
-    static void dropSchema() throws Exception {
-        try (var c = DriverManager.getConnection(
-                        System.getenv("FOC_TEST_DATABASE_URL"),
-                        System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                        System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                var s = c.createStatement()) {
-            s.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-        }
     }
 
     private UUID fund(long amount) {
@@ -358,57 +350,5 @@ class CreditSettlementPersistenceTests {
         assertThat(creditAccountService.getBalance(a)).isEqualTo(new CreditBalanceResponse(50, 0));
         assertThat(creditAccountService.getBalance(b)).isEqualTo(new CreditBalanceResponse(150, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(4);
-    }
-
-    @TestConfiguration
-    @EnableConfigurationProperties(CreditProperties.class)
-    @EnableTransactionManagement
-    @EnableJpaRepositories(basePackageClasses = CreditAccountRepository.class)
-    @Import({
-        CreditReservationService.class,
-        CreditAccountService.class,
-        CreditSettlementService.class,
-        CurrentUserService.class,
-        AuthenticationContextService.class,
-        AuthenticatedUserResolver.class
-    })
-    static class TestConfig {
-        @Bean
-        Results results() {
-            return new Results();
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("filesystem:" + System.getProperty("foc.root")
-                            + "/credit-service/src/main/resources/db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(source);
-            factory.setPackagesToScan("com.cs3219.foc.credit.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
-        }
     }
 }

@@ -12,4 +12,8 @@ There is no existing-user backfill. New registrations produce events; users inse
 
 ## Tests
 
-Run `./gradlew :user-service:check`. Database integration tests require `FOC_TEST_DATABASE_URL`, `FOC_TEST_DATABASE_USERNAME`, and `FOC_TEST_DATABASE_PASSWORD`. Messaging tests start Floci with Testcontainers.
+Run `./gradlew :user-service:check` with Java 25 and Docker. Testcontainers starts
+PostgreSQL and Floci as needed. Spring Boot's `@ServiceConnection` supplies database
+connection details, so local runs and CI need no database environment variables or
+separately managed database. Persistence tests use `@DataJpaTest`; publication tests
+use `@SpringBootTest` to include Spring Modulith's event registry and retry behavior.

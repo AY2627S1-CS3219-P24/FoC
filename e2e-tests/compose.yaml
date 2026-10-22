@@ -26,6 +26,7 @@ services:
       FOC_USER_BUCKET: foc-e2e-user
       FOC_SUPPLIER_BUCKET: foc-e2e-supplier
       FLOCI_SERVICES_S3_ENFORCE_AUTH: "true"
+      FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "180"
     volumes:
       - ../docker/floci/init-storage.sh:/etc/localstack/init/ready.d/10-foc-storage.sh:ro
     healthcheck:

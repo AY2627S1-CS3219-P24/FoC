@@ -9,75 +9,84 @@ import com.cs3219.foc.order.config.OrderProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
 import com.cs3219.foc.order.exception.OrderConflictException;
 import com.cs3219.foc.order.infrastructure.client.*;
-import com.cs3219.foc.order.mapper.ErrandMapper;
+import com.cs3219.foc.order.mapper.ErrandMapperImpl;
 import com.cs3219.foc.order.model.dto.*;
 import com.cs3219.foc.order.model.dto.event.*;
-import com.cs3219.foc.order.repository.ErrandRepository;
 import com.cs3219.foc.order.security.*;
-import jakarta.persistence.EntityManagerFactory;
-import java.sql.DriverManager;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.stream.Collectors;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.*;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@SpringJUnitConfig(OrderLifecyclePersistenceTests.TestConfig.class)
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
+@DataJpaTest(showSql = false)
+@Testcontainers
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@EnableConfigurationProperties(OrderProperties.class)
+@Import({
+    OrderService.class,
+    CurrentUserService.class,
+    AuthenticationContextService.class,
+    AuthenticatedUserResolver.class,
+    ErrandMapperImpl.class,
+    OrderLifecyclePersistenceTests.Facts.class
+})
+@ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OrderLifecyclePersistenceTests {
-    private static final String SCHEMA =
-            "orders_test_" + UUID.randomUUID().toString().replace("-", "");
+    @Container
+    @ServiceConnection
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+
     private static final Instant START = Instant.parse("2030-01-01T00:00:00Z");
 
     @Autowired
     private OrderService service;
 
-    @Autowired
-    private DataSource dataSource;
-
-    @Autowired
+    @MockitoBean
     private SupplierClient suppliers;
 
-    @Autowired
+    @MockitoBean
     private CreditClient credit;
 
-    @Autowired
+    @MockitoBean
     private UserClient users;
 
-    @Autowired
-    private TestClock clock;
+    @MockitoBean
+    private Clock clock;
+
+    private final AtomicReference<Instant> now = new AtomicReference<>(START);
 
     @Autowired
     private Facts facts;
@@ -85,14 +94,17 @@ class OrderLifecyclePersistenceTests {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
     private JdbcTemplate jdbc;
+
     private UUID requester;
 
     @BeforeEach
     void prepare() {
-        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE errands, event_publication");
-        clock.time.set(START);
+        now.set(START);
+        when(clock.instant()).thenAnswer(call -> now.get());
+        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
         facts.events.clear();
         reset(suppliers, users, credit);
         doAnswer(call -> {
@@ -123,17 +135,6 @@ class OrderLifecyclePersistenceTests {
     @AfterEach
     void clearActor() {
         SecurityContextHolder.clearContext();
-    }
-
-    @AfterAll
-    static void cleanupSchema() throws Exception {
-        try (var c = DriverManager.getConnection(
-                        System.getenv("FOC_TEST_DATABASE_URL"),
-                        System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                        System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                var st = c.createStatement()) {
-            st.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-        }
     }
 
     private static void as(UUID id, String... roles) {
@@ -556,7 +557,7 @@ class OrderLifecyclePersistenceTests {
             });
             try {
                 assertThat(acceptedButUncommitted.await(10, TimeUnit.SECONDS)).isTrue();
-                clock.time.set(START.plusSeconds(61));
+                now.set(START.plusSeconds(61));
                 var expiry = executor.submit(service::expireOpenOrders);
                 // Observe a PostgreSQL lock wait, rather than merely starting two threads together.
                 await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> assertThat(jdbc.queryForObject(
@@ -585,7 +586,7 @@ class OrderLifecyclePersistenceTests {
         var courier = UUID.randomUUID();
         as(courier);
         service.accept(accepted);
-        clock.time.set(START.plusSeconds(61));
+        now.set(START.plusSeconds(61));
         assertThatThrownBy(() -> service.accept(expired)).isInstanceOf(OrderConflictException.class);
         SecurityContextHolder.clearContext();
         service.expireOpenOrders();
@@ -602,7 +603,7 @@ class OrderLifecyclePersistenceTests {
     @Test
     void synchronousReservationFinishingAfterExpiryIsReleasedWithoutOpening() {
         doAnswer(call -> {
-                    clock.time.set(START.plusSeconds(61));
+                    now.set(START.plusSeconds(61));
                     return new CreditReservationResponse("RESERVED");
                 })
                 .when(credit)
@@ -713,7 +714,7 @@ class OrderLifecyclePersistenceTests {
                 .reserve(any());
         var req = request();
         assertThatThrownBy(() -> service.create(req)).isInstanceOf(RestClientException.class);
-        clock.time.set(START.plusSeconds(61));
+        now.set(START.plusSeconds(61));
         var recovered = service.create(req);
         assertThat(recovered.status().name()).isEqualTo("EXPIRED");
         assertThat(service.get(recovered.errandId()).creditState().name()).isEqualTo("RELEASE_PENDING");
@@ -786,7 +787,7 @@ class OrderLifecyclePersistenceTests {
                 } else if (targetStatus.equals("CANCELLED")) {
                     service.cancel(id);
                 } else {
-                    clock.time.set(START.plusSeconds(61));
+                    now.set(START.plusSeconds(61));
                     service.expireOpenOrders();
                 }
                 if (!targetStatus.equals("ACCEPTED")) {
@@ -832,25 +833,6 @@ class OrderLifecyclePersistenceTests {
         assertThat(service.get(id).status().name()).isEqualTo("OPEN");
     }
 
-    static class TestClock extends Clock {
-        final AtomicReference<Instant> time = new AtomicReference<>(START);
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return Clock.fixed(instant(), zone);
-        }
-
-        @Override
-        public Instant instant() {
-            return time.get();
-        }
-    }
-
     static class Facts {
         final List<Object> events = new CopyOnWriteArrayList<>();
 
@@ -867,81 +849,6 @@ class OrderLifecyclePersistenceTests {
         @EventListener
         public void expired(ErrandExpiredEvent e) {
             events.add(e);
-        }
-    }
-
-    @org.springframework.boot.test.context.TestConfiguration
-    @EnableTransactionManagement
-    @EnableConfigurationProperties(OrderProperties.class)
-    @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
-    @Import({
-        OrderService.class,
-        CurrentUserService.class,
-        AuthenticationContextService.class,
-        AuthenticatedUserResolver.class
-    })
-    static class TestConfig {
-        @Bean
-        CreditClient creditClient() {
-            return mock(CreditClient.class);
-        }
-
-        @Bean
-        TestClock clock() {
-            return new TestClock();
-        }
-
-        @Bean
-        Facts facts() {
-            return new Facts();
-        }
-
-        @Bean
-        SupplierClient supplierClient() {
-            return mock(SupplierClient.class);
-        }
-
-        @Bean
-        UserClient userClient() {
-            return mock(UserClient.class);
-        }
-
-        @Bean
-        ErrandMapper mapper() {
-            return Mappers.getMapper(ErrandMapper.class);
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("filesystem:" + System.getProperty("foc.root")
-                            + "/order-service/src/main/resources/db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(source);
-            factory.setPackagesToScan("com.cs3219.foc.order.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
         }
     }
 }

@@ -27,6 +27,7 @@ server:
 logging:
   level:
     root: WARN
+    foc.test.floci: INFO
 credits:
   initial-allocation: 15
 

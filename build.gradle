@@ -9,6 +9,11 @@ subprojects {
         tasks.withType(JavaCompile).configureEach {
             options.compilerArgs.addAll('-Amapstruct.defaultComponentModel=spring')
         }
+        tasks.withType(Test).configureEach {
+            testLogging {
+                exceptionFormat = 'full'
+            }
+        }
     }
 
     apply plugin: "com.diffplug.spotless"

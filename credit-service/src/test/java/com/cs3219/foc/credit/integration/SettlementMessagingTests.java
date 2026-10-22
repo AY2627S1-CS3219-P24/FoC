@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.MessageAttributeValue;
-import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.*;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -27,7 +27,7 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
     SnsClient sns;
 
     @Autowired
-    SqsClient sqs;
+    SqsAsyncClient sqs;
 
     @Autowired
     CreditAccountService creditAccountService;
@@ -43,23 +43,27 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
 
     @Test
     void malformedMessagesParkInDlqAndRedeliveryDoesNotRepeatSettlement() {
-        var orderQueue =
-                sqs.getQueueUrl(r -> r.queueName("foc-test-order-events")).queueUrl();
-        var creditQueue =
-                sqs.getQueueUrl(r -> r.queueName("foc-test-credit-events")).queueUrl();
+        var orderQueue = sqs.getQueueUrl(r -> r.queueName("foc-test-order-events"))
+                .join()
+                .queueUrl();
+        var creditQueue = sqs.getQueueUrl(r -> r.queueName("foc-test-credit-events"))
+                .join()
+                .queueUrl();
         var deadLetterQueue =
-                sqs.getQueueUrl(r -> r.queueName("foc-test-credit-dlq")).queueUrl();
+                sqs.getQueueUrl(r -> r.queueName("foc-test-credit-dlq")).join().queueUrl();
         var dlqArn = sqs.getQueueAttributes(
                         r -> r.queueUrl(deadLetterQueue).attributeNames(QueueAttributeName.QUEUE_ARN))
+                .join()
                 .attributes()
                 .get(QueueAttributeName.QUEUE_ARN);
         // Short redelivery timings belong to this poison-message scenario only.
         sqs.setQueueAttributes(r -> r.queueUrl(creditQueue)
-                .attributes(Map.of(
-                        QueueAttributeName.VISIBILITY_TIMEOUT,
-                        "1",
-                        QueueAttributeName.REDRIVE_POLICY,
-                        "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":3}")));
+                        .attributes(Map.of(
+                                QueueAttributeName.VISIBILITY_TIMEOUT,
+                                "1",
+                                QueueAttributeName.REDRIVE_POLICY,
+                                "{\"deadLetterTargetArn\":\"" + dlqArn + "\",\"maxReceiveCount\":3}")))
+                .join();
         var owner = UUID.randomUUID();
         var courier = UUID.randomUUID();
         creditAccountService.initializeAccount(owner);
@@ -103,8 +107,10 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
                 .isEqualTo(5);
         creditAccountService.initializeAccount(courier);
         var parked = receive(deadLetterQueue).getFirst();
-        sqs.sendMessage(
-                r -> r.queueUrl(creditQueue).messageBody(parked.body()).messageAttributes(parked.messageAttributes()));
+        sqs.sendMessage(r -> r.queueUrl(creditQueue)
+                        .messageBody(parked.body())
+                        .messageAttributes(parked.messageAttributes()))
+                .join();
         delete(deadLetterQueue, parked);
         await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(
                         creditAccountService.getBalance(courier).availableBalance())
@@ -192,6 +198,7 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
     private int deadLetters(String queue) {
         return Integer.parseInt(sqs.getQueueAttributes(
                         r -> r.queueUrl(queue).attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES))
+                .join()
                 .attributes()
                 .get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES));
     }
@@ -201,10 +208,12 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
                         .waitTimeSeconds(1)
                         .maxNumberOfMessages(10)
                         .messageAttributeNames("All"))
+                .join()
                 .messages();
     }
 
     private void delete(String url, Message message) {
-        sqs.deleteMessage(r -> r.queueUrl(url).receiptHandle(message.receiptHandle()));
+        sqs.deleteMessage(r -> r.queueUrl(url).receiptHandle(message.receiptHandle()))
+                .join();
     }
 }
