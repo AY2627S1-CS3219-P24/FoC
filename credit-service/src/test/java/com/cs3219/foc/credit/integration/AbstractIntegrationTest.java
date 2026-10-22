@@ -2,6 +2,7 @@ package com.cs3219.foc.credit.integration;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -45,9 +46,10 @@ public abstract class AbstractIntegrationTest {
                     .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true")
                     .withCopyFileToContainer(
                             MountableFile.forHostPath(
-                                    Path.of(System.getProperty("foc.root"), "docker/floci/init-storage.sh")),
+                                    Path.of(System.getProperty("foc.root"), "docker/floci/init-storage.sh"), 0755),
                             "/etc/localstack/init/ready.d/10-foc-storage.sh")
-                    .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"));
+                    .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"))
+                    .withStartupTimeout(Duration.ofMinutes(2));
         }
 
         @Bean
