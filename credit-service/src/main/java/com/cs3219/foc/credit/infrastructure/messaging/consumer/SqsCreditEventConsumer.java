@@ -1,5 +1,6 @@
 package com.cs3219.foc.credit.infrastructure.messaging.consumer;
 
+import com.cs3219.foc.credit.infrastructure.messaging.EventValidator;
 import com.cs3219.foc.credit.model.dto.event.ErrandCancelledEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandCompletedEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandExpiredEvent;
@@ -14,6 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class SqsCreditEventConsumer {
     private final ObjectMapper objectMapper;
+    private final EventValidator eventValidator;
     private final UserCreatedConsumer userCreatedConsumer;
     private final ErrandSettlementConsumer errandSettlementConsumer;
 
@@ -21,22 +23,29 @@ public class SqsCreditEventConsumer {
     public void consume(@Header("eventType") String eventType, String body) {
         switch (eventType) {
             case UserCreatedEvent.TYPE -> {
-                var event = objectMapper.readValue(body, UserCreatedEvent.class);
+                var event = readValidatedEvent(body, UserCreatedEvent.class);
                 userCreatedConsumer.initializeAccount(event);
             }
             case ErrandCancelledEvent.TYPE -> {
-                var event = objectMapper.readValue(body, ErrandCancelledEvent.class);
+                var event = readValidatedEvent(body, ErrandCancelledEvent.class);
                 errandSettlementConsumer.releaseReservedCredits(event);
             }
             case ErrandExpiredEvent.TYPE -> {
-                var event = objectMapper.readValue(body, ErrandExpiredEvent.class);
+                var event = readValidatedEvent(body, ErrandExpiredEvent.class);
                 errandSettlementConsumer.releaseReservedCredits(event);
             }
             case ErrandCompletedEvent.TYPE -> {
-                var event = objectMapper.readValue(body, ErrandCompletedEvent.class);
+                var event = readValidatedEvent(body, ErrandCompletedEvent.class);
                 errandSettlementConsumer.transferReservedCredits(event);
             }
             default -> throw new IllegalArgumentException("Unexpected event type: " + eventType);
         }
+    }
+
+    private <T> T readValidatedEvent(String body, Class<T> eventType) {
+        var event = objectMapper.readValue(body, eventType);
+        eventValidator.validateEvent(event);
+
+        return event;
     }
 }

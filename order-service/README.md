@@ -495,7 +495,7 @@ flowchart TD
     L --> M[Publish any registered result after commit]
 ```
 
-Publishers use `SnsOperations.sendNotification` and propagate publication failures to the transactional registry. An accepted SNS publish completes the publication; SNS filters route raw JSON to the subscribed SQS queue. SQS acknowledges only successful processing. Failed messages become visible again and move to the consumer’s DLQ after five receives. Terraform and Floci bootstrap own the topics, subscriptions, queues, and redrive configuration.
+Publishers use `SnsOperations.sendNotification` and propagate publication failures to the transactional registry. An accepted SNS publish completes the publication; SNS filters route raw JSON to the subscribed SQS queue. SQS acknowledges only successful processing. Failed messages become visible again and move to the consumer’s DLQ after five receives. The Floci bootstrap provisions local topics, subscriptions, queues, and redrive configuration. Production infrastructure is added separately in [deployment PR #42](https://github.com/AY2627S1-CS3219-P24/FoC/pull/42).
 
 Consumers tolerate duplicate deliveries.
 
@@ -920,4 +920,4 @@ Credit's reservation controller delegates to `CreditReservationService`; its res
 
 ## 12. Runtime configuration
 
-Production requires `AWS_REGION`, `EVENTS_MESSAGING_TOPIC_ARN`, and `EVENTS_MESSAGING_QUEUE_NAME`. See [messaging infrastructure](../infra/terraform/README.md#messaging) for provisioning and permissions.
+Production requires `AWS_REGION`, `EVENTS_MESSAGING_TOPIC_ARN`, and `EVENTS_MESSAGING_QUEUE_NAME`. Production SNS/SQS provisioning, permissions, and runtime wiring are added separately in [deployment PR #42](https://github.com/AY2627S1-CS3219-P24/FoC/pull/42).

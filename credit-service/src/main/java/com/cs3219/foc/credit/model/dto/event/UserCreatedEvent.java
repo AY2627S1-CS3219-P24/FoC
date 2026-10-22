@@ -1,11 +1,16 @@
 package com.cs3219.foc.credit.model.dto.event;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Wire contract owned by User service; no cross-service persistence dependency. */
-public record UserCreatedEvent(UUID eventId, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
+public record UserCreatedEvent(
+        @NotNull UUID eventId,
+        int schemaVersion,
+        @NotNull OffsetDateTime occurredAt,
+        @NotNull @Valid Payload payload) {
     public static final String TYPE = "UserCreatedEvent";
 
-    public record Payload(UUID userId) {}
+    public record Payload(@NotNull UUID userId) {}
 }
