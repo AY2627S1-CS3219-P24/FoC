@@ -20,10 +20,20 @@ dependencies {
     testRuntimeOnly 'ch.qos.logback:logback-classic:1.5.38'
 }
 
+tasks.register('installChromium', JavaExec) {
+    description = 'Download Playwright Chromium.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.microsoft.playwright.CLI'
+    args 'install', 'chromium'
+}
+
 tasks.named('test') {
+    dependsOn 'installChromium'
     useJUnitPlatform()
     systemProperty 'foc.root', rootProject.projectDir.absolutePath
     systemProperty 'foc.e2e.output', layout.buildDirectory.dir('playwright').get().asFile.absolutePath
+    // Playwright.create() otherwise downloads Firefox and WebKit as well.
+    environment 'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '1'
     maxParallelForks = 1
 }
 

@@ -10,7 +10,7 @@ Requires Java 25 and Docker with the Compose plugin. Run from the repository roo
 ./gradlew :e2e-tests:test
 ```
 
-Playwright downloads Chromium automatically. On Linux, install that browser's OS libraries once:
+The test task downloads Chromium only. On Linux, install that browser's OS libraries once:
 
 ```bash
 ./gradlew :e2e-tests:installBrowserDependencies
