@@ -82,8 +82,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /** Runs the real migrations and service transactions in a disposable PostgreSQL database. */
 @DataJpaTest
-@AutoConfigureTestDatabase(
-        replace = AutoConfigureTestDatabase.Replace.NONE)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import(UserProfilePersistenceTests.TestConfig.class)
 class UserProfilePersistenceTests extends AbstractIntegrationTest {
