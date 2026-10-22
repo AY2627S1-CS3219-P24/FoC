@@ -18,6 +18,7 @@
   align-items: flex-start;
   gap: 24px;
   margin-top: 12px;
+  margin-bottom: 24px;
   h1 {
     margin: 0;
     font-size: 28px;
@@ -48,11 +49,6 @@
     top: 11px;
     pointer-events: none;
   }
-}
-.sampleNote {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  margin: 12px 0 24px;
 }
 .list {
   display: grid;
@@ -97,8 +93,7 @@ button.card {
     line-height: 1.5;
   }
 }
-.openBadge,
-.ownBadge {
+.openBadge {
   display: inline-block;
   padding: 6px 10px;
   border-radius: 5px;
@@ -107,10 +102,6 @@ button.card {
 .openBadge {
   color: #a34b00;
   background: #fff2e2;
-}
-.ownBadge {
-  color: var(--color-text-muted);
-  background: #f5f7fa;
 }
 .credits {
   color: var(--color-primary);
@@ -164,6 +155,16 @@ button.card {
   background: var(--color-primary);
   color: white;
   cursor: pointer;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
 }
 .page :focus-visible,
 .dialog :focus-visible {

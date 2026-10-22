@@ -13,6 +13,12 @@ import * as api from '../../api/userProfile.api'
 import { getFaculties } from '#/api/getFaculties.api'
 
 vi.mock('../../api/userProfile.api')
+vi.mock('#/features/credits/api/creditBalance.api', () => ({
+  getCreditBalance: vi.fn(async () => ({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })),
+}))
 vi.mock('#/api/getFaculties.api')
 vi.mock('../../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 

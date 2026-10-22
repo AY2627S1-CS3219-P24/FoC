@@ -28,6 +28,7 @@ import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
 import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { HomePage } from '#/features/orders/pages/HomePage/HomePage'
+import { MyErrandsPage } from '#/features/orders/pages/MyErrandsPage/MyErrandsPage'
 import { getHomeMode } from '#/features/orders/utils/homeMode'
 import type { HomeMode } from '#/features/orders/utils/homeMode'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
@@ -152,6 +153,12 @@ const homeRoute = createRoute({
   component: HomePage,
 })
 
+const myErrandsRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/my-errands',
+  component: MyErrandsPage,
+})
+
 // Below are admin routes
 const adminLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -230,7 +237,12 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   authenticatedRoute.addChildren([
     // Student pages share the top-header account layout.
-    userRoute.addChildren([homeRoute, profileRoute, editProfileRoute]),
+    userRoute.addChildren([
+      homeRoute,
+      myErrandsRoute,
+      profileRoute,
+      editProfileRoute,
+    ]),
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,
