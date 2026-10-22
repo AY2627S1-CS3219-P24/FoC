@@ -10,11 +10,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistrar;
+import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.regions.providers.AwsRegionProvider;
 import software.amazon.awssdk.services.sns.SnsClient;
@@ -44,10 +44,11 @@ public abstract class AbstractIntegrationTest {
                     .withEnv("FOC_USER_BUCKET", "foc-user-integration")
                     .withEnv("FOC_SUPPLIER_BUCKET", "foc-supplier-integration")
                     .withEnv("FLOCI_SERVICES_S3_ENFORCE_AUTH", "true")
-                    .withCopyFileToContainer(
-                            MountableFile.forHostPath(
-                                    Path.of(System.getProperty("foc.root"), "docker/floci/init-storage.sh"), 0755),
-                            "/etc/localstack/init/ready.d/10-foc-storage.sh")
+                    .withFileSystemBind(
+                            Path.of(System.getProperty("foc.root"), "docker/floci/init-storage.sh")
+                                    .toString(),
+                            "/etc/localstack/init/ready.d/10-foc-storage.sh",
+                            BindMode.READ_ONLY)
                     .waitingFor(Wait.forSuccessfulCommand("test -f /tmp/foc-resources-ready"))
                     .withStartupTimeout(Duration.ofMinutes(2));
         }
