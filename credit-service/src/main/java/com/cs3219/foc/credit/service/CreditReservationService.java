@@ -6,12 +6,14 @@ import com.cs3219.foc.credit.exception.CreditAccountPendingException;
 import com.cs3219.foc.credit.exception.ReservationConflictException;
 import com.cs3219.foc.credit.model.dto.CreditReservationResponse;
 import com.cs3219.foc.credit.model.dto.ReserveCreditRequest;
+import com.cs3219.foc.credit.model.dto.event.CreditReservedEvent;
 import com.cs3219.foc.credit.model.entity.CreditReservation;
 import com.cs3219.foc.credit.model.entity.ReservationState;
 import com.cs3219.foc.credit.repository.*;
 import com.cs3219.foc.credit.security.CurrentUserService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreditReservationService {
     private final CreditAccountRepository creditAccountRepository;
     private final CreditReservationRepository creditReservationRepository;
-    private final CreditTransactionLogRepository creditTransactionLogRepository;
+    private final ApplicationEventPublisher events;
     private final CurrentUserService currentUserService;
 
     @Transactional
@@ -42,8 +44,8 @@ public class CreditReservationService {
                 creditReservationRepository.findById(request.errandId()).orElseThrow(ReservationConflictException::new);
         var result = response(reservation, user, request);
         if (inserted == 1 && state == RESERVED) {
-            creditTransactionLogRepository.record(
-                    request.operationId(), request.errandId(), user, null, request.amount(), "RESERVE");
+            events.publishEvent(
+                    new CreditReservedEvent(request.operationId(), request.errandId(), user, request.amount()));
         }
         return result;
     }

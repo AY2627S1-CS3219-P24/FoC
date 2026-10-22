@@ -211,6 +211,7 @@ class CreditReservationPersistenceTests {
         CreditReservationService.class,
         CreditAccountService.class,
         CreditSettlementService.class,
+        CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

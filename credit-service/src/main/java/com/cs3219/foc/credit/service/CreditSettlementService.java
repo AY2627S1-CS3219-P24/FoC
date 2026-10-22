@@ -3,6 +3,8 @@ package com.cs3219.foc.credit.service;
 import static com.cs3219.foc.credit.model.entity.ReservationState.*;
 
 import com.cs3219.foc.credit.exception.CreditAccountPendingException;
+import com.cs3219.foc.credit.model.dto.event.CreditPaidEvent;
+import com.cs3219.foc.credit.model.dto.event.CreditRefundedEvent;
 import com.cs3219.foc.credit.model.dto.event.CreditSettlementResultEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandCancelledEvent;
 import com.cs3219.foc.credit.model.dto.event.ErrandCompletedEvent;
@@ -49,8 +51,7 @@ public class CreditSettlementService {
                     .lockByUserId(reservation.getUserId())
                     .orElseThrow(CreditAccountPendingException::new);
             creditReservationRepository.settle(p.errandId(), REFUNDED, null);
-            creditTransactionLogRepository.record(
-                    p.operationId(), p.errandId(), p.requesterId(), null, p.amount(), "REFUND");
+            events.publishEvent(new CreditRefundedEvent(p.operationId(), p.errandId(), p.requesterId(), p.amount()));
             outcome = REFUNDED.name();
         }
         publish(p, outcome, "REFUND");
@@ -79,8 +80,8 @@ public class CreditSettlementService {
             creditAccountRepository.debitTotal(reservation.getUserId(), reservation.getAmount());
             creditAccountRepository.creditTotal(p.courierId(), reservation.getAmount());
             creditReservationRepository.settle(p.errandId(), PAID, p.courierId());
-            creditTransactionLogRepository.record(
-                    p.operationId(), p.errandId(), p.requesterId(), p.courierId(), p.amount(), "PAYMENT");
+            events.publishEvent(
+                    new CreditPaidEvent(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId()));
             outcome = PAID.name();
         }
         publish(p, outcome, "PAYOUT");

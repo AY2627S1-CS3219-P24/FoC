@@ -331,11 +331,35 @@ class CreditSettlementPersistenceTests {
             assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel)).isInstanceOf(RuntimeException.class);
             assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
+            assertThat(results.events).isEmpty();
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_refund");
         }
         settlement.releaseReservedCredits(cancel);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
+    }
+
+    @Test
+    void auditFailureRollsBackPaymentBeforePublishingResult() {
+        var user = fund(100);
+        var courier = fund(0);
+        var paid = completed(user, reserved(user, 80), courier);
+        jdbc.execute(
+                "ALTER TABLE credit_transaction_log ADD CONSTRAINT fail_payment CHECK(transaction_type='RESERVE')");
+        try {
+            assertThatThrownBy(() -> settlement.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
+            assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
+            assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(0, 0));
+            assertThat(count("credit_transaction_log")).isEqualTo(1);
+            assertThat(results.events).isEmpty();
+        } finally {
+            jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_payment");
+        }
+        settlement.transferReservedCredits(paid);
+        assertThat(outcome()).isEqualTo("PAID");
+        assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
+        assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(80, 0));
+        assertThat(count("credit_transaction_log")).isEqualTo(2);
     }
 
     @Test
@@ -377,6 +401,7 @@ class CreditSettlementPersistenceTests {
         CreditReservationService.class,
         CreditAccountService.class,
         CreditSettlementService.class,
+        CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class
