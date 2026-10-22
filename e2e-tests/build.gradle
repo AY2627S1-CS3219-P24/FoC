@@ -28,8 +28,8 @@ tasks.named('test') {
 }
 
 tasks.register('installBrowserDependencies', JavaExec) {
-    description = 'Install Playwright browser OS libraries on Linux.'
+    description = 'Install Chromium OS libraries for Playwright on Linux.'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.microsoft.playwright.CLI'
-    args 'install-deps'
+    args 'install-deps', 'chromium'
 }
