@@ -10,9 +10,6 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.testcontainers.DockerClientFactory;
-import org.testcontainers.containers.ComposeContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
@@ -20,17 +17,6 @@ import software.amazon.awssdk.services.sns.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 
 class ServiceFlowsTests extends AbstractEndToEndTest {
-    @Container
-    static final ComposeContainer ENVIRONMENT = composeEnvironment()
-            .withExposedService("toxiproxy-1", 8474)
-            .withExposedService("user-service-1", 8080, Wait.forHttp("/api/actuator/health"))
-            .withExposedService("credit-service-1", 8083, Wait.forHttp("/api/actuator/health"));
-
-    @Override
-    protected ComposeContainer environment() {
-        return ENVIRONMENT;
-    }
-
     @AutoClose
     private SnsClient sns;
 

@@ -17,7 +17,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -26,10 +25,11 @@ import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class AbstractEndToEndTest {
-    protected static ComposeContainer composeEnvironment() {
+    private static volatile ComposeContainer sharedEnvironment;
+
+    private static ComposeContainer composeEnvironment() {
         return new ComposeContainer(Path.of(System.getProperty("foc.root"), "e2e-tests/compose.yaml")
                         .toFile())
                 .withBuild(true)
@@ -42,12 +42,34 @@ abstract class AbstractEndToEndTest {
                                 .usingTls()
                                 .allowInsecure()
                                 .withStartupTimeout(Duration.ofMinutes(3)))
+                .withExposedService(
+                        "user-service-1",
+                        8080,
+                        Wait.forHttp("/api/actuator/health").withStartupTimeout(Duration.ofMinutes(3)))
+                .withExposedService(
+                        "credit-service-1",
+                        8083,
+                        Wait.forHttp("/api/actuator/health").withStartupTimeout(Duration.ofMinutes(3)))
                 .withExposedService("postgres-1", 5432)
                 .withExposedService("floci-1", 4566)
-                .withExposedService("mailpit-1", 8025);
+                .withExposedService("mailpit-1", 8025)
+                .withExposedService("toxiproxy-1", 8474);
     }
 
-    protected abstract ComposeContainer environment();
+    /** One stack for every end-to-end class. Each class previously built and started its own. */
+    protected static ComposeContainer environment() {
+        var existing = sharedEnvironment;
+        if (existing != null) return existing;
+        synchronized (AbstractEndToEndTest.class) {
+            if (sharedEnvironment == null) {
+                var created = composeEnvironment();
+                created.start();
+                sharedEnvironment = created;
+                Runtime.getRuntime().addShutdownHook(new Thread(created::stop));
+            }
+            return sharedEnvironment;
+        }
+    }
 
     protected final JsonMapper json = JsonMapper.builder().build();
 

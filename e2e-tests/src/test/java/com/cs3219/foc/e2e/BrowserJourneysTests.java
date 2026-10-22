@@ -11,17 +11,8 @@ import java.nio.file.*;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.ComposeContainer;
 
 class BrowserJourneysTests extends AbstractEndToEndTest {
-    @org.testcontainers.junit.jupiter.Container
-    static final ComposeContainer ENVIRONMENT = composeEnvironment();
-
-    @Override
-    protected ComposeContainer environment() {
-        return ENVIRONMENT;
-    }
-
     @AutoClose
     private Browser browser;
 
