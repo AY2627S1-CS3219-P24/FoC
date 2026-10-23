@@ -46,7 +46,6 @@ export const RequesterHomePage = () => {
           </Link>
         </aside>
       )}
-
       <h1>Home</h1>
       <div className={styles.choices}>
         <Link to="/request" className={styles.choice}>

@@ -153,7 +153,7 @@ it('opens My Errands from the header and returns to the home hub', async () => {
   await user.click(screen.getByRole('link', { name: 'My Errands' }))
   await screen.findByRole('heading', { name: 'My Errands' })
   expect(router.state.location.pathname).toBe('/errands')
-  await screen.findByText('No active errands match this view.')
+  await screen.findByText(/No current deliveries/)
 
   await user.click(screen.getByRole('link', { name: 'Home' }))
   await screen.findByRole('heading', { name: 'Home' })

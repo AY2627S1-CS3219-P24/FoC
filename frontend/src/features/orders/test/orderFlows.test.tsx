@@ -236,7 +236,7 @@ it('allows cross-device retry by order ID without reconstructing the original fo
     .click(
       await screen.findByRole('button', { name: 'Retry original request' }),
     )
-  await screen.findByText('OPEN')
+  await screen.findByText('Open')
   expect(api.retryCreation).toHaveBeenCalledWith(creating.id)
   expect(api.createOrder).not.toHaveBeenCalled()
   expect(screen.getByText('Alex')).toBeInTheDocument()
@@ -267,7 +267,7 @@ it.each(['CREATING', 'OPEN'] as const)(
     })
     expect(api.retryCreation).toHaveBeenCalledWith(creating.id)
     expect(
-      screen.getByText(status === 'OPEN' ? 'OPEN' : 'Creating'),
+      screen.getByText(status === 'OPEN' ? 'Open' : 'Creating'),
     ).toBeInTheDocument()
     if (status === 'CREATING') {
       expect(
@@ -289,8 +289,8 @@ it('uses backend OPEN after the local cutoff and still permits requester cancell
     orderFixture({ expiresAt: '2000-01-01T00:00:00Z' }),
   )
   setup(<OrderDetailPage />)
-  await screen.findByText('OPEN')
-  expect(screen.queryByText('EXPIRED')).not.toBeInTheDocument()
+  await screen.findByText('Open')
+  expect(screen.queryByText('Expired')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled()
 })
 it('queries My Errands with both identities and server paging instead of filtering a browser list', async () => {
@@ -379,7 +379,7 @@ it('refetches full detail after completion instead of replacing it with the acti
     await screen.findByRole('button', { name: 'Confirm received' }),
   )
   await user.click(screen.getByRole('button', { name: 'Confirm receipt' }))
-  await screen.findByText('COMPLETED')
+  await screen.findByText('Completed')
   expect(screen.getByText('Sam')).toBeInTheDocument()
   expect(screen.getByText('Settlement pending')).toBeInTheDocument()
   expect(api.actOnOrder).toHaveBeenCalledWith(picked.id, 'complete')

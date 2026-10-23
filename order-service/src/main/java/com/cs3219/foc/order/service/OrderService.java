@@ -191,6 +191,11 @@ public class OrderService {
     }
 
     public PageDto<ErrandDto> mine(String as, String view, Pageable pageable) {
+        return mine(as, view, "", pageable);
+    }
+
+    // match the item, pickup, delivery location
+    public PageDto<ErrandDto> mine(String as, String view, String q, Pageable pageable) {
         UUID actor = currentUserService.requireCurrentUserId();
         validatePageable(pageable);
         if (!Set.of("all", "requester", "courier").contains(as)) {
@@ -205,7 +210,8 @@ public class OrderService {
                         throw new ResponseStatusException(
                                 HttpStatus.BAD_REQUEST, "view must be all, active or history");
                 };
-        Page<Errand> page = transactions.execute(tx -> repository.findMine(actor, as, statuses, stable(pageable)));
+        Page<Errand> page = transactions.execute(
+                tx -> repository.findMine(actor, as, statuses, searchPattern(q), stable(pageable)));
         return page(page);
     }
 

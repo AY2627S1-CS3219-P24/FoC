@@ -1,11 +1,14 @@
 .page {
-  max-width: 1120px;
+  max-width: 1440px;
   margin: 0 auto;
   color: var(--color-text);
   overflow-wrap: anywhere;
   :focus-visible {
     outline: 3px solid var(--color-primary);
     outline-offset: 3px;
+  }
+  a:focus-visible {
+    outline: none;
   }
 }
 .pageTitle {
@@ -20,9 +23,6 @@
 }
 .link {
   color: var(--color-primary);
-}
-.narrow {
-  max-width: 620px;
 }
 .panel {
   background: var(--color-surface);
@@ -152,6 +152,23 @@
   display: grid;
   gap: 20px;
   align-items: start;
+}
+.side {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+  .actions {
+    margin-top: 0;
+    justify-content: stretch;
+    > * {
+      flex: 1;
+      text-align: center;
+    }
+  }
+  .back {
+    margin: 0;
+  }
 }
 .back {
   display: inline-block;

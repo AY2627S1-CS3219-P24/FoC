@@ -22,23 +22,43 @@
 }
 
 .tile {
-  display: block;
+  display: grid;
+  place-items: center;
   width: 100%;
   aspect-ratio: 1;
-  overflow: hidden;
   border-radius: 16px;
   background: var(--color-surface);
+  color: var(--color-primary);
+  transition: transform 0.15s;
 
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.2s;
+  &[data-tone='orange'] {
+    background: #fff1e0;
+    color: #c2620a;
+  }
+
+  &[data-tone='blue'] {
+    background: #e5efff;
+    color: #2864cf;
+  }
+
+  &[data-tone='purple'] {
+    background: #f1e8fb;
+    color: #7a3fbf;
+  }
+
+  &[data-tone='navy'] {
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+
+  &[data-tone='green'] {
+    background: #e7f6ee;
+    color: #188348;
   }
 }
 
-.category:hover .tile img {
-  transform: scale(1.04);
+.category:hover .tile {
+  transform: translateY(-2px);
 }
 
 @media (min-width: 601px) {

@@ -37,11 +37,14 @@ public interface ErrandRepository extends JpaRepository<Errand, UUID> {
              or (:participation = 'requester' and e.requesterId = :userId)
              or (:participation = 'courier' and e.courierId = :userId))
             and e.status in :statuses
+            and (lower(e.pickupName) like :pattern escape '!' or lower(e.deliveryLocation) like :pattern escape '!'
+                 or lower(e.description) like :pattern escape '!')
             """)
     Page<Errand> findMine(
             @Param("userId") UUID userId,
             @Param("participation") String participation,
             @Param("statuses") List<ErrandStatus> statuses,
+            @Param("pattern") String pattern,
             Pageable pageable);
 
     Page<Errand> findByRequesterId(UUID requesterId, Pageable pageable);

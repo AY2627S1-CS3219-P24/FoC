@@ -229,23 +229,20 @@ const createErrandRoute = createRoute({
     search: Record<string, unknown>,
   ): {
     supplier?: string
-    from?: 'map' | 'request' | 'locations'
+    from?: string
     category?: SupplierCategory
   } => {
     const category = toSupplierFilters(parseSupplierListSearch(search))
       .category?.[0]
-    const from =
-      search.from === 'map' ||
-      search.from === 'request' ||
-      search.from === 'locations'
-        ? search.from
-        : undefined
     return {
       supplier:
         typeof search.supplier === 'string' && search.supplier
           ? search.supplier
           : undefined,
-      from,
+      from:
+        typeof search.from === 'string' && search.from
+          ? search.from
+          : undefined,
       category,
     }
   },

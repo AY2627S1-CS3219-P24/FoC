@@ -40,12 +40,13 @@ public class OrderController {
     public PageDto<ErrandDto> mine(
             @RequestParam(defaultValue = "requester") String as,
             @RequestParam(defaultValue = "all") String view,
+            @RequestParam(defaultValue = "") String q,
             @PageableDefault(
                             size = 20,
                             sort = {"createdAt", "id"},
                             direction = Sort.Direction.DESC)
                     Pageable pageable) {
-        return orderService.mine(as, view, pageable);
+        return orderService.mine(as, view, q, pageable);
     }
 
     @GetMapping("/{id}")
