@@ -1,6 +1,9 @@
 .tableShell {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   min-height: 580px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;

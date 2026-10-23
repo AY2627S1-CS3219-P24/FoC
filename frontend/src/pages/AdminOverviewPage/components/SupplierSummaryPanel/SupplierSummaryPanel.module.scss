@@ -1,5 +1,8 @@
 .tableWrapper {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .table {
@@ -45,15 +48,6 @@
   padding: 20px;
   color: var(--color-text-muted);
   text-align: center;
-}
-
-.visuallyHidden {
-  position: absolute;
-  overflow: hidden;
-  width: 1px;
-  height: 1px;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .hoursLine {

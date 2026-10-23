@@ -65,17 +65,22 @@ class OrderControllerTests {
 
     @Test
     void listFiltersReachTheApplicationService() throws Exception {
-        when(service.mine(eq("all"), eq("active"), any())).thenReturn(new PageDto<>(List.of(), 0, 2, 10));
+        when(service.mine(eq("all"), eq("active"), eq("latte"), any())).thenReturn(new PageDto<>(List.of(), 0, 2, 10));
         mvc.perform(get("/orders/mine")
                         .param("as", "all")
                         .param("view", "active")
+                        .param("q", "latte")
                         .param("page", "2")
                         .param("size", "10")
                         .with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(2));
         verify(service)
-                .mine(eq("all"), eq("active"), argThat(page -> page.getPageNumber() == 2 && page.getPageSize() == 10));
+                .mine(
+                        eq("all"),
+                        eq("active"),
+                        eq("latte"),
+                        argThat(page -> page.getPageNumber() == 2 && page.getPageSize() == 10));
         when(service.list(isNull(), eq("Cafe%"), any())).thenReturn(new PageDto<>(List.of(), 0, 0, 20));
         mvc.perform(get("/orders").param("q", "Cafe%").with(jwt())).andExpect(status().isOk());
         verify(service).list(isNull(), eq("Cafe%"), any());

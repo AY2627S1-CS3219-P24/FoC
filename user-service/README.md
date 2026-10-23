@@ -8,7 +8,7 @@ Registration publishes `UserCreatedEvent` within the user transaction. Spring Mo
 
 User owns publication. Credit owns account creation and consumes `UserCreatedEvent` from its SQS queue. Local SNS and SQS are provided by Floci on port 4566 (`docker compose up -d`).
 
-There is no existing-user backfill. New registrations produce events; users inserted directly through SQL, including seeded administrators, do not. For a new test administrator that needs credits, register the user normally before assigning the admin role.
+There is no existing-user backfill. New registrations produce events. Initial admin provisioning publishes the same `UserCreatedEvent` when it creates the admin. Re-running provisioning leaves an existing admin unchanged and does not publish another event. Users inserted directly through SQL do not produce events. For a test administrator created that way that needs credits, register the user normally before assigning the admin role.
 
 ## Tests
 

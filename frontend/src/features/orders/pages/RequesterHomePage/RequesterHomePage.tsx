@@ -1,63 +1,74 @@
-import { useState } from 'react'
-import { Button } from '@base-ui/react/button'
-import { Dialog } from '@base-ui/react/dialog'
-import { categories } from './requesterHome.data'
-import styles from './RequesterHomePage.module.scss'
 import { Link } from '@tanstack/react-router'
-import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
-
+import type { Errand } from '../../types/errand.types'
 import common from '../../styles/order.module.scss'
+import styles from './RequesterHomePage.module.scss'
+
+const activeDelivery = (orders: Array<Errand>, userId?: string) =>
+  orders.find(
+    (order) =>
+      !!userId &&
+      order.courier?.id === userId &&
+      (order.status === 'ACCEPTED' || order.status === 'PICKED_UP'),
+  )
 
 export const RequesterHomePage = () => {
   const orders = useMyErrands({ as: 'all', view: 'all', page: 0, size: 3 })
   const now = useOrderClock()
   const recent = orders.data?.items ?? []
-  const [preview, setPreview] = useState<{
-    title: string
-    description: string
-  } | null>(null)
+  const delivery = activeDelivery(recent, orders.userId)
+
   return (
     <div className={`${common.page} ${styles.page}`}>
-      <RoleSwitcher activeMode="requestor" />
-      <h1>What do you need?</h1>
-      <ul className={styles.categories} aria-label="Location categories">
-        {categories.map((category) => (
-          <li key={category}>
-            <Button
-              className={styles.category}
-              onClick={() =>
-                setPreview({
-                  title: category,
-                  description: `Browse ${category.toLowerCase()} here once the location listing is connected.`,
-                })
-              }
-            >
-              <span className={styles.tile} aria-hidden="true" />
-              <span>{category}</span>
-            </Button>
-          </li>
-        ))}
-      </ul>
-
-      <section className={styles.section} aria-labelledby="favourites-heading">
-        <h2 id="favourites-heading">Favourite locations</h2>
-        <ul className={styles.cards}>
-          <li>
-            <div className={styles.card} aria-disabled="true">
-              <span className={styles.cardTitle}>
-                Favourites not connected yet
-              </span>
-            </div>
-          </li>
-        </ul>
-      </section>
+      {delivery && (
+        <aside className={styles.banner} aria-label="Current pickup">
+          <div>
+            <strong>Collect from {delivery.pickup.name}</strong>
+            <span>
+              Delivering · {delivery.pickup.address} →{' '}
+              {delivery.deliveryLocation}
+            </span>
+          </div>
+          <Link
+            to="/errands/$orderId"
+            params={{ orderId: delivery.id }}
+            search={{
+              tab: 'active',
+              participation: 'all',
+              page: 0,
+              posted: false,
+            }}
+          >
+            Continue pickup →
+          </Link>
+        </aside>
+      )}
+      <h1>Home</h1>
+      <div className={styles.choices}>
+        <Link to="/request" className={styles.choice}>
+          <span className={styles.choiceTitle}>Request</span>
+          <span className={styles.choiceCopy}>
+            Get something brought to you.
+          </span>
+          <span className={styles.arrow} aria-hidden="true">
+            →
+          </span>
+        </Link>
+        <Link to="/deliver" className={styles.choice}>
+          <span className={styles.choiceTitle}>Deliver</span>
+          <span className={styles.choiceCopy}>
+            Help someone and earn credits.
+          </span>
+          <span className={styles.arrow} aria-hidden="true">
+            →
+          </span>
+        </Link>
+      </div>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
-
         <OrderFeedback
           error={orders.error}
           loading={orders.isPending}
@@ -74,30 +85,10 @@ export const RequesterHomePage = () => {
         )}
         {!orders.isPending && !orders.error && recent.length === 0 && (
           <p className={common.muted}>
-            No errands yet. Create your first request or switch to Courier to
-            help someone.
+            No errands yet. Request a pickup or deliver one to earn credits.
           </p>
         )}
       </section>
-      <Link to="/errands/new" className={`${common.button} ${styles.create}`}>
-        Create Errand
-      </Link>
-
-      <Dialog.Root
-        open={preview !== null}
-        onOpenChange={(open) => {
-          if (!open) setPreview(null)
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Backdrop className={styles.backdrop} />
-          <Dialog.Popup className={styles.dialog}>
-            <Dialog.Title>{preview?.title}</Dialog.Title>
-            <Dialog.Description>{preview?.description}</Dialog.Description>
-            <Dialog.Close className={styles.create}>Close</Dialog.Close>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
     </div>
   )
 }

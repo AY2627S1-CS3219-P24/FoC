@@ -88,24 +88,14 @@ services:
       start_period: 40s
 
   supplier-seed:
+    extends:
+      service: supplier-service
     profiles: ["setup"]
     restart: "no"
-    image: postgres:18-alpine
     environment:
-      PGHOST: postgres
-      PGPORT: 5432
-      PGDATABASE: foc_supplier
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./infra/docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
-      - ./data/csv:/seed:ro
-    command: ["/bin/sh", "/scripts/seed-suppliers.sh", "/seed"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      supplier-service:
-        condition: service_healthy
+      SPRING_PROFILES_ACTIVE: prod,supplier-seed
+    healthcheck:
+      test: ["NONE"]
 
   order-service:
     restart: unless-stopped

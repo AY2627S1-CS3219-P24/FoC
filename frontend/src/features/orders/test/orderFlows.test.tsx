@@ -46,6 +46,13 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
 }))
+vi.mock('#/features/credits/hooks/useCreditBalance', () => ({
+  useCreditBalance: () => ({
+    isPending: false,
+    isSuccess: true,
+    data: { availableBalance: 15, reservedBalance: 0 },
+  }),
+}))
 vi.mock('#/features/suppliers/hooks/usePickupLocations', () => ({
   usePickupLocations: () => ({
     data: [
@@ -134,7 +141,7 @@ const fillCreation = async () => {
     '8e1f0000-0000-4000-8000-000000000002',
   )
   await user.type(screen.getByLabelText('Delivery location *'), 'Library')
-  await user.type(screen.getByLabelText('What should be collected? *'), 'Lunch')
+  await user.type(screen.getByLabelText('Item *'), 'Lunch')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   return user
 }
@@ -236,7 +243,7 @@ it('allows cross-device retry by order ID without reconstructing the original fo
     .click(
       await screen.findByRole('button', { name: 'Retry original request' }),
     )
-  await screen.findByText('OPEN')
+  await screen.findByText('Open')
   expect(api.retryCreation).toHaveBeenCalledWith(creating.id)
   expect(api.createOrder).not.toHaveBeenCalled()
   expect(screen.getByText('Alex')).toBeInTheDocument()
@@ -267,7 +274,7 @@ it.each(['CREATING', 'OPEN'] as const)(
     })
     expect(api.retryCreation).toHaveBeenCalledWith(creating.id)
     expect(
-      screen.getByText(status === 'OPEN' ? 'OPEN' : 'Creating'),
+      screen.getByText(status === 'OPEN' ? 'Open' : 'Creating'),
     ).toBeInTheDocument()
     if (status === 'CREATING') {
       expect(
@@ -289,8 +296,8 @@ it('uses backend OPEN after the local cutoff and still permits requester cancell
     orderFixture({ expiresAt: '2000-01-01T00:00:00Z' }),
   )
   setup(<OrderDetailPage />)
-  await screen.findByText('OPEN')
-  expect(screen.queryByText('EXPIRED')).not.toBeInTheDocument()
+  await screen.findByText('Open')
+  expect(screen.queryByText('Expired')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Cancel request' })).toBeEnabled()
 })
 it('queries My Errands with both identities and server paging instead of filtering a browser list', async () => {
@@ -379,7 +386,7 @@ it('refetches full detail after completion instead of replacing it with the acti
     await screen.findByRole('button', { name: 'Confirm received' }),
   )
   await user.click(screen.getByRole('button', { name: 'Confirm receipt' }))
-  await screen.findByText('COMPLETED')
+  await screen.findByText('Completed')
   expect(screen.getByText('Sam')).toBeInTheDocument()
   expect(screen.getByText('Settlement pending')).toBeInTheDocument()
   expect(api.actOnOrder).toHaveBeenCalledWith(picked.id, 'complete')
@@ -532,7 +539,7 @@ it('does not navigate or clear account A submission when its result arrives afte
   })
   await waitFor(() => expect(clients[0].isMutating()).toBe(0))
   expect(
-    screen.getByRole('heading', { name: 'Create an Errand' }),
+    screen.getByRole('heading', { name: 'Create an errand' }),
   ).toBeInTheDocument()
   expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
   expect(state.navigate).not.toHaveBeenCalled()

@@ -14,6 +14,7 @@ import { useOrder, useOrderClock } from '../../hooks/useOrders'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { clearCreation } from '../../utils/creationRequest'
 import { orderErrorMessage } from '../../utils/orderErrors'
+import { canRequestAgain, shortOrderId } from '../../utils/orderFormat'
 import styles from '../../styles/order.module.scss'
 
 export const OrderDetailPage = () => {
@@ -108,47 +109,59 @@ export const OrderDetailPage = () => {
             <h1 className={styles.pageTitle}>{title}</h1>
             <OrderStatusBadge status={order.status} />
           </div>
-          <p className={styles.muted}>Errand #{order.id}</p>
+          <p className={styles.muted} title={`Errand ID ${order.id}`}>
+            Errand #{shortOrderId(order.id)}
+          </p>
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
-            <OrderTimeline order={order} />
-          </div>
-          {order.status === 'CREATING' &&
-            order.requester.id === query.userId && (
-              <div className={styles.actions}>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => void query.refetch()}
-                >
-                  Refresh status
-                </Button>
-                <Button
-                  className={styles.button}
-                  disabled={creationRetry.isPending}
-                  onClick={() => void retry()}
-                >
-                  {creationRetry.isPending
-                    ? 'Checking…'
-                    : 'Retry original request'}
-                </Button>
-              </div>
-            )}
-          {order.status === 'CREATE_FAILED' &&
-            order.requester.id === query.userId && (
-              <Link className={styles.button} to="/errands/new">
-                Create a new request
+            {/* the errand order progress */}
+            <div className={styles.side}>
+              <OrderTimeline order={order} />
+              {order.status === 'CREATING' &&
+                order.requester.id === query.userId && (
+                  <div className={styles.actions}>
+                    <Button
+                      className={styles.secondary}
+                      onClick={() => void query.refetch()}
+                    >
+                      Refresh status
+                    </Button>
+                    <Button
+                      className={styles.button}
+                      disabled={creationRetry.isPending}
+                      onClick={() => void retry()}
+                    >
+                      {creationRetry.isPending
+                        ? 'Checking…'
+                        : 'Retry original request'}
+                    </Button>
+                  </div>
+                )}
+              {canRequestAgain(order, query.userId) && (
+                <div className={styles.actions}>
+                  <Link
+                    className={styles.button}
+                    to="/errands/new"
+                    search={{ from: order.id }}
+                  >
+                    {order.status === 'CREATE_FAILED'
+                      ? 'Create a new request'
+                      : 'Request again'}
+                  </Link>
+                </div>
+              )}
+              <OrderActions
+                key={`${query.userId}:${order.id}`}
+                order={order}
+                userId={query.userId}
+                now={now}
+                onError={setActionError}
+              />
+              <Link to="/deliver" className={styles.back}>
+                Browse other errands →
               </Link>
-            )}
-          <OrderActions
-            key={`${query.userId}:${order.id}`}
-            order={order}
-            userId={query.userId}
-            now={now}
-            onError={setActionError}
-          />
-          <Link to="/home" search={{ mode: 'courier' }} className={styles.back}>
-            Browse other errands →
-          </Link>
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -9,7 +9,7 @@ import { orderFixture } from '../../test/orderFixtures'
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   query: vi.fn(),
-  search: { mode: 'courier', q: '', page: 0 },
+  search: { q: '', page: 0 },
 }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
@@ -34,7 +34,7 @@ vi.mock('../../hooks/useOrders', () => ({
 }))
 beforeEach(() => {
   mocks.navigate.mockReset()
-  mocks.search = { mode: 'courier', q: '', page: 0 }
+  mocks.search = { q: '', page: 0 }
   mocks.query.mockReturnValue({
     data: {
       items: [orderFixture({ requester: { id: 'other', name: 'Sam' } })],
@@ -55,12 +55,18 @@ describe('CourierHomePage', () => {
       </QueryClientProvider>,
     )
     expect(mocks.query).toHaveBeenCalledWith('', 0)
-    expect(screen.getByRole('button', { name: 'Courier' })).toBeEnabled()
+    expect(
+      screen.getByRole('heading', { name: 'Could this fit your trip?' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Accept errand' }),
+    ).toBeInTheDocument()
     await userEvent.setup().type(screen.getByRole('searchbox'), 'printed')
     await waitFor(() =>
       expect(mocks.navigate).toHaveBeenCalledWith(
         expect.objectContaining({
-          search: { mode: 'courier', q: 'printed', page: 0 },
+          to: '/deliver',
+          search: { q: 'printed', page: 0 },
         }),
       ),
     )

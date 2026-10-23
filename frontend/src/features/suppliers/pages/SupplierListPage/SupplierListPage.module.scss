@@ -138,7 +138,10 @@
 }
 
 .tableWrapper {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   transition: opacity 0.15s;
 
   // previous results stay visible
@@ -206,15 +209,6 @@
   padding: 24px;
   color: var(--color-text-muted);
   text-align: center;
-}
-
-.visuallyHidden {
-  position: absolute;
-  overflow: hidden;
-  width: 1px;
-  height: 1px;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .backdrop {

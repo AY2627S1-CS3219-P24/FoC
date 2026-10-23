@@ -87,3 +87,13 @@ export const formatTodayHours = (hours: Array<OpeningHours>, now: Date) => {
   )
   return entry ? formatRange(entry) : 'Closed today'
 }
+
+export const describeOpenStatus = (hours: Array<OpeningHours>, now: Date) => {
+  if (!isOpenAt(hours, now)) return 'Closed'
+  const entry = hours.find(
+    ({ dayOfWeek }) => dayOfWeek === DAYS_OF_WEEK[dayIndexOf(now)],
+  )
+  return entry
+    ? `Open now · Closes at ${toHourMinute(entry.closesAt)}`
+    : 'Open now'
+}

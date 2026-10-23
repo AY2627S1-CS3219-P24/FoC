@@ -107,6 +107,31 @@ run "admin_credentials_stay_on_the_admin_task" {
   }
 
   assert {
+    condition     = local.admin_task_definition.taskRoleArn == "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.task["user"].name}"
+    error_message = "Admin setup must publish with the user task role."
+  }
+
+  assert {
+    condition = one([
+      for env in local.supplier_seed_task_definition.containerDefinitions[0].environment : env.value
+      if env.name == "SPRING_PROFILES_ACTIVE"
+    ]) == "prod,supplier-seed"
+    error_message = "Supplier seed must run the supplier-seed profile."
+  }
+
+  assert {
+    condition = toset([
+      for secret in local.supplier_seed_task_definition.containerDefinitions[0].secrets : secret.name
+    ]) == toset(["FOC_DATABASE_PASSWORD"])
+    error_message = "Supplier seed must receive only the supplier database password."
+  }
+
+  assert {
+    condition     = local.supplier_seed_task_definition.taskRoleArn == "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.task["supplier"].name}"
+    error_message = "Supplier seed must use the supplier task role."
+  }
+
+  assert {
     condition = alltrue(flatten([
       for task in aws_ecs_task_definition.database_bootstrap : [
         for secret in jsondecode(task.container_definitions)[0].secrets :

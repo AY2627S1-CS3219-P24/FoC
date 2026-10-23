@@ -23,8 +23,13 @@ import { logoutUser } from '../api/logoutUser.api'
 import { setAccessToken, getAccessToken } from './accessTokenStore'
 import type { AccessTokenResponse } from '../types/auth.types'
 import { getCreditBalance } from '#/features/credits/api/credits.api'
+import { listSuppliers } from '#/features/suppliers/api/suppliers.api'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+vi.mock('#/features/suppliers/api/suppliers.api', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  listSuppliers: vi.fn(async () => []),
+}))
 vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(async () => ({
     availableBalance: 15,
@@ -108,7 +113,6 @@ const setup = (path: string) => {
   )
   return router
 }
-
 it.each([
   ['/home?mode=courier', 17],
   ['/home?mode=requestor', 0],
@@ -140,7 +144,7 @@ it('keeps the header usable when the credit balance is unavailable', async () =>
   expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
 })
 
-it('opens My Errands from the header and returns to courier Home', async () => {
+it('opens My Errands from the header and returns to the home hub', async () => {
   setAccessToken(tokens().accessToken)
   const router = setup('/home?mode=courier')
   const user = userEvent.setup()
@@ -149,30 +153,28 @@ it('opens My Errands from the header and returns to courier Home', async () => {
   await user.click(screen.getByRole('link', { name: 'My Errands' }))
   await screen.findByRole('heading', { name: 'My Errands' })
   expect(router.state.location.pathname).toBe('/errands')
-  await screen.findByText('No active errands match this view.')
+  await screen.findByText(/No active errands match this view/)
 
   await user.click(screen.getByRole('link', { name: 'Home' }))
-  await screen.findByRole('heading', { name: 'Find an errand' })
-  expect(router.state.location.href).toBe('/home?mode=courier')
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.pathname).toBe('/home')
 })
 
-it('switches between requestor and courier modes through the menu', async () => {
+it('opens deliver from home and returns with the browser history', async () => {
   setAccessToken(tokens().accessToken)
   const router = setup('/home')
   const user = userEvent.setup()
-  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('heading', { name: 'Home' })
 
-  await user.click(screen.getByRole('button', { name: 'Requester' }))
-  await user.click(await screen.findByRole('menuitem', { name: 'Courier' }))
+  await user.click(screen.getByRole('link', { name: /Deliver/ }))
   await screen.findByRole('heading', { name: 'Find an errand' })
-  expect(router.state.location.href).toBe('/home?mode=courier')
+  expect(router.state.location.pathname).toBe('/deliver')
   expect(
-    screen.queryByRole('heading', { name: 'What do you need?' }),
+    screen.queryByRole('heading', { name: 'Home' }),
   ).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('button', { name: 'Courier' }))
-  await user.click(await screen.findByRole('menuitem', { name: 'Requester' }))
-  await screen.findByRole('heading', { name: 'What do you need?' })
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Home' })
   expect(router.state.location.pathname).toBe('/home')
   expect(
     screen.queryByRole('heading', { name: 'Find an errand' }),
@@ -180,103 +182,73 @@ it('switches between requestor and courier modes through the menu', async () => 
 
   await act(async () => router.history.back())
   await screen.findByRole('heading', { name: 'Find an errand' })
-  expect(router.state.location.search).toEqual({ mode: 'courier' })
+  expect(router.state.location.pathname).toBe('/deliver')
   await act(async () => router.history.forward())
-  await screen.findByRole('heading', { name: 'What do you need?' })
-  expect(router.state.location.search).toEqual({ mode: 'requestor' })
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.pathname).toBe('/home')
 })
 
-it.each([
-  ['/home?mode=requestor', 'What do you need?'],
-  ['/home?mode=courier', 'Find an errand'],
-] as const)(
-  'preserves %s when clicking Home and returning from Profile',
-  async (path, heading) => {
-    setAccessToken(tokens().accessToken)
-    const router = setup(path)
-    const user = userEvent.setup()
-    await screen.findByRole('heading', { name: heading })
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
+it('returns to the home hub from deliver and from profile', async () => {
+  setAccessToken(tokens().accessToken)
+  const router = setup('/deliver')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+    'aria-current',
+  )
 
-    await user.click(screen.getByRole('link', { name: 'Home' }))
-    await waitFor(() => expect(router.state.location.href).toBe(path))
-    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.pathname).toBe('/home')
+  expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 
-    await act(async () => {
-      await router.navigate({ to: '/profile' })
-    })
-    await screen.findByRole('heading', { name: 'My Profile' })
-    expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
-      'aria-current',
-    )
+  await act(async () => {
+    await router.navigate({ to: '/profile' })
+  })
+  await screen.findByRole('heading', { name: 'My Profile' })
+  expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+    'aria-current',
+  )
 
-    await user.click(screen.getByRole('link', { name: 'Home' }))
-    await screen.findByRole('heading', { name: heading })
-    expect(router.state.location.href).toBe(path)
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
-  },
-)
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.href).toBe('/home')
+  expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+})
 
-it.each(['/', '/home'])(
-  'restores the remembered mode from %s in a new router',
-  async (path) => {
-    setAccessToken(tokens().accessToken)
-    setup('/home?mode=courier')
-    await screen.findByRole('heading', { name: 'Find an errand' })
-    cleanup()
+it.each(['/', '/home'])('opens the home hub from %s', async (path) => {
+  setAccessToken(tokens().accessToken)
+  const router = setup(path)
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.href).toBe('/home')
+})
 
-    const router = setup(path)
-    await screen.findByRole('heading', { name: 'Find an errand' })
-    expect(router.state.location.href).toBe('/home?mode=courier')
-  },
-)
-
-it('does not change the remembered mode when preloading the other mode', async () => {
+it('sends a courier home link to find an errand', async () => {
   setAccessToken(tokens().accessToken)
   const router = setup('/home?mode=courier')
   await screen.findByRole('heading', { name: 'Find an errand' })
-  await act(async () => {
-    await router.preloadRoute({ to: '/home', search: { mode: 'requestor' } })
-    await router.navigate({ to: '/profile' })
-    await router.navigate({ to: '/home' })
-  })
-  await screen.findByRole('heading', { name: 'Find an errand' })
-  expect(router.state.location.href).toBe('/home?mode=courier')
+  expect(router.state.location.pathname).toBe('/deliver')
 })
 
-it('sets an explicit requestor query when no mode has been selected', async () => {
-  setAccessToken(tokens().accessToken)
-  const router = setup('/home')
-  await screen.findByRole('heading', { name: 'What do you need?' })
-  expect(router.state.location.href).toBe('/home?mode=requestor')
-})
-
-it.each(['unknown', 'true', '123'])(
-  'hydrates an invalid mode=%s from session storage',
+it.each(['unknown', 'true', '123', 'requestor'])(
+  'ignores mode=%s and opens the home hub',
   async (mode) => {
     setAccessToken(tokens().accessToken)
     sessionStorage.setItem('foc.homeMode', 'courier')
     const router = setup(`/home?mode=${mode}`)
-    await screen.findByRole('heading', { name: 'Find an errand' })
-    expect(router.state.location.href).toBe('/home?mode=courier')
+    await screen.findByRole('heading', { name: 'Home' })
+    expect(router.state.location.pathname).toBe('/home')
+    expect(router.state.location.search).toEqual({})
   },
 )
 
-it('defaults to requestor when the stored mode is invalid', async () => {
-  setAccessToken(tokens().accessToken)
-  sessionStorage.setItem('foc.homeMode', 'invalid')
-  const router = setup('/home')
-  await screen.findByRole('heading', { name: 'What do you need?' })
-  expect(router.state.location.href).toBe('/home?mode=requestor')
-})
-
-it('defaults to requestor when session storage is unavailable', async () => {
+it('opens home when session storage is unavailable', async () => {
   setAccessToken(tokens().accessToken)
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
     throw new Error('Storage unavailable')
@@ -285,39 +257,66 @@ it('defaults to requestor when session storage is unavailable', async () => {
     throw new Error('Storage unavailable')
   })
   const router = setup('/home')
-  await screen.findByRole('heading', { name: 'What do you need?' })
-  expect(router.state.location.href).toBe('/home?mode=requestor')
+  await screen.findByRole('heading', { name: 'Home' })
+  expect(router.state.location.href).toBe('/home')
 })
 
-it.each(['requestor'])(
-  'uses requestor for mode=%s even when courier was remembered',
-  async (mode) => {
+it.each([
+  '/locations',
+  '/locations?category=INVALID',
+  '/locations?category=FOOD,COFFEE',
+])(
+  'returns invalid category URL %s to requester home without fetching suppliers',
+  async (path) => {
     setAccessToken(tokens().accessToken)
-    setup('/home?mode=courier')
-    await screen.findByRole('heading', { name: 'Find an errand' })
-    cleanup()
+    vi.mocked(listSuppliers).mockClear()
+    const router = setup(path)
 
-    const router = setup(`/home?mode=${mode}`)
-    await screen.findByRole('heading', { name: 'What do you need?' })
-    expect(router.state.location.search).toEqual({ mode: 'requestor' })
-    await act(async () => router.navigate({ to: '/home' }))
-    expect(router.state.location.href).toBe('/home?mode=requestor')
     expect(
-      screen.getByRole('heading', { name: 'What do you need?' }),
+      await screen.findByRole('heading', { name: 'Home' }),
     ).toBeInTheDocument()
+    expect(router.state.location.href).toBe('/home')
+    expect(listSuppliers).not.toHaveBeenCalled()
   },
 )
+
+it('opens a supplier category from request and returns to find a supplier', async () => {
+  setAccessToken(tokens().accessToken)
+  const router = setup('/home')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'Home' })
+  const header = screen.getByRole('banner')
+
+  await user.click(screen.getByRole('link', { name: /Request/ }))
+  await screen.findByRole('heading', { name: 'Find a supplier' })
+  await user.click(screen.getByRole('link', { name: 'Coffee' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Coffee' }),
+  ).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe('/locations')
+  expect(router.state.location.search).toEqual({ category: 'COFFEE' })
+  expect(header).toBeInTheDocument()
+
+  await user.click(screen.getByRole('link', { name: /Back to categories/ }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Find a supplier' }),
+  ).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe('/request')
+  expect(screen.getByRole('banner')).toBe(header)
+})
 
 it('shares one account layout across home, courier and profile routes', async () => {
   setAccessToken(tokens().accessToken)
   const router = setup('/home')
   const user = userEvent.setup()
-  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('heading', { name: 'Home' })
   await screen.findByRole('button', { name: 'Open account for Alex Tan' })
   const header = screen.getByRole('banner')
 
   await act(async () => {
-    await router.navigate({ to: '/home', search: { mode: 'courier' } })
+    await router.navigate({ to: '/deliver' })
   })
   await screen.findByRole('heading', { name: 'Find an errand' })
   expect(screen.getByRole('banner')).toBe(header)
@@ -326,7 +325,7 @@ it('shares one account layout across home, courier and profile routes', async ()
   await user.click(
     screen.getByRole('button', { name: 'Open account for Alex Tan' }),
   )
-  expect(router.state.location.href).toBe('/home?mode=courier')
+  expect(router.state.location.pathname).toBe('/deliver')
   await user.click(await screen.findByRole('menuitem', { name: 'Profile' }))
   await screen.findByRole('heading', { name: 'My Profile' })
   expect(router.state.location.pathname).toBe('/profile')
@@ -367,20 +366,18 @@ it.each(['/home', '/'])(
     await act(async () => vi.advanceTimersByTimeAsync(499))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { name: 'What do you need?' }),
+      screen.queryByRole('heading', { name: 'Home' }),
     ).not.toBeInTheDocument()
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(screen.getByRole('status')).toHaveTextContent('Loading…')
     expect(
-      screen.queryByRole('heading', { name: 'What do you need?' }),
+      screen.queryByRole('heading', { name: 'Home' }),
     ).not.toBeInTheDocument()
 
     await act(async () => resolve(tokens()))
 
-    expect(
-      screen.getByRole('heading', { name: 'What do you need?' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/home')
     expect(refresh).toHaveBeenCalledTimes(1)
   },
@@ -402,9 +399,7 @@ it('opens the app without showing loading when recovery finishes before 500ms', 
 
   await act(async () => resolve(tokens()))
 
-  expect(
-    screen.getByRole('heading', { name: 'What do you need?' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
   await act(async () => vi.advanceTimersByTimeAsync(500))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
 })
@@ -430,7 +425,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
   )
   expect(screen.queryByText('Private server details')).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('heading', { name: 'What do you need?' }),
+    screen.queryByRole('heading', { name: 'Home' }),
   ).not.toBeInTheDocument()
   expect(router.state.location.pathname).toBe('/home')
 
@@ -439,7 +434,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
     .click(screen.getByRole('button', { name: 'Try again' }))
 
   expect(
-    await screen.findByRole('heading', { name: 'What do you need?' }),
+    await screen.findByRole('heading', { name: 'Home' }),
   ).toBeInTheDocument()
   expect(refresh).toHaveBeenCalledTimes(2)
 })
@@ -448,7 +443,7 @@ it('routes a confirmed business authentication failure through Provider and the 
   setAccessToken(tokens().accessToken)
   refresh.mockResolvedValue(tokens())
   const router = setup('/home')
-  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('heading', { name: 'Home' })
   const adapter = vi.fn(async (config) => {
     throw new AxiosError('Unauthorized', undefined, config, undefined, {
       config,
@@ -553,10 +548,7 @@ it.each(['success', 'failure'])(
     fireEvent.click(button)
     await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
 
-    expect(accountButton).toBeEnabled()
-    expect(
-      screen.getByRole('heading', { name: 'What do you need?' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/home')
 
     await act(async () => finish())
@@ -565,7 +557,7 @@ it.each(['success', 'failure'])(
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
     await act(async () => {
-      await router.navigate({ to: '/home', search: { mode: 'requestor' } })
+      await router.navigate({ to: '/home' })
     })
     expect(router.state.location.pathname).toBe('/login')
     expect(getAccessToken()).toBeNull()
