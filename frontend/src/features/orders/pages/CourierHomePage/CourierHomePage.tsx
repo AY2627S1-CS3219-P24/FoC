@@ -33,27 +33,14 @@ export const CourierHomePage = () => {
   const now = useOrderClock()
   const items = orders.data?.items ?? []
   const selected = items.find((order) => order.id === selectedId) ?? items.at(0)
+  const choose = (orderId: string) => {
+    setSelectedId(orderId)
+    setActionError(null)
+  }
 
   return (
     <section className={styles.page} aria-labelledby="courier-heading">
-      <div className={styles.toolbar}>
-        <div>
-          <h1 id="courier-heading" className={styles.pageTitle}>
-            Find an errand
-          </h1>
-          <p className={styles.muted}>Choose a pickup that fits your trip.</p>
-        </div>
-        <label className={styles.search}>
-          Search errands
-          <input
-            className={styles.input}
-            type="search"
-            placeholder="Location or description"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-          />
-        </label>
-      </div>
+      <CourierToolbar input={input} onInput={setInput} />
       <OrderFeedback
         error={orders.error}
         loading={orders.isPending}
@@ -62,73 +49,22 @@ export const CourierHomePage = () => {
       {orders.data && orders.userId && !orders.error && (
         <>
           <div className={page.layout}>
-            <div>
-              <ul className={page.list}>
-                {items.map((order) => (
-                  <li key={order.id}>
-                    <button
-                      type="button"
-                      className={
-                        selected?.id === order.id ? page.selected : page.row
-                      }
-                      aria-current={
-                        selected?.id === order.id ? 'true' : undefined
-                      }
-                      onClick={() => {
-                        setSelectedId(order.id)
-                        setActionError(null)
-                      }}
-                    >
-                      <ErrandSummary order={order} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {!orders.data.total && (
-                <p className={styles.panel} role="status">
-                  {search.q
-                    ? 'No errands match your search. Try another location or description.'
-                    : 'No open errands right now. Check back soon.'}
-                </p>
-              )}
-            </div>
+            <ErrandList
+              items={items}
+              query={search.q}
+              total={orders.data.total}
+              selectedId={selected?.id}
+              onSelect={choose}
+            />
             {selected && (
-              <aside className={page.detail} aria-labelledby="trip-heading">
-                <h2 id="trip-heading">Could this fit your trip?</h2>
-                <p className={page.route}>
-                  <strong>
-                    {selected.pickup.name} · {selected.pickup.address}
-                  </strong>
-                  <span>{selected.deliveryLocation}</span>
-                </p>
-                <p>{selected.description}</p>
-                {selected.notes ? (
-                  <p className={styles.muted}>{selected.notes}</p>
-                ) : null}
-                <p className={page.credits}>{selected.creditReward} credits</p>
-                <Link
-                  to="/errands/$orderId"
-                  params={{ orderId: selected.id }}
-                  search={{
-                    tab: 'active',
-                    participation: 'all',
-                    page: search.page ?? 0,
-                    posted: false,
-                  }}
-                >
-                  View route
-                </Link>
-                {actionError && (
-                  <p role="alert">{orderErrorMessage(actionError)}</p>
-                )}
-                <OrderActions
-                  key={`${orders.userId}:${selected.id}`}
-                  order={selected}
-                  userId={orders.userId}
-                  now={now}
-                  onError={setActionError}
-                />
-              </aside>
+              <TripDetail
+                order={selected}
+                pageNumber={search.page ?? 0}
+                userId={orders.userId}
+                now={now}
+                actionError={actionError}
+                onError={setActionError}
+              />
             )}
           </div>
           <OrderPagination
@@ -147,6 +83,120 @@ export const CourierHomePage = () => {
     </section>
   )
 }
+
+const CourierToolbar = ({
+  input,
+  onInput,
+}: {
+  input: string
+  onInput: (value: string) => void
+}) => (
+  <div className={styles.toolbar}>
+    <div>
+      <h1 id="courier-heading" className={styles.pageTitle}>
+        Find an errand
+      </h1>
+      <p className={styles.muted}>Choose a pickup that fits your trip.</p>
+    </div>
+    <label className={styles.search}>
+      Search errands
+      <input
+        className={styles.input}
+        type="search"
+        placeholder="Location or description"
+        value={input}
+        onChange={(event) => onInput(event.target.value)}
+      />
+    </label>
+  </div>
+)
+
+const ErrandList = ({
+  items,
+  query,
+  total,
+  selectedId,
+  onSelect,
+}: {
+  items: Array<Errand>
+  query?: string
+  total: number
+  selectedId?: string
+  onSelect: (orderId: string) => void
+}) => (
+  <div>
+    <ul className={page.list}>
+      {items.map((order) => (
+        <li key={order.id}>
+          <button
+            type="button"
+            className={selectedId === order.id ? page.selected : page.row}
+            aria-current={selectedId === order.id ? 'true' : undefined}
+            onClick={() => onSelect(order.id)}
+          >
+            <ErrandSummary order={order} />
+          </button>
+        </li>
+      ))}
+    </ul>
+    {!total && (
+      <p className={styles.panel} role="status">
+        {query
+          ? 'No errands match your search. Try another location or description.'
+          : 'No open errands right now. Check back soon.'}
+      </p>
+    )}
+  </div>
+)
+
+const TripDetail = ({
+  order,
+  pageNumber,
+  userId,
+  now,
+  actionError,
+  onError,
+}: {
+  order: Errand
+  pageNumber: number
+  userId: string
+  now: number
+  actionError: Error | null
+  onError: (error: Error | null) => void
+}) => (
+  <aside className={page.detail} aria-labelledby="trip-heading">
+    <h2 id="trip-heading">Could this fit your trip?</h2>
+    <p className={page.route}>
+      <strong>
+        {order.pickup.name} · {order.pickup.address}
+      </strong>
+      <span>{order.deliveryLocation}</span>
+    </p>
+    <p>{order.description}</p>
+    {order.notes ? <p className={styles.muted}>{order.notes}</p> : null}
+    <p className={page.credits}>{order.creditReward} credits</p>
+    <Link
+      to="/errands/$orderId"
+      params={{ orderId: order.id }}
+      search={{
+        tab: 'active',
+        participation: 'all',
+        page: pageNumber,
+        posted: false,
+      }}
+    >
+      View route
+    </Link>
+    {actionError && <p role="alert">{orderErrorMessage(actionError)}</p>}
+    <OrderActions
+      key={`${userId}:${order.id}`}
+      order={order}
+      userId={userId}
+      now={now}
+      onError={onError}
+    />
+  </aside>
+)
 
 const ErrandSummary = ({ order }: { order: Errand }) => (
   <>

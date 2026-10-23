@@ -46,6 +46,13 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
 }))
+vi.mock('#/features/credits/hooks/useCreditBalance', () => ({
+  useCreditBalance: () => ({
+    isPending: false,
+    isSuccess: true,
+    data: { availableBalance: 15, reservedBalance: 0 },
+  }),
+}))
 vi.mock('#/features/suppliers/hooks/usePickupLocations', () => ({
   usePickupLocations: () => ({
     data: [

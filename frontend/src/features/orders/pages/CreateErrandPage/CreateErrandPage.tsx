@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
@@ -118,14 +118,6 @@ const CreationForm = ({
   const [failed, setFailed] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [knownOrder, setKnownOrder] = useState<KnownOrder | null>(null)
-  useEffect(() => {
-    if (!preset) return
-    setValues((current) =>
-      current.pickup?.id === preset.id
-        ? current
-        : { ...current, pickup: preset },
-    )
-  }, [preset])
   const formValues: CreateErrandValues =
     values.pickup || !preset ? values : { ...values, pickup: preset }
   const waitingForPickup =

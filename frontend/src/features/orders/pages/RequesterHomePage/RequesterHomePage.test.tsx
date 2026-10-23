@@ -143,7 +143,7 @@ describe('RequesterHomePage', () => {
     )
     expect(recent.getAllByRole('listitem')).toHaveLength(2)
     const requested = recent.getByRole('link', {
-      name: /Campus Cafe → Library/,
+      name: /Campus Cafe.*Library/,
     })
     expect(requested).toHaveAttribute(
       'href',
@@ -152,13 +152,13 @@ describe('RequesterHomePage', () => {
     expect(requested).toHaveTextContent('Requested by you')
     expect(requested).toHaveTextContent('5 credits')
     expect(requested).toHaveTextContent('Expires in 50 min')
-    const delivering = recent.getByRole('link', { name: /Print Shop → COM2/ })
+    const delivering = recent.getByRole('link', { name: /Print Shop.*COM2/ })
     expect(delivering).toHaveAttribute(
       'href',
       '/errands/delivering?tab=active&participation=all&page=0&posted=false',
     )
     expect(delivering).toHaveTextContent("You're delivering")
-    expect(delivering).toHaveTextContent('ACCEPTED')
+    expect(delivering).toHaveTextContent('Accepted')
     expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
     const banner = screen.getByRole('complementary', { name: 'Current pickup' })
     expect(banner).toHaveTextContent('Collect from Print Shop')

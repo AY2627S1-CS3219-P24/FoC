@@ -1,5 +1,6 @@
 package com.cs3219.foc.supplier.service;
 
+import com.cs3219.foc.supplier.infrastructure.SupplierSeedCatalog;
 import com.cs3219.foc.supplier.repository.SupplierRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

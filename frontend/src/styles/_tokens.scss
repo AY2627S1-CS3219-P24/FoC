@@ -1,6 +1,8 @@
 :root {
   --color-background: #eef2f6;
+  --color-page-background: #f5f7fb;
   --color-surface: #fff;
+  --color-interactive-hover: #e9edf4;
   --color-text: #172033;
   --color-text-muted: #526075;
   --color-primary: #003d7c;
@@ -12,4 +14,6 @@
   --color-error: #b91c1c;
 
   --font-family-base: system-ui, sans-serif;
+
+  --radius-control: 8px;
 }

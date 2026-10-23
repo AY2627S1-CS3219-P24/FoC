@@ -23,8 +23,8 @@ import {
   parseSupplierListSearch,
   toSupplierFilters,
 } from '#/features/suppliers/utils/supplierFilters'
-import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
-import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
+import { AccountLayout } from '#/features/auth/layouts/AccountLayout/AccountLayout'
+import { MapAccountLayout } from '#/features/auth/layouts/AccountLayout/MapAccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
 import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
 import { ErrorPage } from '#/pages/ErrorPage'
@@ -136,6 +136,12 @@ const userRoute = createRoute({
   component: AccountLayout,
 })
 
+const mapAccountRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  id: 'map-account',
+  component: MapAccountLayout,
+})
+
 const profileRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/profile',
@@ -173,7 +179,9 @@ const homeRoute = createRoute({
 const requestRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/request',
-  validateSearch: (search: Record<string, unknown>) => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { category?: SupplierCategory } => {
     const categories = toSupplierFilters(
       parseSupplierListSearch(search),
     ).category
@@ -197,7 +205,7 @@ const deliverRoute = createRoute({
 })
 
 const campusMapRoute = createRoute({
-  getParentRoute: () => userRoute,
+  getParentRoute: () => mapAccountRoute,
   path: '/map',
   component: CampusMapPage,
 })
@@ -344,22 +352,12 @@ const userViewRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
-  ...(import.meta.env.DEV
-    ? [
-        createRoute({
-          getParentRoute: () => rootRoute,
-          path: '/preview/user-layout',
-          component: UserLayoutPreview,
-        }),
-      ]
-    : []),
   indexRoute,
   authenticatedRoute.addChildren([
     userRoute.addChildren([
       homeRoute,
       requestRoute,
       deliverRoute,
-      campusMapRoute,
       supplierCategoryRoute,
       createErrandRoute,
       myErrandsRoute,
@@ -367,6 +365,7 @@ export const routeTree = rootRoute.addChildren([
       profileRoute,
       editProfileRoute,
     ]),
+    mapAccountRoute.addChildren([campusMapRoute]),
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,

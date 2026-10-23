@@ -95,9 +95,10 @@ describe('SupplierCategoryPage', () => {
     expect(supplier).toHaveTextContent('Mon 09:00 – 20:00')
 
     await user.click(supplier)
-    expect(
-      screen.getByRole('dialog', { name: 'CoffeeBean @ COM3' }),
-    ).toHaveTextContent('COM3, Level 1. Mon 09:00 – 20:00.')
+    const dialog = screen.getByRole('dialog', { name: 'CoffeeBean @ COM3' })
+    expect(dialog).toHaveTextContent('COM3, Level 1')
+    expect(dialog).toHaveTextContent('Mon 09:00 – 20:00')
+    expect(dialog).toHaveTextContent('Request a pickup')
   })
 
   it('shows loading, error and empty states', async () => {
