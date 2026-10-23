@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   QueryClient,
@@ -16,13 +16,9 @@ import { AdminOrderListPage } from '../pages/AdminOrderListPage/AdminOrderListPa
 import { orderFixture } from './orderFixtures'
 import * as api from '../api/orders.api'
 import { loadCreation } from '../utils/creationRequest'
-import {
-  getSessionVersion,
-  replaceSession,
-} from '#/features/auth/lib/accessTokenStore'
+import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 
 const state = vi.hoisted(() => ({
-  user: { id: 'requester', name: 'Alex' },
   navigate: vi.fn(),
   search: {
     tab: 'active',
@@ -49,13 +45,6 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-}))
-vi.mock('#/features/auth/hooks/useSession', () => ({
-  useSession: () => ({
-    userId: state.user.id,
-    roles: ['USER'],
-    version: getSessionVersion(),
-  }),
 }))
 vi.mock('#/features/suppliers/hooks/usePickupLocations', () => ({
   usePickupLocations: () => ({
@@ -90,6 +79,8 @@ vi.mock('../api/orders.api', () => ({
   actOnOrder: vi.fn(),
 }))
 const clients: Array<QueryClient> = []
+const token = (userId: string) =>
+  `header.${btoa(JSON.stringify({ sub: userId, roles: ['USER'] }))}.signature`
 const setup = (element: ReactNode) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -106,7 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   state.navigate.mockReset().mockResolvedValue(undefined)
   localStorage.clear()
-  state.user = { id: 'requester', name: 'Alex' }
+  setAccessToken(token('requester'))
   state.search = {
     tab: 'active',
     participation: 'all',
@@ -131,6 +122,7 @@ beforeEach(() => {
 afterEach(() => {
   onlineManager.setOnline(true)
   cleanup()
+  setAccessToken(null)
   clients.forEach((client) => client.clear())
   clients.length = 0
   vi.restoreAllMocks()
@@ -348,7 +340,7 @@ it('queries the selected requester and renders their orders', async () => {
   expect(screen.getByRole('link', { name: /Campus Cafe/ })).toBeInTheDocument()
 })
 it('never offers creation retry metadata to a courier', async () => {
-  state.user = { id: 'courier', name: 'Sam' }
+  setAccessToken(token('courier'))
   vi.mocked(api.getOrder).mockResolvedValue(
     orderFixture({
       status: 'ACCEPTED',
@@ -520,7 +512,7 @@ it('removes the posting form as soon as an order is known, while its initial nav
   finishNavigation()
 })
 
-it('does not navigate or clear account A submission when its result arrives after a session switch', async () => {
+it('does not navigate or clear account A submission when its result arrives after switching to B', async () => {
   let finish!: (result: Awaited<ReturnType<typeof api.createOrder>>) => void
   vi.mocked(api.createOrder).mockReturnValue(
     new Promise((resolve) => {
@@ -531,16 +523,18 @@ it('does not navigate or clear account A submission when its result arrives afte
   const user = await fillCreation()
   await user.click(screen.getByRole('button', { name: 'Post request' }))
   expect(loadCreation('requester')).not.toBeNull()
-  replaceSession('new-session')
+  act(() => setAccessToken(token('other-user')))
   finish({
     errandId: orderFixture().id,
     status: 'OPEN',
     creationFailureCode: null,
     queryUrl: '',
   })
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Post request' })).toBeEnabled(),
-  )
+  await waitFor(() => expect(clients[0].isMutating()).toBe(0))
+  expect(
+    screen.getByRole('heading', { name: 'Create an Errand' }),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
   expect(state.navigate).not.toHaveBeenCalled()
   expect(loadCreation('requester')).not.toBeNull()
   expect(loadCreation('other-user')).toBeNull()
@@ -658,7 +652,7 @@ it.each([undefined, '   ', 123])(
 )
 
 it('keeps the action disabled until current detail refreshes without waiting for balances or lists', async () => {
-  state.user = { id: 'courier', name: 'Sam' }
+  setAccessToken(token('courier'))
   let finishDetail!: (order: ReturnType<typeof orderFixture>) => void
   const pendingDetail = new Promise<ReturnType<typeof orderFixture>>(
     (resolve) => {

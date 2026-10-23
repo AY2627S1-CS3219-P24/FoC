@@ -5,12 +5,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { axiosClient } from '#/lib/axiosClient'
 import { setupAuthInterceptors } from './authInterceptors'
 import { AuthRequestError } from './authRequest'
-import {
-  setAccessToken,
-  getAccessToken,
-  getSessionVersion,
-  replaceSession,
-} from './accessTokenStore'
+import { setAccessToken, getAccessToken } from './accessTokenStore'
 import { refreshAccessToken } from './refreshAccessToken'
 import { refreshSession } from '../api/refreshSession.api'
 
@@ -18,7 +13,7 @@ vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
 let recoveryEnabled = true
 const onLoginRequired = vi.fn(() => {
-  replaceSession(null)
+  setAccessToken(null)
   recoveryEnabled = false
 })
 let removeInterceptors: () => void
@@ -266,7 +261,6 @@ it('requires login when refresh rejects credentials', async () => {
 })
 
 it('requires login instead of replaying account A creation with account B from a shared refresh cookie', async () => {
-  const version = getSessionVersion()
   refresh.mockResolvedValue(tokens('refreshed-in-another-tab', 300_000, 'B'))
   const adapter = vi.fn(async (config: InternalAxiosRequestConfig) =>
     fail(config, 401),
@@ -287,13 +281,17 @@ it('requires login instead of replaying account A creation with account B from a
   expect(refresh).toHaveBeenCalledOnce()
   expect(onLoginRequired).toHaveBeenCalledOnce()
   expect(getAccessToken()).toBeNull()
-  expect(getSessionVersion()).toBeGreaterThan(version)
   expect(recoveryEnabled).toBe(false)
 })
 
-it.each([200, 401])(
-  'discards an old-session HTTP %s without replaying with the new account',
-  async (status) => {
+it.each([
+  [200, 'B'],
+  [401, 'B'],
+  [200, null],
+  [401, null],
+] as const)(
+  'discards account A HTTP %s when the current account is %s',
+  async (status, currentUser) => {
     let finish!: () => void
     const adapter = vi.fn(
       (config: InternalAxiosRequestConfig) =>
@@ -320,13 +318,66 @@ it.each([200, 401])(
     const assertion = expect(pending).rejects.toMatchObject({
       code: 'ERR_CANCELED',
     })
-    replaceSession('account-B')
+    const currentToken = currentUser
+      ? tokens('new-login', 300_000, currentUser).accessToken
+      : null
+    setAccessToken(currentToken)
     finish()
     await assertion
     expect(adapter).toHaveBeenCalledTimes(1)
     expect(refresh).not.toHaveBeenCalled()
     expect(onLoginRequired).not.toHaveBeenCalled()
-    expect(getAccessToken()).toBe('account-B')
+    expect(getAccessToken()).toBe(currentToken)
+  },
+)
+
+it.each([200, 401])(
+  'allows pending account A HTTP %s after logging out and back in as A',
+  async (status) => {
+    let finish!: () => void
+    const adapter = vi.fn(
+      (config: InternalAxiosRequestConfig) =>
+        new Promise<AxiosResponse>((resolve, reject) => {
+          if (
+            config.headers.get('Authorization') !==
+            `Bearer ${tokens().accessToken}`
+          ) {
+            resolve(response(config))
+            return
+          }
+          finish = () =>
+            status === 200
+              ? resolve(response(config))
+              : reject(
+                  new AxiosError(
+                    'Unauthorized',
+                    undefined,
+                    config,
+                    undefined,
+                    response(config, status),
+                  ),
+                )
+        }),
+    )
+    const pending = axiosClient.post(
+      '/orders',
+      { description: 'Account A input' },
+      { adapter },
+    )
+    setAccessToken(null)
+    const next = tokens('new-login').accessToken
+    setAccessToken(next)
+    finish()
+
+    await expect(pending).resolves.toMatchObject({ status: 200 })
+    expect(adapter).toHaveBeenCalledTimes(status === 401 ? 2 : 1)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(onLoginRequired).not.toHaveBeenCalled()
+    expect(getAccessToken()).toBe(next)
+    if (status === 401)
+      expect(adapter.mock.calls[1][0].headers.get('Authorization')).toBe(
+        `Bearer ${next}`,
+      )
   },
 )
 
@@ -348,9 +399,10 @@ it('does not replay an old request when the login changes during token refresh',
   // AuthProvider invalidates an in-flight refresh before replacing the login.
   const { invalidateRefresh } = await import('./refreshAccessToken')
   invalidateRefresh()
-  replaceSession('account-B')
+  const accountB = tokens('new-login', 300_000, 'B').accessToken
+  setAccessToken(accountB)
   finishRefresh(tokens('old-account-refreshed'))
   await assertion
   expect(adapter).toHaveBeenCalledOnce()
-  expect(getAccessToken()).toBe('account-B')
+  expect(getAccessToken()).toBe(accountB)
 })

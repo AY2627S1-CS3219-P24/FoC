@@ -9,7 +9,7 @@ import {
 import { AxiosError, AxiosHeaders } from 'axios'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { routeTree } from '#/routes'
-import { replaceSession } from '#/features/auth/lib/accessTokenStore'
+import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 import { AuthProvider } from '#/features/auth/providers/AuthProvider'
 import { axiosClient } from '#/lib/axiosClient'
 import { orderFixture } from './orderFixtures'
@@ -50,7 +50,7 @@ const failure = (code: string, status = 409) => {
 
 beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  replaceSession(
+  setAccessToken(
     `header.${btoa(JSON.stringify({ sub: 'courier', roles: ['USER'] }))}.signature`,
   )
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -62,7 +62,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   client.clear()
-  replaceSession(null)
+  setAccessToken(null)
   vi.restoreAllMocks()
 })
 

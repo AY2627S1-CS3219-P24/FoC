@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 
 import { axiosClient } from '#/lib/axiosClient'
 import { logoutUser } from '../api/logoutUser.api'
-import { getAccessToken, replaceSession } from '../lib/accessTokenStore'
+import { getAccessToken, setAccessToken } from '../lib/accessTokenStore'
 import { AuthRequestError } from '../lib/authRequest'
 import { setupAuthInterceptors } from '../lib/authInterceptors'
 import {
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (authenticationEnded.current) return
       authenticationEnded.current = true
       invalidateRefresh()
-      replaceSession(null)
+      setAccessToken(null)
       clearUserQueries()
       setInvalidation((value) => value + 1)
     }
@@ -78,7 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const completeLogin = (accessToken: string) => {
       invalidateRefresh()
-      replaceSession(accessToken)
+      setAccessToken(accessToken)
       clearUserQueries()
       authenticationEnded.current = false
     }
@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const pendingRefresh = invalidateRefresh()
       authenticationEnded.current = true
-      replaceSession(null)
+      setAccessToken(null)
       clearUserQueries()
 
       // Serialize cookie rotation and logout. The API adapters bound each request.

@@ -4,7 +4,7 @@ import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
 import { getApiErrorCode } from '#/lib/httpErrors'
 import { useSession } from '#/features/auth/hooks/useSession'
-import { getSessionVersion } from '#/features/auth/lib/accessTokenStore'
+import { getCurrentUserId } from '#/features/auth/lib/accessTokenStore'
 import { ErrandForm } from '../../components/ErrandForm/ErrandForm'
 import { ErrandReview } from '../../components/ErrandReview/ErrandReview'
 import {
@@ -31,23 +31,11 @@ import styles from '../../styles/order.module.scss'
 type KnownOrder = { id: string; posted: boolean }
 
 export const CreateErrandPage = () => {
-  const { userId, version } = useSession()
+  const { userId } = useSession()
   if (!userId) return <OrderFeedback loading />
-  return (
-    <CreationForm
-      key={`${userId}:${version}`}
-      userId={userId}
-      version={version}
-    />
-  )
+  return <CreationForm key={userId} userId={userId} />
 }
-const CreationForm = ({
-  userId,
-  version,
-}: {
-  userId: string
-  version: number
-}) => {
+const CreationForm = ({ userId }: { userId: string }) => {
   const [original, setOriginal] = useState<PendingCreation | null>(() =>
     loadCreation(userId),
   )
@@ -72,7 +60,7 @@ const CreationForm = ({
   const navigate = useNavigate()
   const lock = useRef(false)
   const openOrder = async (destination: KnownOrder) => {
-    if (version !== getSessionVersion()) return
+    if (userId !== getCurrentUserId()) return
     setLocalError(null)
     await navigate({
       to: '/errands/$orderId',
@@ -90,7 +78,7 @@ const CreationForm = ({
     )
   }
   const submit = async () => {
-    if (lock.current || knownOrder) return
+    if (lock.current || knownOrder || userId !== getCurrentUserId()) return
     lock.current = true
     const pending = original ?? newCreation(userId, values)
     setLocalError(null)
@@ -106,7 +94,7 @@ const CreationForm = ({
     let destination: KnownOrder | undefined
     try {
       const result = await create.mutateAsync(pending.input)
-      if (version !== getSessionVersion()) return
+      if (userId !== getCurrentUserId()) return
       clearCreation(userId, pending.input.createRequestId)
       setOriginal(null)
       setUnknown(false)
@@ -116,7 +104,7 @@ const CreationForm = ({
         destination = { id: result.errandId, posted: result.status === 'OPEN' }
       }
     } catch (error) {
-      if (isCancel(error) || version !== getSessionVersion()) return
+      if (isCancel(error) || userId !== getCurrentUserId()) return
       const id = creationErrorOrderId(error)
       if (id) {
         clearCreation(userId, pending.input.createRequestId)

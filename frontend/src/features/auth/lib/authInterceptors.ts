@@ -1,14 +1,19 @@
 import { AxiosHeaders, CanceledError, isAxiosError } from 'axios'
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 
-import { getAccessToken, getSessionVersion } from './accessTokenStore'
+import { getAccessToken, getCurrentUserId } from './accessTokenStore'
 import { refreshAccessToken } from './refreshAccessToken'
 import { AuthRequestError } from './authRequest'
+import { decodeAccessToken } from '../utils/decodeAccessToken'
 
 type AuthConfig = InternalAxiosRequestConfig & {
   sentAccessToken?: string | null
   authRetried?: boolean
-  sessionVersion?: number
+}
+
+const isCurrentUser = (config: AuthConfig) => {
+  const userId = decodeAccessToken(config.sentAccessToken ?? null)?.sub
+  return !!userId && userId === getCurrentUserId()
 }
 
 type AuthEvents = {
@@ -22,9 +27,8 @@ export const setupAuthInterceptors = (
 ) => {
   const requestId = client.interceptors.request.use(
     (config: AuthConfig) => {
-      config.sessionVersion ??= getSessionVersion()
-      if (config.sessionVersion !== getSessionVersion())
-        throw new CanceledError('The login session changed')
+      if (config.authRetried && !isCurrentUser(config))
+        throw new CanceledError('The signed-in user changed')
       // Restrict automatic credentials to this application's business APIs.
       const url = config.url ?? ''
       const baseURL = config.baseURL ?? ''
@@ -54,19 +58,17 @@ export const setupAuthInterceptors = (
 
   const responseId = client.interceptors.response.use(
     (response) => {
-      if (
-        (response.config as AuthConfig).sessionVersion !== getSessionVersion()
-      )
-        throw new CanceledError('The login session changed')
+      if (!isCurrentUser(response.config as AuthConfig))
+        throw new CanceledError('The signed-in user changed')
       return response
     },
     async (error: unknown) => {
       if (
         isAxiosError(error) &&
         error.config &&
-        (error.config as AuthConfig).sessionVersion !== getSessionVersion()
+        !isCurrentUser(error.config as AuthConfig)
       )
-        throw new CanceledError('The login session changed')
+        throw new CanceledError('The signed-in user changed')
       if (
         !isAxiosError(error) ||
         error.response?.status !== 401 ||
@@ -91,7 +93,7 @@ export const setupAuthInterceptors = (
           if (
             refreshError instanceof AuthRequestError &&
             refreshError.status === 401 &&
-            config.sessionVersion === getSessionVersion() &&
+            isCurrentUser(config) &&
             auth.canRefresh()
           ) {
             auth.authenticationFailed()
@@ -100,8 +102,8 @@ export const setupAuthInterceptors = (
         }
       }
 
-      if (config.sessionVersion !== getSessionVersion())
-        throw new CanceledError('The login session changed')
+      if (!isCurrentUser(config))
+        throw new CanceledError('The signed-in user changed')
       if (!token || !auth.canRefresh()) throw error
       config.authRetried = true
       return client.request(config)

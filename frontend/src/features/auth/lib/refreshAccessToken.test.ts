@@ -4,7 +4,7 @@ import { refreshSession } from '../api/refreshSession.api'
 import type { AccessTokenResponse } from '../types/auth.types'
 import {
   getAccessToken,
-  getSessionVersion,
+  getCurrentUserId,
   setAccessToken,
 } from './accessTokenStore'
 import { invalidateRefresh, refreshAccessToken } from './refreshAccessToken'
@@ -44,9 +44,8 @@ it.each(['success', '401', 'service error'])(
   },
 )
 
-it('rotates the same user token without changing the login session', async () => {
+it('rotates the token while preserving the user identity', async () => {
   setAccessToken(token('A', 1))
-  const version = getSessionVersion()
   const next = token('A', 2)
   vi.mocked(refreshSession).mockResolvedValue({
     accessToken: next,
@@ -55,7 +54,7 @@ it('rotates the same user token without changing the login session', async () =>
 
   expect(await refreshAccessToken()).toBe(next)
   expect(getAccessToken()).toBe(next)
-  expect(getSessionVersion()).toBe(version)
+  expect(getCurrentUserId()).toBe('A')
 })
 
 it('rejects a refreshed identity from another account before installing its token', async () => {

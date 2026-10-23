@@ -25,7 +25,7 @@ import {
   listRequesterOrders,
 } from '../api/orders.api'
 import { orderFixture } from '../test/orderFixtures'
-import { replaceSession } from '#/features/auth/lib/accessTokenStore'
+import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { getUserProfile } from '#/features/auth/api/userProfile.api'
 
@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   focusManager.setFocused(true)
-  replaceSession(token('requester'))
+  setAccessToken(token('requester'))
   vi.mocked(getUserProfile).mockRejectedValue(new Error('Profile unavailable'))
   vi.mocked(listMyOrders).mockResolvedValue({
     items: [],
@@ -82,7 +82,7 @@ afterEach(() => {
   cleanup()
   clients.forEach((client) => client.clear())
   clients.length = 0
-  replaceSession(null)
+  setAccessToken(null)
   focusManager.setFocused(undefined)
   vi.useRealTimers()
 })
@@ -140,7 +140,7 @@ it('scopes cached orders and balances by the signed-in user', async () => {
     availableBalance: 0,
     reservedBalance: 0,
   })
-  act(() => replaceSession(token('another-user')))
+  act(() => setAccessToken(token('another-user')))
   await tick()
   expect(listMyOrders).toHaveBeenCalledTimes(2)
   expect(getCreditBalance).toHaveBeenCalledTimes(2)
