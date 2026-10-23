@@ -22,7 +22,7 @@ const categoryArt: Record<SupplierCategory, { Icon: LucideIcon; tone: string }> 
   }
 
 export const CategoryTiles = () => (
-  <ul className={styles.categories} aria-label="Location categories">
+  <ul className={styles.categories} aria-label="Supplier categories">
     {SUPPLIER_CATEGORIES.map((category) => {
       const { Icon, tone } = categoryArt[category]
       return (

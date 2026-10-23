@@ -17,7 +17,7 @@ export const UserLayoutPreview = () => {
           <a href="/preview/user-layout" aria-current="page">
             Home
           </a>
-          <a href="/map">Locations</a>
+          <a href="/map">Map</a>
           <span aria-disabled="true">My Errands</span>
         </>
       }

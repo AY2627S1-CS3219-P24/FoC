@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import { CategoryTiles } from '#/features/suppliers/components/CategoryTiles/CategoryTiles'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
@@ -67,11 +66,6 @@ export const RequesterHomePage = () => {
           </span>
         </Link>
       </div>
-
-      <section className={styles.section} aria-labelledby="categories-heading">
-        <h2 id="categories-heading">What do you need?</h2>
-        <CategoryTiles />
-      </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>

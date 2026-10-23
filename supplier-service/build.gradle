@@ -59,6 +59,13 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
 }
 
+tasks.named('processResources') {
+    from("${rootProject.projectDir}/data/csv") {
+        include 'supplier-seed-data.csv', 'supplier-opening-hours.csv'
+        into 'seed'
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     systemProperty 'foc.root', rootProject.projectDir.absolutePath

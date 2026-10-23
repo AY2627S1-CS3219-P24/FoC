@@ -8,7 +8,7 @@ import { getApiErrorCode } from '#/lib/httpErrors'
 
 export const AccountLayout = () => {
   const { data } = useUserProfile()
-  const { userId } = useSession()
+  const { userId, roles } = useSession()
   const balance = useCreditBalance(userId)
   const navigate = useNavigate()
   const auth = useAuth()
@@ -37,7 +37,7 @@ export const AccountLayout = () => {
           >
             Home
           </Link>
-          <Link to="/map">Locations</Link>
+          <Link to="/map">Map</Link>
           <Link
             to="/errands"
             search={{ tab: 'active', participation: 'all', page: 0 }}
@@ -49,6 +49,13 @@ export const AccountLayout = () => {
       onAccountClick={() => {
         void navigate({ to: '/profile' })
       }}
+      onAdminClick={
+        roles.includes('ADMIN')
+          ? () => {
+              void navigate({ to: '/admin' })
+            }
+          : undefined
+      }
       onLogout={() => {
         void auth.logout().then(() => navigate({ to: '/login', replace: true }))
       }}

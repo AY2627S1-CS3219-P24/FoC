@@ -67,8 +67,8 @@ export const CampusMapPage = () => {
     visible.find((supplier) => supplier.id === selectedId) ?? null
 
   return (
-    <section className={styles.stage} aria-label="Suppliers locations">
-      <h1 className={styles.heading}>Suppliers locations</h1>
+    <section className={styles.stage} aria-label="Map">
+      <h1 className={styles.heading}>Map</h1>
       <Suspense fallback={<p className={styles.mapStatus}>Loading map…</p>}>
         <CampusMap
           suppliers={mapped}

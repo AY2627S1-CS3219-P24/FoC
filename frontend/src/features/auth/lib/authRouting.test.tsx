@@ -287,8 +287,7 @@ it('opens a supplier category from request and returns to find a supplier', asyn
 
   await user.click(screen.getByRole('link', { name: /Request/ }))
   await screen.findByRole('heading', { name: 'Find a supplier' })
-  await user.click(screen.getByRole('button', { name: 'Coffee' }))
-  await user.click(screen.getByRole('link', { name: 'See all Coffee' }))
+  await user.click(screen.getByRole('link', { name: 'Coffee' }))
 
   expect(
     await screen.findByRole('heading', { name: 'Coffee' }),

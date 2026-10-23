@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.infrastructure.messaging.producer.SnsUserCreatedEventPublisher;
 import com.cs3219.foc.user.integration.AbstractIntegrationTest;
 import com.cs3219.foc.user.mapper.UserMapper;
@@ -98,6 +99,50 @@ class UserEventPublicationPersistenceTests extends AbstractIntegrationTest {
         assertThat(captor.getValue().payload().userId()).isEqualTo(user);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id = ?", Long.class, user))
                 .isEqualTo(1);
+    }
+
+    @Test
+    void adminInitializationRecordsPublicationAndDeliversAfterCommit() {
+        var email = UUID.randomUUID() + "@u.nus.edu";
+        assertThat(userService.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
+                .isTrue();
+        awaitPublicationCompleted();
+        var captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
+        verify(publisher).publish(captor.capture());
+        var userId = captor.getValue().payload().userId();
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM users WHERE id = ? AND email_verified", Long.class, userId))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void preservingAnExistingAdminPublishesNothing() {
+        var email = UUID.randomUUID() + "@u.nus.edu";
+        assertThat(userService.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
+                .isTrue();
+        awaitPublicationCompleted();
+        reset(publisher);
+
+        assertThat(userService.initializeAdmin(new RegisterUserRequest(email, "Changed", "replacement123")))
+                .isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM event_publication", Long.class))
+                .isZero();
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void rejectingAnExistingNonAdminPublishesNothing() {
+        var email = UUID.randomUUID() + "@u.nus.edu";
+        userService.registerUser(new RegisterUserRequest(email, "Test", "password123"));
+        awaitPublicationCompleted();
+        reset(publisher);
+
+        assertThatThrownBy(() ->
+                        userService.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
+                .isInstanceOf(EntityAlreadyExistsException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM event_publication", Long.class))
+                .isZero();
+        verifyNoInteractions(publisher);
     }
 
     @Test

@@ -1,5 +1,7 @@
 .page {
-  max-width: 1440px;
+  width: 100%;
+  min-width: 0;
+  max-width: min(1440px, 100%);
   margin: 0 auto;
   color: var(--color-text);
   overflow-wrap: anywhere;

@@ -4,6 +4,7 @@ import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
 import { getApiErrorCode } from '#/lib/httpErrors'
 import { useSession } from '#/features/auth/hooks/useSession'
+import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import { getCurrentUserId } from '#/features/auth/lib/accessTokenStore'
 import { ErrandForm } from '../../components/ErrandForm/ErrandForm'
 import { ErrandReview } from '../../components/ErrandReview/ErrandReview'
@@ -31,7 +32,6 @@ import {
 import type { PendingCreation } from '../../utils/creationRequest'
 import type { Errand } from '../../types/errand.types'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
-import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import styles from '../../styles/order.module.scss'
 import pageStyles from './CreateErrandPage.module.scss'
 
@@ -129,6 +129,16 @@ const CreationForm = ({
     !original &&
     !formValues.pickup &&
     pickups.isPending
+  const balance = useCreditBalance(userId)
+  const availableCredits = balance.isSuccess
+    ? balance.data.availableBalance
+    : null
+  const cappedValues: CreateErrandValues =
+    availableCredits != null &&
+    availableCredits >= 1 &&
+    formValues.creditReward > availableCredits
+      ? { ...formValues, creditReward: availableCredits }
+      : formValues
   const { create } = useOrderActions()
   const active = useMyErrands({
     as: 'requester',
@@ -279,7 +289,7 @@ const CreationForm = ({
           ? 'View your errand'
           : review
             ? 'Review request'
-            : 'Create an Errand'}
+            : 'Create an errand'}
       </h1>
       <div className={pageStyles.layout}>
         <div className={pageStyles.main}>
@@ -323,13 +333,16 @@ const CreationForm = ({
                       : undefined
               }
             />
-          ) : waitingForPickup ? (
+          ) : waitingForPickup || balance.isPending ? (
             <p className={styles.muted} role="status">
-              Loading pickup location…
+              {waitingForPickup
+                ? 'Loading pickup location…'
+                : 'Loading your credits…'}
             </p>
           ) : (
             <ErrandForm
-              values={formValues}
+              values={cappedValues}
+              availableCredits={availableCredits}
               onReview={(data) => {
                 setValues(data)
                 setReview(true)
@@ -337,7 +350,27 @@ const CreationForm = ({
             />
           )}
         </div>
-        <CreationGuide userId={userId} />
+        {!knownOrder && (
+          <aside className={pageStyles.guide} aria-label="What you get">
+            <section className={styles.panel}>
+              <h2>What you get</h2>
+              <ol className={pageStyles.steps}>
+                <li>
+                  <strong>Brought to you</strong>
+                  <span>They meet you where you asked.</span>
+                </li>
+                <li>
+                  <strong>You see who is coming</strong>
+                  <span>Their name shows once someone takes it.</span>
+                </li>
+                <li>
+                  <strong>You pay after it arrives</strong>
+                  <span>If nobody takes it, your credits come back.</span>
+                </li>
+              </ol>
+            </section>
+          </aside>
+        )}
       </div>
       {failed && (
         <Link
@@ -352,46 +385,3 @@ const CreationForm = ({
   )
 }
 
-/** Beside the form: the balance to spend from, and what happens after posting. */
-const CreationGuide = ({ userId }: { userId: string }) => {
-  const balance = useCreditBalance(userId)
-  return (
-    <aside className={pageStyles.guide} aria-label="About posting an errand">
-      <section className={styles.panel}>
-        <h2>Your credits</h2>
-        <p className={pageStyles.balance}>
-          {balance.data ? balance.data.availableBalance : '–'}
-          <span> available</span>
-        </p>
-        <p className={styles.muted}>
-          The reward you set is reserved when you post, and paid to your courier
-          only after you confirm you received the item.
-        </p>
-      </section>
-      <section className={styles.panel}>
-        <h2>How it works</h2>
-        <ol className={pageStyles.steps}>
-          <li>
-            <strong>Post your request</strong>
-            <span>Couriers nearby can see it until it expires.</span>
-          </li>
-          <li>
-            <strong>A courier accepts</strong>
-            <span>You will see who is collecting it.</span>
-          </li>
-          <li>
-            <strong>Courier pick it up</strong>
-            <span>The errand moves to “Picked up”.</span>
-          </li>
-          <li>
-            <strong>Confirm received</strong>
-            <span>
-              The credits transferred to courier.
-              Cancelling before acceptance will return your credits.
-            </span>
-          </li>
-        </ol>
-      </section>
-    </aside>
-  )
-}

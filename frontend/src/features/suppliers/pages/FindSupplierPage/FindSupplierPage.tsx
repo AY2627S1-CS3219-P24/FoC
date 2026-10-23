@@ -1,49 +1,26 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
 import { CategoryTiles } from '../../components/CategoryTiles/CategoryTiles'
 import { SupplierSlideOver } from '../../components/SupplierSlideOver/SupplierSlideOver'
 import { useSuppliers } from '../../hooks/useSuppliers'
-import { SUPPLIER_CATEGORIES } from '../../types/supplier.types'
-import type { Supplier, SupplierCategory } from '../../types/supplier.types'
-import { categoryLabels, formatLocation } from '../../utils/supplierFormat'
+import type { Supplier } from '../../types/supplier.types'
+import { formatLocation } from '../../utils/supplierFormat'
 import { describeOpenStatus } from '../../utils/openingHours'
 import styles from './FindSupplierPage.module.scss'
 
 export const FindSupplierPage = () => {
-  const { category } = useSearch({ from: '/authenticated/user/request' })
-  const navigate = useNavigate()
-  const suppliers = useSuppliers(category ? { category: [category] } : {})
+  const suppliers = useSuppliers()
   const [selected, setSelected] = useState<Supplier | null>(null)
-  const selectCategory = (next: SupplierCategory) => {
-    void navigate({
-      to: '/request',
-      search: { category: category === next ? undefined : next },
-    })
-  }
 
   return (
     <section className={styles.page}>
       <h1>Find a supplier</h1>
       <CategoryTiles />
-      <div className={styles.chips} role="group" aria-label="Supplier categories">
-        {SUPPLIER_CATEGORIES.map((item) => (
-          <Button
-            key={item}
-            className={styles.chip}
-            aria-pressed={category === item}
-            onClick={() => selectCategory(item)}
-          >
-            {categoryLabels[item]}
-          </Button>
-        ))}
-      </div>
-      {category && (
-        <Link className={styles.categoryLink} to="/locations" search={{ category }}>
-          See all {categoryLabels[category]}
-        </Link>
-      )}
 
+      <div className={styles.results}>
+        <div className={styles.resultsHeader}>
+          <h2>Suppliers</h2>
+        </div>
       {suppliers.isPending ? (
         <p className={styles.feedback} role="status">
           Loading suppliers…
@@ -84,15 +61,10 @@ export const FindSupplierPage = () => {
           })}
         </ul>
       ) : null}
-
-      <div className={styles.footer}>
-        <Link to="/map">Explore campus map</Link>
-        <Link to="/request">Browse all suppliers</Link>
       </div>
       <SupplierSlideOver
         supplier={selected}
         from="request"
-        category={category}
         onClose={() => setSelected(null)}
       />
     </section>

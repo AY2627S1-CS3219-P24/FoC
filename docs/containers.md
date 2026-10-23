@@ -45,15 +45,19 @@ docker compose --env-file .env.prod -f compose.prod-local.yaml up -d
 
 `admin-init` belongs to this installation. It starts the User Service image with
 the `prod,admin-init` profiles, applies that service's Flyway migrations,
-creates a verified admin through application code, and exits. The normal User
-Service uses only `prod`. Setup inherits the usual configuration and JWT keys.
+creates a verified admin through application code, publishes `UserCreatedEvent`,
+and exits. Credit-service opens the credit account when it consumes the event.
+The normal User Service uses only `prod`.
+Setup inherits the usual configuration and JWT keys.
 
 An existing admin with the same email is left unchanged. If that email already
 belongs to a non-admin, setup fails and the account stays as it is. A different
 email creates another admin.
 
-`supplier-seed` inserts suppliers from the CSV files. Suppliers that are already
-present stay as they are, including their opening hours.
+`supplier-seed` starts the Supplier Service image with the `prod,supplier-seed`
+profiles. After Flyway migrations, it inserts suppliers from the CSV files and
+exits. Suppliers that are already present stay as they are, including their
+opening hours.
 
 ## Later deployments
 

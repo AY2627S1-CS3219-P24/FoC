@@ -138,7 +138,10 @@
 }
 
 .tableWrapper {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   transition: opacity 0.15s;
 
   // previous results stay visible

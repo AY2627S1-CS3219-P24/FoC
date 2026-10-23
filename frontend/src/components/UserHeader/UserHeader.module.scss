@@ -1,4 +1,5 @@
 .header {
+  position: relative;
   display: flex;
   width: 100%;
   align-items: center;
@@ -90,6 +91,73 @@
   color: inherit;
   font: inherit;
 }
+.menuButton {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: #e9edf4;
+  }
+}
+
+.navPanel {
+  position: absolute;
+  z-index: 6;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px 12px;
+  background: white;
+  box-shadow: 0 16px 32px #1720331a;
+  pointer-events: auto;
+
+  a,
+  [aria-disabled='true'] {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 12px;
+    border-radius: 12px;
+    color: var(--color-text);
+    font-size: 16px;
+    text-decoration: none;
+  }
+
+  a:hover {
+    background: #e9edf4;
+  }
+
+  [aria-current='page'] {
+    font-weight: 700;
+  }
+
+  [aria-disabled='true'] {
+    color: var(--color-text-muted);
+  }
+}
+
+.navIcon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.menuBalance {
+  margin: 0;
+  padding: 14px 22px 8px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
 .notifications {
   position: relative;
   display: grid;
@@ -210,37 +278,26 @@ button.account {
 }
 @media (max-width: 700px) {
   .header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 12px;
     padding: 16px;
   }
   .overlay {
-    flex-wrap: nowrap;
     padding: 12px 12px 0;
   }
+  .navGroup,
   .overlay .navGroup {
-    gap: 16px;
-    padding: 8px 14px;
+    gap: 8px;
   }
-  .navigation {
-    order: 3;
-    flex-basis: 100%;
-    width: 100%;
-    justify-content: flex-start;
-    gap: 20px;
-    font-size: 14px;
+  .overlay .navGroup {
+    padding: 8px 14px 8px 8px;
   }
-  .overlay .navigation {
-    order: 0;
-    flex-basis: auto;
-    width: auto;
-    gap: 14px;
-  }
-  .name {
-    max-width: 130px;
+  .barNavigation,
+  .identity {
+    display: none;
   }
   .chevron {
-    margin-left: 4px;
+    margin-left: 0;
   }
   .actions {
     gap: 4px;
