@@ -1,5 +1,7 @@
 import { refreshSession } from '../api/refreshSession.api'
 import { getAccessToken, setAccessToken } from './accessTokenStore'
+import { AuthRequestError } from './authRequest'
+import { decodeAccessToken } from '../utils/decodeAccessToken'
 
 let refreshPromise: Promise<string | null> | null = null
 let discardResult: (() => void) | null = null
@@ -13,6 +15,7 @@ export const invalidateRefresh = () => {
 export const refreshAccessToken = (): Promise<string | null> => {
   if (refreshPromise) return refreshPromise
 
+  const userId = decodeAccessToken(getAccessToken())?.sub
   let invalidated = false
   discardResult = () => {
     invalidated = true
@@ -21,6 +24,9 @@ export const refreshAccessToken = (): Promise<string | null> => {
   refreshPromise = refreshSession()
     .then(({ accessToken }) => {
       if (invalidated) return getAccessToken()
+      // Shared refresh cookies may now belong to an account logged in from another tab.
+      if (userId && decodeAccessToken(accessToken)?.sub !== userId)
+        throw new AuthRequestError(401, 'The login session changed')
       setAccessToken(accessToken)
       return accessToken
     })

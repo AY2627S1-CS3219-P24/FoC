@@ -28,11 +28,20 @@ import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
 import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
 import { HomePage } from '#/features/orders/pages/HomePage/HomePage'
-import { MyErrandsPage } from '#/features/orders/pages/MyErrandsPage/MyErrandsPage'
 import { getHomeMode } from '#/features/orders/utils/homeMode'
 import type { HomeMode } from '#/features/orders/utils/homeMode'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
+import { CreateErrandPage } from '#/features/orders/pages/CreateErrandPage/CreateErrandPage'
+import { MyErrandsPage } from '#/features/orders/pages/MyErrandsPage/MyErrandsPage'
+import { OrderDetailPage } from '#/features/orders/pages/OrderDetailPage/OrderDetailPage'
+import {
+  parseOrderListSearch,
+  parseAdminOrderSearch,
+  parsePage,
+} from '#/features/orders/utils/orderFilters'
+import { AdminOrderListPage } from '#/features/orders/pages/AdminOrderListPage/AdminOrderListPage'
+import { AdminOrderDetailPage } from '#/features/orders/pages/AdminOrderDetailPage/AdminOrderDetailPage'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -135,7 +144,11 @@ const editProfileRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/home',
-  validateSearch: (search: Record<string, unknown>): { mode?: HomeMode } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { mode?: HomeMode; q?: string; page?: number } => ({
+    q: typeof search.q === 'string' ? search.q : undefined,
+    page: search.page == null ? undefined : parsePage(search.page),
     mode:
       search.mode === 'requestor' || search.mode === 'courier'
         ? search.mode
@@ -153,10 +166,25 @@ const homeRoute = createRoute({
   component: HomePage,
 })
 
+const createErrandRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/errands/new',
+  component: CreateErrandPage,
+})
 const myErrandsRoute = createRoute({
   getParentRoute: () => userRoute,
-  path: '/my-errands',
+  path: '/errands',
   component: MyErrandsPage,
+  validateSearch: parseOrderListSearch,
+})
+const orderDetailRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/errands/$orderId',
+  component: OrderDetailPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...parseOrderListSearch(search),
+    posted: search.posted === true || search.posted === 'true',
+  }),
 })
 
 // Below are admin routes
@@ -182,6 +210,19 @@ const adminIndexRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/',
   component: AdminOverviewPage,
+})
+
+const adminOrderListRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/orders',
+  component: AdminOrderListPage,
+  validateSearch: parseAdminOrderSearch,
+})
+const adminOrderDetailRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/orders/$orderId',
+  component: AdminOrderDetailPage,
+  validateSearch: parseAdminOrderSearch,
 })
 
 const supplierListRoute = createRoute({
@@ -239,13 +280,17 @@ export const routeTree = rootRoute.addChildren([
     // Student pages share the top-header account layout.
     userRoute.addChildren([
       homeRoute,
+      createErrandRoute,
       myErrandsRoute,
+      orderDetailRoute,
       profileRoute,
       editProfileRoute,
     ]),
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,
+      adminOrderListRoute,
+      adminOrderDetailRoute,
       supplierListRoute,
       supplierCreateRoute,
       supplierEditRoute,

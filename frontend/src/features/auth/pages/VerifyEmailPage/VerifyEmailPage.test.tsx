@@ -153,7 +153,8 @@ it('confirms an email change and refreshes the profile on return without logging
     faculty: null,
     avatarUrl: null,
   }
-  setAccessToken('existing-token')
+  const accessToken = `header.${btoa(JSON.stringify({ sub: '1', roles: ['USER'] }))}.signature`
+  setAccessToken(accessToken)
   vi.mocked(confirmEmailChange).mockResolvedValue(undefined)
   vi.mocked(getUserProfile).mockResolvedValue({
     ...oldProfile,
@@ -177,7 +178,7 @@ it('confirms an email change and refreshes the profile on return without logging
   await waitFor(() =>
     expect(screen.getAllByText('new@nus.edu.sg').length).toBeGreaterThan(0),
   )
-  expect(getAccessToken()).toBe('existing-token')
+  expect(getAccessToken()).toBe(accessToken)
 })
 
 it('sends an unavailable email-change link back to profile editing instead of registration resend', async () => {

@@ -3,11 +3,14 @@ package com.cs3219.foc.e2e;
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
 
+import com.microsoft.playwright.APIRequest.NewContextOptions;
+import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.RequestOptions;
 import java.net.URI;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.testcontainers.DockerClientFactory;
 import software.amazon.awssdk.auth.credentials.*;
@@ -441,7 +444,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
     }
 
     @Test
-    void httpRetryAfterOrderFinalizationFailureReusesCommittedReservation() {
+    void httpRetryAfterOrderFinalizationFailureReusesCommittedReservation() throws Exception {
         var supplier = supplier(admin());
         var requester = register("Retrying requester");
         awaitBalance(requester, 15);
@@ -450,8 +453,10 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         UUID id;
         sql("orders").execute("ALTER TABLE errands ADD CONSTRAINT e2e_reject_open CHECK(status <> 'OPEN') NOT VALID");
         try {
-            request("POST", "/api/orders", requester.token(), body, 500);
+            var failure = request("POST", "/api/orders", requester.token(), body, 500);
             id = sql("orders").queryForObject("SELECT id FROM errands WHERE create_request_id=?", UUID.class, key);
+            assertThat(failure.get("code").asString()).isEqualTo("ORDER_CREATION_ERROR");
+            assertThat(failure.get("errandId").asString()).isEqualTo(id.toString());
             awaitOrder(id, "CREATING", null);
             assertThat(sql("credits")
                             .queryForObject(
@@ -460,6 +465,34 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         } finally {
             sql("orders").execute("ALTER TABLE errands DROP CONSTRAINT e2e_reject_open");
         }
+        var detail = request("GET", "/api/orders/" + id, requester.token(), null, 200);
+        assertThat(detail.get("createRequestId").asString()).isEqualTo(key.toString());
+        assertThat(detail.has("expiryMinutes")).isFalse();
+        String retryPath = "/api/orders/" + id + "/retry-creation";
+        var simultaneous = new CyclicBarrier(2);
+        Callable<String> retry = () -> {
+            // Playwright contexts are thread confined; each caller uses its own client.
+            try (var independent = Playwright.create()) {
+                var context = independent
+                        .request()
+                        .newContext(
+                                new NewContextOptions().setBaseURL(baseUrl()).setIgnoreHTTPSErrors(true));
+                simultaneous.await(15, TimeUnit.SECONDS);
+                var response = context.post(
+                        retryPath, RequestOptions.create().setHeader("Authorization", "Bearer " + requester.token()));
+                assertThat(response.status()).as(response.text()).isEqualTo(200);
+                return json.readTree(response.text()).get("errandId").asString();
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(retry);
+            var second = executor.submit(retry);
+            assertThat(first.get(30, TimeUnit.SECONDS)).isEqualTo(id.toString());
+            assertThat(second.get(30, TimeUnit.SECONDS)).isEqualTo(id.toString());
+        }
+        assertThat(sql("orders")
+                        .queryForObject("SELECT count(*) FROM errands WHERE create_request_id=?", Long.class, key))
+                .isEqualTo(1);
         assertThat(request("POST", "/api/orders", requester.token(), body, 200)
                         .get("errandId")
                         .asString())

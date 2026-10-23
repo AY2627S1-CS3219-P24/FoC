@@ -43,18 +43,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [invalidation, setInvalidation] = useState(0)
 
   const operations = useMemo(() => {
-    const clearProfile = () => {
-      void queryClient.cancelQueries({ queryKey: ['current-user'] })
-      queryClient.removeQueries({ queryKey: ['current-user'] })
+    const clearUserQueries = () => {
+      for (const key of ['current-user', 'errands', 'credits']) {
+        void queryClient.cancelQueries({ queryKey: [key] })
+        queryClient.removeQueries({ queryKey: [key] })
+      }
     }
     const canRefresh = () => !authenticationEnded.current
 
     const authenticationFailed = () => {
       if (authenticationEnded.current) return
-      clearProfile()
       authenticationEnded.current = true
       invalidateRefresh()
       setAccessToken(null)
+      clearUserQueries()
       setInvalidation((value) => value + 1)
     }
 
@@ -75,9 +77,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const completeLogin = (accessToken: string) => {
-      clearProfile()
       invalidateRefresh()
       setAccessToken(accessToken)
+      clearUserQueries()
       authenticationEnded.current = false
     }
 
@@ -85,9 +87,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (exiting.current) return exiting.current
 
       const pendingRefresh = invalidateRefresh()
-      clearProfile()
       authenticationEnded.current = true
       setAccessToken(null)
+      clearUserQueries()
 
       // Serialize cookie rotation and logout. The API adapters bound each request.
       exiting.current = (async () => {

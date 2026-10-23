@@ -1,4 +1,4 @@
-export type CreditBalanceResponse = {
+export type CreditBalance = {
   availableBalance: number
   reservedBalance: number
 }

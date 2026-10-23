@@ -1,0 +1,23 @@
+.tabs {
+  display: flex;
+  gap: 24px;
+}
+
+.tab {
+  text-decoration: none;
+  padding: 10px 0;
+  color: var(--color-text-muted);
+
+  &[aria-current='page'] {
+    color: var(--color-primary);
+    border-bottom: 2px solid var(--color-primary);
+    font-weight: 600;
+  }
+}
+
+.filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}

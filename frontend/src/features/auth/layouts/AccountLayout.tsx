@@ -1,19 +1,29 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { UserLayout } from '#/layouts/UserLayout/UserLayout'
-import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import { useUserProfile } from '../hooks/useUserProfile'
+import { useSession } from '../hooks/useSession'
 import { useAuth } from '../providers/AuthProvider'
+import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
+import { getApiErrorCode } from '#/lib/httpErrors'
 
 export const AccountLayout = () => {
   const { data } = useUserProfile()
-  const balance = useCreditBalance()
+  const { userId } = useSession()
+  const balance = useCreditBalance(userId)
   const navigate = useNavigate()
   const auth = useAuth()
   return (
     <UserLayout
       name={data?.name ?? 'Your account'}
       avatarUrl={data?.avatarUrl}
-      availableCredits={balance.data?.availableBalance}
+      availableCredits={balance.error ? null : balance.data?.availableBalance}
+      balanceLabel={
+        balance.isPending
+          ? 'Loading credits…'
+          : getApiErrorCode(balance.error) === 'CREDIT_ACCOUNT_PENDING'
+            ? 'Credit account preparing'
+            : 'Balance unavailable'
+      }
       brand={<Link to="/home">FoC</Link>}
       navigation={
         <>
@@ -24,7 +34,12 @@ export const AccountLayout = () => {
             Home
           </Link>
           <span aria-disabled="true">Locations</span>
-          <Link to="/my-errands">My Errands</Link>
+          <Link
+            to="/errands"
+            search={{ tab: 'active', participation: 'all', page: 0 }}
+          >
+            My Errands
+          </Link>
         </>
       }
       onAccountClick={() => {

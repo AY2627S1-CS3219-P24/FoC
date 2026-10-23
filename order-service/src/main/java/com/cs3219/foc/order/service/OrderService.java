@@ -24,12 +24,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
@@ -122,6 +124,14 @@ public class OrderService {
         return reserveAndFinalize(created);
     }
 
+    public CreateErrandResponse retryCreation(UUID id) {
+        UUID actor = currentUserService.requireCurrentUserId();
+        Errand errand =
+                transactions.execute(tx -> repository.findById(id).orElseThrow(() -> new OrderNotFoundException(id)));
+        requireRequester(errand, actor);
+        return reserveAndFinalize(errand);
+    }
+
     private CreateErrandResponse reserveAndFinalize(Errand pending) {
         if (pending.getStatus() != CREATING) return creationResponse(pending);
 
@@ -155,6 +165,9 @@ public class OrderService {
                 return errand;
             });
             return creationResponse(finalized);
+        } catch (RestClientException | DataAccessException | TransactionException failure) {
+            // The initial order transaction already committed; expose its identity without guessing the outcome.
+            throw new OrderCreationAttemptException(pending.getId(), failure);
         } catch (RuntimeException failure) {
             // HTTP failure cannot establish whether Credit committed. Never mark an unknown result as failed.
             log.error(
@@ -167,25 +180,32 @@ public class OrderService {
         }
     }
 
-    public PageDto<ErrandDto> list(UUID requesterId, Pageable pageable) {
+    public PageDto<ErrandDto> list(UUID requesterId, String q, Pageable pageable) {
         CurrentUser actor = currentUserService.requireCurrentUser();
         validatePageable(pageable);
         if (requesterId != null && !actor.hasRole("ADMIN")) throw new AccessDeniedException("Admin query required");
         Page<Errand> page = transactions.execute(tx -> requesterId == null
-                ? repository.findAvailable(actor.userId(), now(), stable(pageable))
+                ? repository.findAvailable(actor.userId(), now(), searchPattern(q), stable(pageable))
                 : repository.findByRequesterId(requesterId, stable(pageable)));
         return page(page);
     }
 
-    public PageDto<ErrandDto> mine(String as, Pageable pageable) {
+    public PageDto<ErrandDto> mine(String as, String view, Pageable pageable) {
         UUID actor = currentUserService.requireCurrentUserId();
         validatePageable(pageable);
-        if (!Set.of("requester", "courier").contains(as)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "as must be requester or courier");
+        if (!Set.of("all", "requester", "courier").contains(as)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "as must be all, requester or courier");
         }
-        Page<Errand> page = transactions.execute(tx -> as.equals("requester")
-                ? repository.findByRequesterId(actor, stable(pageable))
-                : repository.findByCourierId(actor, stable(pageable)));
+        List<ErrandStatus> statuses =
+                switch (view) {
+                    case "all" -> List.of(ErrandStatus.values());
+                    case "active" -> List.of(CREATING, OPEN, ACCEPTED, PICKED_UP);
+                    case "history" -> List.of(CREATE_FAILED, COMPLETED, CANCELLED, EXPIRED);
+                    default ->
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "view must be all, active or history");
+                };
+        Page<Errand> page = transactions.execute(tx -> repository.findMine(actor, as, statuses, stable(pageable)));
         return page(page);
     }
 
@@ -199,7 +219,7 @@ public class OrderService {
                 && !(errand.getStatus() == OPEN && now().isBefore(errand.getExpiresAt()))) {
             throw new AccessDeniedException("Order is not visible to this user");
         }
-        return dto(errand);
+        return dtos(List.of(errand), actor.userId()).getFirst();
     }
 
     public ErrandActionResponse accept(UUID id) {
@@ -414,11 +434,11 @@ public class OrderService {
         }
     }
 
-    private ErrandDto dto(Errand errand) {
-        return dtos(List.of(errand)).getFirst();
+    private List<ErrandDto> dtos(List<Errand> errands) {
+        return dtos(errands, null);
     }
 
-    private List<ErrandDto> dtos(List<Errand> errands) {
+    private List<ErrandDto> dtos(List<Errand> errands, UUID detailViewer) {
         Set<UUID> ids = errands.stream()
                 .flatMap(errand -> Stream.of(errand.getRequesterId(), errand.getCourierId()))
                 .filter(Objects::nonNull)
@@ -431,7 +451,8 @@ public class OrderService {
                         errand.getCourierId() == null
                                 ? null
                                 : names.getOrDefault(
-                                        errand.getCourierId(), new UserBriefDto(errand.getCourierId(), null))))
+                                        errand.getCourierId(), new UserBriefDto(errand.getCourierId(), null)),
+                        errand.getRequesterId().equals(detailViewer) ? errand.getCreateRequestId() : null))
                 .toList();
     }
 
@@ -446,6 +467,15 @@ public class OrderService {
                 page.getSort().getOrderFor("id") == null
                         ? page.getSort().and(Sort.by(Sort.Direction.DESC, "id"))
                         : page.getSort());
+    }
+
+    private String searchPattern(String query) {
+        return "%"
+                + query.strip()
+                        .toLowerCase(Locale.ROOT)
+                        .replace("!", "!!")
+                        .replace("%", "!%")
+                        .replace("_", "!_") + "%";
     }
 
     private void validatePageable(Pageable page) {

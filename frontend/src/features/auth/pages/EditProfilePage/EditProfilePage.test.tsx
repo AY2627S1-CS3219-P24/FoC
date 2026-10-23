@@ -13,14 +13,14 @@ import * as api from '../../api/userProfile.api'
 import { getFaculties } from '#/api/getFaculties.api'
 
 vi.mock('../../api/userProfile.api')
-vi.mock('#/features/credits/api/creditBalance.api', () => ({
+vi.mock('#/api/getFaculties.api')
+vi.mock('../../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(async () => ({
     availableBalance: 15,
     reservedBalance: 0,
   })),
 }))
-vi.mock('#/api/getFaculties.api')
-vi.mock('../../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
 
 const profile = {
   id: '1',
@@ -32,11 +32,12 @@ const profile = {
   avatarUrl: null,
 }
 const clients: QueryClient[] = []
+const accessToken = `header.${btoa(JSON.stringify({ sub: '1', roles: ['USER'] }))}.signature`
 
 beforeEach(() => {
   vi.resetAllMocks()
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  setAccessToken('token')
+  setAccessToken(accessToken)
   vi.mocked(api.getUserProfile).mockResolvedValue(profile)
   vi.mocked(getFaculties).mockResolvedValue([
     'School of Computing',
@@ -242,7 +243,7 @@ it('requests and resends an email change in place without saving the profile or 
   expect(api.updateUserProfile).not.toHaveBeenCalled()
   expect(api.changePassword).not.toHaveBeenCalled()
   expect(logoutUser).not.toHaveBeenCalled()
-  expect(getAccessToken()).toBe('token')
+  expect(getAccessToken()).toBe(accessToken)
   expect(router.state.location.pathname).toBe('/profile/edit')
 })
 

@@ -11,9 +11,11 @@ import com.cs3219.foc.order.config.SecurityConfig;
 import com.cs3219.foc.order.exception.*;
 import com.cs3219.foc.order.model.dto.CreateErrandResponse;
 import com.cs3219.foc.order.model.dto.ErrandActionResponse;
+import com.cs3219.foc.order.model.dto.PageDto;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
 import com.cs3219.foc.order.service.OrderService;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.*;
@@ -22,6 +24,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -60,6 +64,24 @@ class OrderControllerTests {
     }
 
     @Test
+    void listFiltersReachTheApplicationService() throws Exception {
+        when(service.mine(eq("all"), eq("active"), any())).thenReturn(new PageDto<>(List.of(), 0, 2, 10));
+        mvc.perform(get("/orders/mine")
+                        .param("as", "all")
+                        .param("view", "active")
+                        .param("page", "2")
+                        .param("size", "10")
+                        .with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(2));
+        verify(service)
+                .mine(eq("all"), eq("active"), argThat(page -> page.getPageNumber() == 2 && page.getPageSize() == 10));
+        when(service.list(isNull(), eq("Cafe%"), any())).thenReturn(new PageDto<>(List.of(), 0, 0, 20));
+        mvc.perform(get("/orders").param("q", "Cafe%").with(jwt())).andExpect(status().isOk());
+        verify(service).list(isNull(), eq("Cafe%"), any());
+    }
+
+    @Test
     void createRequiresLoginAndReturnsSynchronousResultLocation() throws Exception {
         mvc.perform(post("/orders").contentType(MediaType.APPLICATION_JSON).content(body(5)))
                 .andExpect(status().isUnauthorized());
@@ -84,7 +106,8 @@ class OrderControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(5)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CREDIT_ACCOUNT_PENDING"));
+                .andExpect(jsonPath("$.code").value("CREDIT_ACCOUNT_PENDING"))
+                .andExpect(jsonPath("$.errandId").doesNotExist());
         mvc.perform(post("/orders/" + id + "/accept").with(jwt()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CREDIT_ACCOUNT_PENDING"));
@@ -156,14 +179,15 @@ class OrderControllerTests {
     void creationRetryReturnsItsResolvedOutcomeAndRetainsTheLocation() throws Exception {
         String request = body(5);
         when(service.create(any()))
-                .thenThrow(new RestClientException("Reservation response lost"))
+                .thenThrow(new OrderCreationAttemptException(id, new RestClientException("Reservation response lost")))
                 .thenReturn(new CreateErrandResponse(id, ErrandStatus.OPEN, null, "/api/orders/" + id));
         mvc.perform(post("/orders")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.code").value("UPSTREAM_ERROR"));
+                .andExpect(jsonPath("$.code").value("ORDER_CREATION_UNCONFIRMED"))
+                .andExpect(jsonPath("$.errandId").value(id.toString()));
         mvc.perform(post("/orders")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -172,6 +196,29 @@ class OrderControllerTests {
                 .andExpect(header().string("Location", "/api/orders/" + id))
                 .andExpect(jsonPath("$.errandId").value(id.toString()))
                 .andExpect(jsonPath("$.status").value("OPEN"));
+    }
+
+    @Test
+    void retryByIdNeedsNoOriginalFormAndPreservesHttpErrorClassification() throws Exception {
+        mvc.perform(post("/orders/" + id + "/retry-creation")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
+        when(service.retryCreation(id))
+                .thenReturn(new CreateErrandResponse(id, ErrandStatus.OPEN, null, "/api/orders/" + id));
+        mvc.perform(post("/orders/" + id + "/retry-creation").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Location", "/api/orders/" + id))
+                .andExpect(jsonPath("$.errandId").value(id.toString()));
+        when(service.retryCreation(id))
+                .thenThrow(new OrderCreationAttemptException(
+                        id, new DataAccessResourceFailureException("Database unavailable")));
+        mvc.perform(post("/orders/" + id + "/retry-creation").with(jwt()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("ORDER_CREATION_ERROR"))
+                .andExpect(jsonPath("$.errandId").value(id.toString()));
+        doThrow(new AccessDeniedException("Requester required")).when(service).retryCreation(id);
+        mvc.perform(post("/orders/" + id + "/retry-creation").with(jwt())).andExpect(status().isForbidden());
+        doThrow(new OrderNotFoundException(id)).when(service).retryCreation(id);
+        mvc.perform(post("/orders/" + id + "/retry-creation").with(jwt())).andExpect(status().isNotFound());
     }
 
     @Test
@@ -210,6 +257,7 @@ class OrderControllerTests {
 
     @TestConfiguration
     @EnableWebMvc
+    @EnableSpringDataWebSupport
     @EnableWebSecurity
     @Import({OrderController.class, SecurityConfig.class, GlobalExceptionHandler.class})
     static class TestConfig {
