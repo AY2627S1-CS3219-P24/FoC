@@ -329,14 +329,14 @@ const CreationGuide = ({ userId }: { userId: string }) => {
             <span>You will see who is collecting it.</span>
           </li>
           <li>
-            <strong>They pick it up</strong>
+            <strong>Courier pick it up</strong>
             <span>The errand moves to “Picked up”.</span>
           </li>
           <li>
             <strong>Confirm received</strong>
             <span>
-              The courier is paid. Cancelling before acceptance returns your
-              credits.
+              The credits transferred to courier.
+              Cancelling before acceptance will return your credits.
             </span>
           </li>
         </ol>
