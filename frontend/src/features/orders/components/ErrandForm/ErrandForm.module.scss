@@ -20,3 +20,15 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+// make the page use up more spaces
+@media (min-width: 900px) {
+  .form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+  .columns,
+  .form > :last-child {
+    grid-column: 1 / -1;
+  }
+}

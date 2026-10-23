@@ -1,7 +1,8 @@
+import { MapPin, Store } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { Errand } from '../../types/errand.types'
 import { formatOrderTime } from '../../utils/orderFormat'
 import styles from './OrderDetails.module.scss'
-import details from '../../styles/orderDetails.module.scss'
 
 const creditLabels = {
   RESERVED: 'Reserved',
@@ -10,38 +11,61 @@ const creditLabels = {
   RELEASE_PENDING: 'Release pending',
   RELEASED: 'Released',
 }
+
+const Field = ({
+  label,
+  children,
+  wide,
+}: {
+  label: string
+  children: ReactNode
+  wide?: boolean
+}) => (
+  <div className={styles.field} data-wide={wide || undefined}>
+    <dt>{label}</dt>
+    <dd>{children}</dd>
+  </div>
+)
+
+// get the order details panel use up more space
 export const OrderDetails = ({ order }: { order: Errand }) => (
   <section className={styles.panel}>
-    <h2>
-      {order.pickup.name} → {order.deliveryLocation}
-    </h2>
-    <dl className={details.details}>
-      <dt>Pickup location</dt>
-      <dd>
+    <h2>{order.description}</h2>
+    <p className={styles.route}>
+      <span>
+        <Store size={16} aria-hidden="true" />
+        {order.pickup.name}
+      </span>
+      <span aria-label="to">→</span>
+      <span>
+        <MapPin size={16} aria-hidden="true" />
+        {order.deliveryLocation}
+      </span>
+    </p>
+    <dl className={styles.grid}>
+      <Field label="Pickup location">
         {order.pickup.name}
         <small>{order.pickup.address}</small>
-      </dd>
-      <dt>Deliver to</dt>
-      <dd>{order.deliveryLocation}</dd>
-      <dt>Item(s)</dt>
-      <dd>{order.description}</dd>
+      </Field>
+      <Field label="Deliver to">{order.deliveryLocation}</Field>
+      <Field label="Item(s)" wide>
+        {order.description}
+      </Field>
       {order.notes && (
-        <>
-          <dt>Notes</dt>
-          <dd>{order.notes}</dd>
-        </>
+        <Field label="Notes" wide>
+          {order.notes}
+        </Field>
       )}
-      <dt>Requester</dt>
-      <dd>{order.requester.name ?? 'Name unavailable'}</dd>
-      <dt>Courier</dt>
-      <dd>
+      <Field label="Requester">
+        {order.requester.name ?? 'Name unavailable'}
+      </Field>
+      <Field label="Courier">
         {order.courier
           ? (order.courier.name ?? 'Name unavailable')
           : 'Not assigned yet'}
-      </dd>
-      <dt>Reward</dt>
-      <dd>
-        {order.creditReward} credits{' '}
+      </Field>
+      <Field label="Reward">
+        {order.creditReward} credits
         <small>
           {order.creditState
             ? creditLabels[order.creditState]
@@ -49,12 +73,11 @@ export const OrderDetails = ({ order }: { order: Errand }) => (
               ? 'No credits reserved'
               : 'Reservation not confirmed'}
         </small>
-      </dd>
-      {order.status === 'OPEN' && (
-        <>
-          <dt>Accept before</dt>
-          <dd>{formatOrderTime(order.expiresAt)}</dd>
-        </>
+      </Field>
+      {order.status === 'OPEN' ? (
+        <Field label="Accept before">{formatOrderTime(order.expiresAt)}</Field>
+      ) : (
+        <Field label="Posted">{formatOrderTime(order.createdAt)}</Field>
       )}
     </dl>
   </section>

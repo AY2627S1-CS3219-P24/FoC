@@ -170,6 +170,11 @@ const createErrandRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/errands/new',
   component: CreateErrandPage,
+  // the path from the errand that gonna request again
+  validateSearch: (search: Record<string, unknown>): { from?: string } => ({
+    from:
+      typeof search.from === 'string' && search.from ? search.from : undefined,
+  }),
 })
 const myErrandsRoute = createRoute({
   getParentRoute: () => userRoute,
