@@ -13,11 +13,50 @@
     border-bottom: 2px solid var(--color-primary);
     font-weight: 600;
   }
+
+  // remove the focused box for the group
+  &:focus-visible {
+    color: var(--color-primary);
+    text-decoration: underline;
+    text-underline-offset: 6px;
+  }
 }
 
-.filter {
+.subtitle {
+  margin: -8px 0 20px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.search {
   display: flex;
-  gap: 8px;
   align-items: center;
-  font-size: 13px;
+  gap: 8px;
+  width: min(320px, 100%);
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cbd2df;
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+
+  &:focus-within {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-soft);
+  }
+
+  input:focus-visible {
+    outline: none;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 14px;
+  }
 }

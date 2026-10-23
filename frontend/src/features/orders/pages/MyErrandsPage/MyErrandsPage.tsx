@@ -1,30 +1,67 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { OrderPagination } from '../../components/OrderPagination/OrderPagination'
 import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
-import type { OrderListSearch } from '../../utils/orderFilters'
+import { getHomeMode, rememberHomeMode } from '../../utils/homeMode'
 import styles from '../../styles/order.module.scss'
 import pageStyles from './MyErrandsPage.module.scss'
 
+const SEARCH_DELAY_MS = 300
+
+// will follow the home page role switch
 export const MyErrandsPage = () => {
   const search = useSearch({ from: '/authenticated/user/errands' })
   const navigate = useNavigate()
+  const side =
+    search.participation === 'all'
+      ? getHomeMode() === 'courier'
+        ? 'delivering'
+        : 'requested'
+      : search.participation
+  const delivering = side === 'delivering'
+  const [text, setText] = useState(search.q ?? '')
+
+  // A link that names a side also moves Home to that side.
+  useEffect(() => {
+    if (search.participation !== 'all')
+      rememberHomeMode(
+        search.participation === 'delivering' ? 'courier' : 'requestor',
+      )
+  }, [search.participation])
+
+  // Search once typing pauses, from the first page.
+  useEffect(() => {
+    const q = text.trim() || undefined
+    if (q === search.q) return
+    const timer = setTimeout(() => {
+      void navigate({
+        to: '/errands',
+        search: { ...search, q, page: 0 },
+        replace: true,
+      })
+    }, SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [text, search, navigate])
+
   const query = useMyErrands({
-    as:
-      search.participation === 'requested'
-        ? 'requester'
-        : search.participation === 'delivering'
-          ? 'courier'
-          : 'all',
+    as: delivering ? 'courier' : 'requester',
     view: search.tab,
     page: search.page,
     size: 20,
+    q: search.q,
   })
   const now = useOrderClock()
   return (
     <div className={styles.page}>
       <h1 className={styles.pageTitle}>My Errands</h1>
+      <p className={pageStyles.subtitle}>
+        {delivering
+          ? 'Errands you deliver for others. Switch to Request on Home to see your own requests.'
+          : 'Errands you asked others to collect. Switch to Deliver on Home to see your deliveries.'}
+      </p>
       <div className={styles.toolbar}>
         <nav className={pageStyles.tabs} aria-label="Errand history">
           {(['active', 'history'] as const).map((tab) => (
@@ -39,27 +76,15 @@ export const MyErrandsPage = () => {
             </Link>
           ))}
         </nav>
-        <label className={pageStyles.filter}>
-          Type
-          <select
-            className={styles.select}
-            value={search.participation}
-            onChange={(event) =>
-              void navigate({
-                to: '/errands',
-                search: {
-                  ...search,
-                  participation: event.target
-                    .value as OrderListSearch['participation'],
-                  page: 0,
-                },
-              })
-            }
-          >
-            <option value="all">All</option>
-            <option value="requested">Requested by me</option>
-            <option value="delivering">I'm delivering</option>
-          </select>
+        <label className={pageStyles.search}>
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Search item, shop or place"
+            aria-label="Search errands"
+          />
         </label>
       </div>
       <OrderFeedback
@@ -84,26 +109,31 @@ export const MyErrandsPage = () => {
             </ul>
           ) : (
             <div className={styles.panel}>
-              <p>
-                No {search.tab === 'history' ? 'past' : 'active'} errands match
-                this view.
-              </p>
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'requestor' }}
-              >
-                Request a pickup
-              </Link>{' '}
-              or{' '}
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'courier' }}
-              >
-                find an errand
-              </Link>
-              .
+              {search.q ? (
+                <p>No errands match “{search.q}”.</p>
+              ) : delivering ? (
+                <p>
+                  No {search.tab === 'history' ? 'past' : 'current'} deliveries.{' '}
+                  <Link
+                    className={styles.link}
+                    to="/home"
+                    search={{ mode: 'courier' }}
+                  >
+                    Find an errand
+                  </Link>
+                </p>
+              ) : (
+                <p>
+                  No {search.tab === 'history' ? 'past' : 'current'} requests.{' '}
+                  <Link
+                    className={styles.link}
+                    to="/home"
+                    search={{ mode: 'requestor' }}
+                  >
+                    Request a pickup
+                  </Link>
+                </p>
+              )}
             </div>
           )}
           <OrderPagination

@@ -259,7 +259,7 @@ it.each(['/home?mode=courier', assignedPath])(
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByText(
       path === assignedPath
-        ? 'No active errands match this view.'
+        ? /No current deliveries/
         : 'No open errands right now. Check back soon.',
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
