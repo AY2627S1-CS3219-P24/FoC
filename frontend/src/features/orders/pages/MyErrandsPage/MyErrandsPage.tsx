@@ -95,7 +95,7 @@ export const MyErrandsPage = () => {
       {query.data && query.userId && !query.error && (
         <>
           {query.data.items.length ? (
-            <ul className={styles.list}>
+            <ul className={`${styles.list} ${pageStyles.cards}`}>
               {query.data.items.map((order) => (
                 <li key={order.id}>
                   <OrderCard

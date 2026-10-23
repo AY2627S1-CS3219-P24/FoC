@@ -31,7 +31,9 @@ import {
 import type { PendingCreation } from '../../utils/creationRequest'
 import type { Errand } from '../../types/errand.types'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
+import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import styles from '../../styles/order.module.scss'
+import pageStyles from './CreateErrandPage.module.scss'
 
 type KnownOrder = { id: string; posted: boolean }
 
@@ -174,7 +176,7 @@ const CreationForm = ({
     }
   }
   return (
-    <div className={`${styles.page} ${styles.narrow}`}>
+    <div className={styles.page}>
       <Link to="/home" search={{ mode: 'requestor' }} className={styles.back}>
         ← Back to home
       </Link>
@@ -232,55 +234,60 @@ const CreationForm = ({
             ? 'Review request'
             : 'Create an Errand'}
       </h1>
-      {knownOrder ? (
-        <div className={styles.actions}>
-          <Button
-            className={styles.button}
-            onClick={() => void openOrder(knownOrder)}
-          >
-            Open order
-          </Button>
-          <Link
-            to="/errands"
-            search={{ tab: 'active', participation: 'requested', page: 0 }}
-            className={styles.secondary}
-          >
-            Go to My Errands
-          </Link>
+      <div className={pageStyles.layout}>
+        <div className={pageStyles.main}>
+          {knownOrder ? (
+            <div className={styles.actions}>
+              <Button
+                className={styles.button}
+                onClick={() => void openOrder(knownOrder)}
+              >
+                Open order
+              </Button>
+              <Link
+                to="/errands"
+                search={{ tab: 'active', participation: 'requested', page: 0 }}
+                className={styles.secondary}
+              >
+                Go to My Errands
+              </Link>
+            </div>
+          ) : review ? (
+            <ErrandReview
+              values={values}
+              pending={create.isPending}
+              canEdit={!unknown}
+              onEdit={() => {
+                create.reset()
+                setFailed(false)
+                setLocalError(null)
+                setReview(false)
+                setOriginal(null)
+                clearCreation(userId)
+              }}
+              onSubmit={() => void submit()}
+              submitLabel={
+                unknown
+                  ? 'Retry original request'
+                  : failed
+                    ? 'Try a new request'
+                    : sameRequest
+                      ? 'Post another request'
+                      : undefined
+              }
+            />
+          ) : (
+            <ErrandForm
+              values={values}
+              onReview={(data) => {
+                setValues(data)
+                setReview(true)
+              }}
+            />
+          )}
         </div>
-      ) : review ? (
-        <ErrandReview
-          values={values}
-          pending={create.isPending}
-          canEdit={!unknown}
-          onEdit={() => {
-            create.reset()
-            setFailed(false)
-            setLocalError(null)
-            setReview(false)
-            setOriginal(null)
-            clearCreation(userId)
-          }}
-          onSubmit={() => void submit()}
-          submitLabel={
-            unknown
-              ? 'Retry original request'
-              : failed
-                ? 'Try a new request'
-                : sameRequest
-                  ? 'Post another request'
-                  : undefined
-          }
-        />
-      ) : (
-        <ErrandForm
-          values={values}
-          onReview={(data) => {
-            setValues(data)
-            setReview(true)
-          }}
-        />
-      )}
+        <CreationGuide userId={userId} />
+      </div>
       {failed && (
         <Link
           to="/errands"
@@ -291,5 +298,49 @@ const CreationForm = ({
         </Link>
       )}
     </div>
+  )
+}
+
+/** Beside the form: the balance to spend from, and what happens after posting. */
+const CreationGuide = ({ userId }: { userId: string }) => {
+  const balance = useCreditBalance(userId)
+  return (
+    <aside className={pageStyles.guide} aria-label="About posting an errand">
+      <section className={styles.panel}>
+        <h2>Your credits</h2>
+        <p className={pageStyles.balance}>
+          {balance.data ? balance.data.availableBalance : '–'}
+          <span> available</span>
+        </p>
+        <p className={styles.muted}>
+          The reward you set is reserved when you post, and paid to your courier
+          only after you confirm you received the item.
+        </p>
+      </section>
+      <section className={styles.panel}>
+        <h2>How it works</h2>
+        <ol className={pageStyles.steps}>
+          <li>
+            <strong>Post your request</strong>
+            <span>Couriers nearby can see it until it expires.</span>
+          </li>
+          <li>
+            <strong>A courier accepts</strong>
+            <span>You will see who is collecting it.</span>
+          </li>
+          <li>
+            <strong>They pick it up</strong>
+            <span>The errand moves to “Picked up”.</span>
+          </li>
+          <li>
+            <strong>Confirm received</strong>
+            <span>
+              The courier is paid. Cancelling before acceptance returns your
+              credits.
+            </span>
+          </li>
+        </ol>
+      </section>
+    </aside>
   )
 }

@@ -8,16 +8,24 @@ import styles from './OrderCard.module.scss'
 
 const participants = (order: Errand, userId: string) => {
   if (order.requester.id === userId) {
-    return order.courier
-      ? `Requested by you · Courier: ${order.courier.name ?? 'Courier'}`
-      : 'Requested by you'
+    return {
+      role: 'Requested by you',
+      other: order.courier
+        ? `Courier: ${order.courier.name ?? 'Courier'}`
+        : null,
+    }
   }
   if (order.courier?.id === userId) {
-    const delivering =
-      order.status === 'COMPLETED' ? 'You delivered' : "You're delivering"
-    return `${delivering} · For ${order.requester.name ?? 'Requester'}`
+    return {
+      role:
+        order.status === 'COMPLETED' ? 'You delivered' : "You're delivering",
+      other: `For ${order.requester.name ?? 'Requester'}`,
+    }
   }
-  return `Requested by ${order.requester.name ?? 'Requester'}`
+  return {
+    role: `Requested by ${order.requester.name ?? 'Requester'}`,
+    other: null,
+  }
 }
 
 export const OrderCard = ({
@@ -32,6 +40,7 @@ export const OrderCard = ({
   listSearch?: OrderListSearch
 }) => {
   const courier = order.courier?.id === userId
+  const people = participants(order, userId)
   return (
     <Link
       className={styles.card}
@@ -66,9 +75,9 @@ export const OrderCard = ({
           </span>
         </p>
         <span className={styles.people}>
-          {participants(order, userId)} ·{' '}
-          {formatOrderTime(order.endedAt ?? order.createdAt)}
+          {people.role} · {formatOrderTime(order.endedAt ?? order.createdAt)}
         </span>
+        {people.other && <span className={styles.people}>{people.other}</span>}
       </div>
       <OrderStatusBadge status={order.status} />
       <span className={styles.credits} data-earned={courier || undefined}>

@@ -1,9 +1,7 @@
+// supplier categories FOOD, COFFEE, SHOPPING, PRINTING
 export const categories = [
-  'Restaurants',
-  'Drinks',
-  'Canteen stalls',
-  'Snacks',
-  'Clothing',
-  'Residences',
-  'Faculties',
+  { name: 'Food', description: 'Canteens, food courts and restaurants' },
+  { name: 'Coffee & drinks', description: 'Coffee, tea and bubble tea' },
+  { name: 'Shopping', description: 'NUS Co-op and convenience stores' },
+  { name: 'Printing', description: 'Printing and photocopying' },
 ]

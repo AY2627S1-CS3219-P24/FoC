@@ -37,7 +37,7 @@ describe('RequesterHomePage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('list', { name: 'Location categories' }).children,
-    ).toHaveLength(7)
+    ).toHaveLength(4)
     expect(
       screen.getByRole('heading', { name: 'Favourite locations' }),
     ).toBeInTheDocument()
@@ -52,10 +52,14 @@ describe('RequesterHomePage', () => {
   it('opens the category preview and returns focus after closing', async () => {
     const user = userEvent.setup()
     render(<RequesterHomePage />)
-    await user.click(screen.getByRole('button', { name: 'Drinks' }))
-    expect(screen.getByRole('dialog', { name: 'Drinks' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Coffee & drinks/ }))
+    expect(
+      screen.getByRole('dialog', { name: 'Coffee & drinks' }),
+    ).toBeInTheDocument()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Drinks' })).toHaveFocus()
+    expect(
+      screen.getByRole('button', { name: /Coffee & drinks/ }),
+    ).toHaveFocus()
   })
 })

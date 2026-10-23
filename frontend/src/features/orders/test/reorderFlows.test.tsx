@@ -131,14 +131,10 @@ it('shows what was ordered, who delivered it and when, leaving Request again to 
   const mine = (await screen.findByText('Iced latte, less sugar')).closest(
     'a',
   ) as HTMLElement
-  expect(
-    within(mine).getByText(/Requested by you · Courier: Jamie/),
-  ).toBeInTheDocument()
+  expect(within(mine).getByText('Courier: Jamie')).toBeInTheDocument()
   expect(within(mine).getByText('Completed')).toBeInTheDocument()
   const delivered = screen.getByText('Curry puffs').closest('a') as HTMLElement
-  expect(
-    within(delivered).getByText(/You delivered · For Alex/),
-  ).toBeInTheDocument()
+  expect(within(delivered).getByText('For Alex')).toBeInTheDocument()
   expect(within(delivered).getByText('+3 credits')).toBeInTheDocument()
   expect(
     screen.queryByRole('link', { name: /request again/i }),

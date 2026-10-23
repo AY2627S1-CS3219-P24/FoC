@@ -114,51 +114,58 @@ export const OrderDetailPage = () => {
           </p>
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
-            <OrderTimeline order={order} />
-          </div>
-          {order.status === 'CREATING' &&
-            order.requester.id === query.userId && (
-              <div className={styles.actions}>
-                <Button
-                  className={styles.secondary}
-                  onClick={() => void query.refetch()}
-                >
-                  Refresh status
-                </Button>
-                <Button
-                  className={styles.button}
-                  disabled={creationRetry.isPending}
-                  onClick={() => void retry()}
-                >
-                  {creationRetry.isPending
-                    ? 'Checking…'
-                    : 'Retry original request'}
-                </Button>
-              </div>
-            )}
-          {canRequestAgain(order, query.userId) && (
-            <div className={styles.actions}>
+            {/* the errand order progress */}
+            <div className={styles.side}>
+              <OrderTimeline order={order} />
+              {order.status === 'CREATING' &&
+                order.requester.id === query.userId && (
+                  <div className={styles.actions}>
+                    <Button
+                      className={styles.secondary}
+                      onClick={() => void query.refetch()}
+                    >
+                      Refresh status
+                    </Button>
+                    <Button
+                      className={styles.button}
+                      disabled={creationRetry.isPending}
+                      onClick={() => void retry()}
+                    >
+                      {creationRetry.isPending
+                        ? 'Checking…'
+                        : 'Retry original request'}
+                    </Button>
+                  </div>
+                )}
+              {canRequestAgain(order, query.userId) && (
+                <div className={styles.actions}>
+                  <Link
+                    className={styles.button}
+                    to="/errands/new"
+                    search={{ from: order.id }}
+                  >
+                    {order.status === 'CREATE_FAILED'
+                      ? 'Create a new request'
+                      : 'Request again'}
+                  </Link>
+                </div>
+              )}
+              <OrderActions
+                key={`${query.userId}:${order.id}`}
+                order={order}
+                userId={query.userId}
+                now={now}
+                onError={setActionError}
+              />
               <Link
-                className={styles.button}
-                to="/errands/new"
-                search={{ from: order.id }}
+                to="/home"
+                search={{ mode: 'courier' }}
+                className={styles.back}
               >
-                {order.status === 'CREATE_FAILED'
-                  ? 'Create a new request'
-                  : 'Request again'}
+                Browse other errands →
               </Link>
             </div>
-          )}
-          <OrderActions
-            key={`${query.userId}:${order.id}`}
-            order={order}
-            userId={query.userId}
-            now={now}
-            onError={setActionError}
-          />
-          <Link to="/home" search={{ mode: 'courier' }} className={styles.back}>
-            Browse other errands →
-          </Link>
+          </div>
         </>
       )}
     </div>

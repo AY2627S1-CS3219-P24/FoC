@@ -17,8 +17,6 @@
   // remove the focused box for the group
   &:focus-visible {
     color: var(--color-primary);
-    text-decoration: underline;
-    text-underline-offset: 6px;
   }
 }
 
@@ -58,5 +56,12 @@
     color: var(--color-text);
     font: inherit;
     font-size: 14px;
+  }
+}
+
+// use two cols for the errand history
+@media (min-width: 1200px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
