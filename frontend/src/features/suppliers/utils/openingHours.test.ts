@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   closesAfterMidnight,
+  describeOpenStatus,
   formatTodayHours,
   formatWeeklyHours,
   isOpenAt,
@@ -71,6 +72,16 @@ describe('formatTodayHours', () => {
     const hours = on(weekdays, '09:00', '18:00')
     expect(formatTodayHours(hours, at(MONDAY, 12))).toBe('09:00 – 18:00')
     expect(formatTodayHours(hours, at(SATURDAY, 12))).toBe('Closed today')
+  })
+})
+
+describe('describeOpenStatus', () => {
+  it('includes the closing time while the supplier is open', () => {
+    const hours = on(['MONDAY'], '09:00', '20:00')
+    expect(describeOpenStatus(hours, at(MONDAY, 12))).toBe(
+      'Open now · Closes at 20:00',
+    )
+    expect(describeOpenStatus(hours, at(TUESDAY, 12))).toBe('Closed')
   })
 })
 

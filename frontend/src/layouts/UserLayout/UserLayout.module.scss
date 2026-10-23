@@ -11,6 +11,24 @@
 .content {
   padding: 12px 32px 64px;
 }
+
+.mapCanvas,
+.mapShell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #e7e2d4;
+}
+
+.mapShell {
+  position: relative;
+}
+
+.mapContent {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: 0;
+}
 .skipLink {
   position: fixed;
   top: 8px;

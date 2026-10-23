@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
 import { getApiErrorCode } from '#/lib/httpErrors'
 import { useSession } from '#/features/auth/hooks/useSession'
+import { usePickupLocations } from '#/features/suppliers/hooks/usePickupLocations'
 import { getCurrentUserId } from '#/features/auth/lib/accessTokenStore'
 import { ErrandForm } from '../../components/ErrandForm/ErrandForm'
 import { ErrandReview } from '../../components/ErrandReview/ErrandReview'
@@ -36,9 +37,17 @@ export const CreateErrandPage = () => {
   return <CreationForm key={userId} userId={userId} />
 }
 const CreationForm = ({ userId }: { userId: string }) => {
+  const { supplier: supplierId, from, category } = useSearch({
+    from: '/authenticated/user/errands/new',
+  })
+  const pickups = usePickupLocations(Boolean(supplierId))
   const [original, setOriginal] = useState<PendingCreation | null>(() =>
     loadCreation(userId),
   )
+  const preset =
+    supplierId && !original
+      ? (pickups.data?.find((location) => location.id === supplierId) ?? null)
+      : null
   const [values, setValues] = useState<CreateErrandValues>(
     () =>
       original?.values ?? {
@@ -55,6 +64,21 @@ const CreationForm = ({ userId }: { userId: string }) => {
   const [failed, setFailed] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [knownOrder, setKnownOrder] = useState<KnownOrder | null>(null)
+  useEffect(() => {
+    if (!preset) return
+    setValues((current) =>
+      current.pickup?.id === preset.id
+        ? current
+        : { ...current, pickup: preset },
+    )
+  }, [preset])
+  const formValues: CreateErrandValues =
+    values.pickup || !preset ? values : { ...values, pickup: preset }
+  const waitingForPickup =
+    Boolean(supplierId) &&
+    !original &&
+    !formValues.pickup &&
+    pickups.isPending
   const { create } = useOrderActions()
   const retryFailureReason = orderErrorReason(create.error)
   const navigate = useNavigate()
@@ -126,9 +150,23 @@ const CreationForm = ({ userId }: { userId: string }) => {
   }
   return (
     <div className={`${styles.page} ${styles.narrow}`}>
-      <Link to="/home" search={{ mode: 'requestor' }} className={styles.back}>
-        ← Back to home
-      </Link>
+      {from === 'map' ? (
+        <Link to="/map" className={styles.back}>
+          ← Back to map
+        </Link>
+      ) : from === 'request' ? (
+        <Link to="/request" search={{ category }} className={styles.back}>
+          ← Back to Find a supplier
+        </Link>
+      ) : from === 'locations' && category ? (
+        <Link to="/locations" search={{ category }} className={styles.back}>
+          ← Back to locations
+        </Link>
+      ) : (
+        <Link to="/home" className={styles.back}>
+          ← Back to home
+        </Link>
+      )}
       {localError ? (
         <OrderNotice tone="error" title={localError} />
       ) : failed ? (
@@ -202,9 +240,13 @@ const CreationForm = ({ userId }: { userId: string }) => {
                 : undefined
           }
         />
+      ) : waitingForPickup ? (
+        <p className={styles.muted} role="status">
+          Loading pickup location…
+        </p>
       ) : (
         <ErrandForm
-          values={values}
+          values={formValues}
           onReview={(data) => {
             setValues(data)
             setReview(true)

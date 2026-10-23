@@ -2,9 +2,49 @@
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 40px;
+  gap: 28px;
   padding: 16px 24px;
   min-height: 72px;
+}
+
+.navGroup {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  min-width: 0;
+}
+
+.overlay {
+  position: relative;
+  z-index: 5;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 0;
+  margin: 0;
+  padding: 16px 20px 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.island {
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 8px 28px #1720331f;
+  pointer-events: auto;
+}
+
+.overlay .navGroup {
+  padding: 8px 22px;
+}
+
+.overlay .actions {
+  margin-left: 0;
+  padding: 6px 12px 6px 8px;
+}
+
+.overlay .chevron {
+  margin-left: 4px;
 }
 .brand {
   font-size: 24px;
@@ -17,9 +57,9 @@
 }
 .navigation {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  justify-content: space-evenly;
+  justify-content: flex-start;
   gap: 28px;
   align-items: center;
   font-size: 15px;
@@ -168,13 +208,27 @@ button.account {
     gap: 12px;
     padding: 16px;
   }
+  .overlay {
+    flex-wrap: nowrap;
+    padding: 12px 12px 0;
+  }
+  .overlay .navGroup {
+    gap: 16px;
+    padding: 8px 14px;
+  }
   .navigation {
     order: 3;
     flex-basis: 100%;
     width: 100%;
-    justify-content: space-between;
-    gap: 16px;
+    justify-content: flex-start;
+    gap: 20px;
     font-size: 14px;
+  }
+  .overlay .navigation {
+    order: 0;
+    flex-basis: auto;
+    width: auto;
+    gap: 14px;
   }
   .name {
     max-width: 130px;

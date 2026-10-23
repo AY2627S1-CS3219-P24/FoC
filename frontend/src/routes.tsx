@@ -16,6 +16,9 @@ import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/Su
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
 import { SupplierCategoryPage } from '#/features/suppliers/pages/SupplierCategoryPage/SupplierCategoryPage'
+import { FindSupplierPage } from '#/features/suppliers/pages/FindSupplierPage/FindSupplierPage'
+import { CampusMapPage } from '#/features/suppliers/pages/CampusMapPage/CampusMapPage'
+import type { SupplierCategory } from '#/features/suppliers/types/supplier.types'
 import {
   parseSupplierListSearch,
   toSupplierFilters,
@@ -32,9 +35,8 @@ import { UserEditPage } from '#/features/users/pages/UserEditPage/UserEditPage'
 import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
 import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
-import { HomePage } from '#/features/orders/pages/HomePage/HomePage'
-import { getHomeMode } from '#/features/orders/utils/homeMode'
-import type { HomeMode } from '#/features/orders/utils/homeMode'
+import { RequesterHomePage } from '#/features/orders/pages/RequesterHomePage/RequesterHomePage'
+import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
 import { CreateErrandPage } from '#/features/orders/pages/CreateErrandPage/CreateErrandPage'
@@ -151,24 +153,52 @@ const homeRoute = createRoute({
   path: '/home',
   validateSearch: (
     search: Record<string, unknown>,
-  ): { mode?: HomeMode; q?: string; page?: number } => ({
+  ): { mode?: 'courier'; q?: string; page?: number } => ({
     q: typeof search.q === 'string' ? search.q : undefined,
     page: search.page == null ? undefined : parsePage(search.page),
-    mode:
-      search.mode === 'requestor' || search.mode === 'courier'
-        ? search.mode
-        : undefined,
+    mode: search.mode === 'courier' ? 'courier' : undefined,
   }),
   beforeLoad: ({ search }) => {
-    if (!search.mode) {
+    if (search.mode === 'courier') {
       throw redirect({
-        to: '/home',
-        search: { mode: getHomeMode() },
+        to: '/deliver',
+        search: { q: search.q, page: search.page },
         replace: true,
       })
     }
   },
-  component: HomePage,
+  component: RequesterHomePage,
+})
+
+const requestRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/request',
+  validateSearch: (search: Record<string, unknown>) => {
+    const categories = toSupplierFilters(parseSupplierListSearch(search))
+      .category
+    return {
+      category: categories?.length === 1 ? categories[0] : undefined,
+    }
+  },
+  component: FindSupplierPage,
+})
+
+const deliverRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/deliver',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { q?: string; page?: number } => ({
+    q: typeof search.q === 'string' ? search.q : undefined,
+    page: search.page == null ? undefined : parsePage(search.page),
+  }),
+  component: CourierHomePage,
+})
+
+const campusMapRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/map',
+  component: CampusMapPage,
 })
 
 const supplierCategoryRoute = createRoute({
@@ -185,7 +215,6 @@ const supplierCategoryRoute = createRoute({
     if (categories?.length !== 1 || !category) {
       throw redirect({
         to: '/home',
-        search: { mode: 'requestor' },
         replace: true,
       })
     }
@@ -196,6 +225,30 @@ const supplierCategoryRoute = createRoute({
 const createErrandRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/errands/new',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    supplier?: string
+    from?: 'map' | 'request' | 'locations'
+    category?: SupplierCategory
+  } => {
+    const category = toSupplierFilters(parseSupplierListSearch(search))
+      .category?.[0]
+    const from =
+      search.from === 'map' ||
+      search.from === 'request' ||
+      search.from === 'locations'
+        ? search.from
+        : undefined
+    return {
+      supplier:
+        typeof search.supplier === 'string' && search.supplier
+          ? search.supplier
+          : undefined,
+      from,
+      category,
+    }
+  },
   component: CreateErrandPage,
 })
 const myErrandsRoute = createRoute({
@@ -306,6 +359,9 @@ export const routeTree = rootRoute.addChildren([
   authenticatedRoute.addChildren([
     userRoute.addChildren([
       homeRoute,
+      requestRoute,
+      deliverRoute,
+      campusMapRoute,
       supplierCategoryRoute,
       createErrandRoute,
       myErrandsRoute,

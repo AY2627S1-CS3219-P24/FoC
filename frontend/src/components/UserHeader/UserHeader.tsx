@@ -16,6 +16,7 @@ export type UserHeaderProps = {
   onNotificationsClick?: () => void
   onAccountClick?: () => void
   onLogout?: () => void
+  overlay?: boolean
 }
 
 export const UserHeader = ({
@@ -29,6 +30,7 @@ export const UserHeader = ({
   onNotificationsClick,
   onAccountClick,
   onLogout,
+  overlay = false,
 }: UserHeaderProps) => {
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null)
   const initials =
@@ -71,13 +73,18 @@ export const UserHeader = ({
     </>
   )
 
+  const island = overlay ? styles.island : undefined
   return (
-    <header className={styles.header}>
-      <div className={styles.brand}>{brand}</div>
-      <nav aria-label="Main navigation" className={styles.navigation}>
-        {navigation}
-      </nav>
-      <div className={styles.actions}>
+    <header
+      className={overlay ? `${styles.header} ${styles.overlay}` : styles.header}
+    >
+      <div className={[styles.navGroup, island].filter(Boolean).join(' ')}>
+        <div className={styles.brand}>{brand}</div>
+        <nav aria-label="Main navigation" className={styles.navigation}>
+          {navigation}
+        </nav>
+      </div>
+      <div className={[styles.actions, island].filter(Boolean).join(' ')}>
         <Button
           className={styles.notifications}
           onClick={onNotificationsClick}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@base-ui/react/button'
-import { Dialog } from '@base-ui/react/dialog'
+import { SupplierSlideOver } from '../../components/SupplierSlideOver/SupplierSlideOver'
 import { useSuppliers } from '../../hooks/useSuppliers'
 import type { Supplier, SupplierCategory } from '../../types/supplier.types'
 import { categoryLabels, formatLocation } from '../../utils/supplierFormat'
@@ -22,7 +22,7 @@ export const SupplierCategoryPage = ({
 
   return (
     <section className={styles.page}>
-      <Link to="/home" search={{ mode: 'requestor' }} className={styles.back}>
+      <Link to="/request" className={styles.back}>
         ← Back to categories
       </Link>
       <header className={styles.header}>
@@ -86,25 +86,12 @@ export const SupplierCategoryPage = ({
         </ul>
       ) : null}
 
-      <Dialog.Root
-        open={selectedSupplier !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedSupplier(null)
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Backdrop className={styles.backdrop} />
-          <Dialog.Popup className={styles.dialog}>
-            <Dialog.Title>{selectedSupplier?.name}</Dialog.Title>
-            <Dialog.Description>
-              {selectedSupplier
-                ? `${formatLocation(selectedSupplier)}. ${formatWeeklyHours(selectedSupplier.openingHours).join('; ')}.`
-                : ''}
-            </Dialog.Description>
-            <Dialog.Close className={styles.close}>Close</Dialog.Close>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <SupplierSlideOver
+        supplier={selectedSupplier}
+        from="locations"
+        category={category}
+        onClose={() => setSelectedSupplier(null)}
+      />
     </section>
   )
 }

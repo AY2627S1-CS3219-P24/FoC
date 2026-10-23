@@ -88,19 +88,11 @@ export const MyErrandsPage = () => {
                 No {search.tab === 'history' ? 'past' : 'active'} errands match
                 this view.
               </p>
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'requestor' }}
-              >
+              <Link className={styles.link} to="/request">
                 Request a pickup
               </Link>{' '}
               or{' '}
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'courier' }}
-              >
+              <Link className={styles.link} to="/deliver">
                 find an errand
               </Link>
               .

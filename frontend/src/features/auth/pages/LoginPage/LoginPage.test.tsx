@@ -134,7 +134,7 @@ describe('LoginPage', () => {
     await act(async () => resolveRequest(tokens))
 
     expect(
-      await screen.findByRole('heading', { name: 'What do you need?' }),
+      await screen.findByRole('heading', { name: 'Home' }),
     ).toBeInTheDocument()
     expect(getAccessToken()).toBe(tokens.accessToken)
     expect(
@@ -163,7 +163,7 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Log In' }))
 
     expect(
-      await screen.findByRole('heading', { name: 'What do you need?' }),
+      await screen.findByRole('heading', { name: 'Home' }),
     ).toBeInTheDocument()
     expect(getAccessToken()).toBe(tokens.accessToken)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

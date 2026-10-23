@@ -1,4 +1,4 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { UserLayout } from '#/layouts/UserLayout/UserLayout'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { useSession } from '../hooks/useSession'
@@ -12,8 +12,12 @@ export const AccountLayout = () => {
   const balance = useCreditBalance(userId)
   const navigate = useNavigate()
   const auth = useAuth()
+  const onMap = useRouterState({
+    select: (state) => state.location.pathname === '/map',
+  })
   return (
     <UserLayout
+      overlay={onMap}
       name={data?.name ?? 'Your account'}
       avatarUrl={data?.avatarUrl}
       availableCredits={balance.error ? null : balance.data?.availableBalance}
@@ -33,7 +37,7 @@ export const AccountLayout = () => {
           >
             Home
           </Link>
-          <span aria-disabled="true">Locations</span>
+          <Link to="/map">Locations</Link>
           <Link
             to="/errands"
             search={{ tab: 'active', participation: 'all', page: 0 }}

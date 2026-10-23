@@ -20,7 +20,7 @@ vi.mock('../../hooks/useOrders', () => ({
 const queryMock = vi.mocked(useMyErrands, { partial: true })
 const refetch = vi.fn()
 const emptyMessage =
-  'No errands yet. Create your first request or switch to Courier to help someone.'
+  'No errands yet. Request a pickup or deliver one to earn credits.'
 
 type QueryResult = Pick<
   ReturnType<typeof useMyErrands>,
@@ -42,21 +42,27 @@ const renderPage = async () => {
     path: '/home',
     component: RequesterHomePage,
   })
-  const locations = createRoute({
+  const request = createRoute({
     getParentRoute: () => root,
-    path: '/locations',
-    validateSearch: (search: Record<string, unknown>) => ({
-      category:
-        typeof search.category === 'string' ? search.category : undefined,
-    }),
-    component: () => <h1>Locations</h1>,
+    path: '/request',
+    component: () => <h1>Find a supplier</h1>,
+  })
+  const deliver = createRoute({
+    getParentRoute: () => root,
+    path: '/deliver',
+    component: () => <h1>Find an errand</h1>,
+  })
+  const order = createRoute({
+    getParentRoute: () => root,
+    path: '/errands/$orderId',
+    component: () => <h1>Errand</h1>,
   })
   const router = createRouter({
-    routeTree: root.addChildren([home, locations]),
+    routeTree: root.addChildren([home, request, deliver, order]),
     history: createMemoryHistory({ initialEntries: ['/home'] }),
   })
   render(<RouterProvider router={router} />)
-  await screen.findByRole('heading', { name: 'What do you need?' })
+  await screen.findByRole('heading', { name: 'Home' })
   return router
 }
 
@@ -71,67 +77,33 @@ afterEach(() => {
 })
 
 describe('RequesterHomePage', () => {
-  it('shows the requester dashboard and a link to create an errand', async () => {
-    await renderPage()
+  it('offers request and deliver without leaving recent errands behind', async () => {
+    const user = userEvent.setup()
+    const router = await renderPage()
 
-    expect(screen.getByRole('button', { name: 'Requester' })).toBeEnabled()
     expect(
       screen.getByRole('heading', { name: 'Recent errands' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Create Errand' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Request/ })).toHaveAttribute(
       'href',
-      '/errands/new',
+      '/request',
     )
-    expect(
-      within(
-        screen.getByRole('list', { name: 'Location categories' }),
-      ).getAllByRole('link'),
-    ).toHaveLength(5)
+    expect(screen.getByRole('link', { name: /Deliver/ })).toHaveAttribute(
+      'href',
+      '/deliver',
+    )
     expect(queryMock).toHaveBeenCalledWith({
       as: 'all',
       view: 'all',
       page: 0,
       size: 3,
     })
-  })
 
-  it.each([
-    ['Food', 'FOOD'],
-    ['Coffee', 'COFFEE'],
-    ['Shopping', 'SHOPPING'],
-    ['Printing', 'PRINTING'],
-    ['Other', 'OTHER'],
-  ])('links %s to its supplier category', async (label, category) => {
-    await renderPage()
-
-    expect(screen.getByRole('link', { name: label })).toHaveAttribute(
-      'href',
-      `/locations?category=${category}`,
-    )
-  })
-
-  it('navigates to locations with the selected category', async () => {
-    const user = userEvent.setup()
-    const router = await renderPage()
-
-    await user.click(screen.getByRole('link', { name: 'Coffee' }))
-
+    await user.click(screen.getByRole('link', { name: /Request/ }))
     expect(
-      await screen.findByRole('heading', { name: 'Locations' }),
+      await screen.findByRole('heading', { name: 'Find a supplier' }),
     ).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/locations')
-    expect(router.state.location.search).toEqual({ category: 'COFFEE' })
-  })
-
-  it('offers navigation to courier mode', async () => {
-    const user = userEvent.setup()
-    await renderPage()
-
-    await user.click(screen.getByRole('button', { name: 'Requester' }))
-
-    expect(
-      await screen.findByRole('menuitem', { name: 'Courier' }),
-    ).toHaveAttribute('href', '/home?mode=courier')
+    expect(router.state.location.pathname).toBe('/request')
   })
 
   it('shows an empty state when there are no recent errands', async () => {
@@ -188,6 +160,38 @@ describe('RequesterHomePage', () => {
     expect(delivering).toHaveTextContent("You're delivering")
     expect(delivering).toHaveTextContent('ACCEPTED')
     expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
+    const banner = screen.getByRole('complementary', { name: 'Current pickup' })
+    expect(banner).toHaveTextContent('Collect from Print Shop')
+    expect(banner).toHaveTextContent('Delivering · COM3 → COM2')
+    expect(
+      within(banner).getByRole('link', { name: 'Continue pickup →' }),
+    ).toHaveAttribute(
+      'href',
+      '/errands/delivering?tab=active&participation=all&page=0&posted=false',
+    )
+  })
+
+  it('hides the pickup banner when the signed-in user is not delivering', async () => {
+    queryMock.mockReturnValue({
+      ...emptyResult,
+      data: {
+        items: [
+          orderFixture({
+            id: 'accepted-by-someone',
+            status: 'ACCEPTED',
+            courier: { id: 'other', name: 'Sam' },
+          }),
+        ],
+        total: 1,
+        page: 0,
+        size: 3,
+      },
+    })
+    await renderPage()
+
+    expect(
+      screen.queryByRole('complementary', { name: 'Current pickup' }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows loading feedback without an empty state', async () => {

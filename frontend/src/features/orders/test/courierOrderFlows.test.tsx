@@ -89,9 +89,8 @@ const setup = (path: string) => {
 }
 const openDetails = async (path = '/home?mode=courier') => {
   const result = setup(path)
-  await result.user.click(
-    await screen.findByRole('link', { name: /Campus Cafe.*Library/ }),
-  )
+  await screen.findByRole('button', { name: /Campus Cafe.*Library/ })
+  await result.user.click(screen.getByRole('link', { name: 'View route' }))
   await screen.findByText('COM1, Lobby')
   expect(result.router.state.location.pathname).toBe(`/errands/${order.id}`)
   return result

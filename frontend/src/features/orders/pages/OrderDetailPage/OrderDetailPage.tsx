@@ -146,7 +146,7 @@ export const OrderDetailPage = () => {
             now={now}
             onError={setActionError}
           />
-          <Link to="/home" search={{ mode: 'courier' }} className={styles.back}>
+          <Link to="/deliver" className={styles.back}>
             Browse other errands →
           </Link>
         </>

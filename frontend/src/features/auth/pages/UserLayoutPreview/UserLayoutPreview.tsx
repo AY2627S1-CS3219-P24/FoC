@@ -17,7 +17,7 @@ export const UserLayoutPreview = () => {
           <a href="/preview/user-layout" aria-current="page">
             Home
           </a>
-          <span aria-disabled="true">Locations</span>
+          <a href="/map">Locations</a>
           <span aria-disabled="true">My Errands</span>
         </>
       }
@@ -35,8 +35,8 @@ export const UserLayoutPreview = () => {
       <h1>User layout preview</h1>
       <p role="status">{message}</p>
       <p>
-        This preview uses sample account information. Page content and
-        requester/courier switching belong to the home-page features.
+        This preview uses sample account information. Request, deliver, and
+        the campus map are separate pages from Home.
       </p>
     </UserLayout>
   )
