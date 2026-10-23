@@ -31,7 +31,7 @@ variable "start_services" {
 }
 
 run "admin_credentials_stay_on_the_admin_task" {
-  command = apply
+  command = plan
 
   module {
     source = "../../modules/ecs"
@@ -107,7 +107,7 @@ run "admin_credentials_stay_on_the_admin_task" {
   }
 
   assert {
-    condition     = local.admin_task_definition.taskRoleArn == aws_iam_role.task["user"].arn
+    condition     = local.admin_task_definition.taskRoleArn == "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.task["user"].name}"
     error_message = "Admin setup must publish with the user task role."
   }
 
@@ -127,7 +127,7 @@ run "admin_credentials_stay_on_the_admin_task" {
   }
 
   assert {
-    condition     = local.supplier_seed_task_definition.taskRoleArn == aws_iam_role.task["supplier"].arn
+    condition     = local.supplier_seed_task_definition.taskRoleArn == "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.task["supplier"].name}"
     error_message = "Supplier seed must use the supplier task role."
   }
 

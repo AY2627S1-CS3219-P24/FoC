@@ -5,7 +5,7 @@ locals {
     requiresCompatibilities = ["EC2"]
     networkMode             = "bridge"
     executionRoleArn        = aws_iam_role.bootstrap_execution.arn
-    taskRoleArn             = aws_iam_role.task["supplier"].arn
+    taskRoleArn             = local.task_role_arns["supplier"]
 
     containerDefinitions = [{
       name      = "supplier-seed"
