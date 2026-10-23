@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
 import { getApiErrorCode } from '#/lib/httpErrors'
@@ -12,36 +12,65 @@ import {
   OrderNotice,
 } from '../../components/OrderFeedback/OrderFeedback'
 import { useOrderActions } from '../../hooks/useOrderActions'
-import {
-  clearCreation,
-  loadCreation,
-  newCreation,
-  saveCreation,
-} from '../../utils/creationRequest'
-import {
-  definiteCreationRejection,
-  creationErrorOrderId,
-  orderErrorMessage,
-  orderErrorReason,
-} from '../../utils/orderErrors'
+import { useMyErrands, useOrder } from '../../hooks/useOrders'
+import { usePickupLocations } from '#/features/suppliers/hooks/usePickupLocations'
+import { findSameActiveRequest, reorderValues } from '../../utils/reorder'
+import { formatOrderTime } from '../../utils/orderFormat'
+import { clearCreation, loadCreation, newCreation, saveCreation } from '../../utils/creationRequest'
+import { definiteCreationRejection, creationErrorOrderId, orderErrorMessage, orderErrorReason } from '../../utils/orderErrors'
 import type { PendingCreation } from '../../utils/creationRequest'
+import type { Errand } from '../../types/errand.types'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
 import styles from '../../styles/order.module.scss'
 
 type KnownOrder = { id: string; posted: boolean }
 
+// repost errand info
+type CopiedErrand = { from: Errand; values: CreateErrandValues }
+
 export const CreateErrandPage = () => {
   const { userId } = useSession()
+  const { from } = useSearch({ from: '/authenticated/user/errands/new' })
   if (!userId) return <OrderFeedback loading />
-  return <CreationForm key={userId} userId={userId} />
+  return from ? (
+    <CopiedCreationForm key={`${userId}:${from}`} userId={userId} id={from} />
+  ) : (
+    <CreationForm key={userId} userId={userId} />
+  )
 }
-const CreationForm = ({ userId }: { userId: string }) => {
+// load past errand, allow adjust the info for the form
+const CopiedCreationForm = ({ userId, id }: { userId: string; id: string }) => {
+  const past = useOrder(id)
+  const locations = usePickupLocations(true)
+  // unconfirmed submission need be resolve before request repost
+  if (loadCreation(userId)) return <CreationForm userId={userId} />
+  if (past.isPending || locations.isPending) return <OrderFeedback loading />
+  if (!past.data || past.data.requester.id !== userId)
+    return <CreationForm userId={userId} />
+  return (
+    <CreationForm
+      userId={userId}
+      copied={{
+        from: past.data,
+        values: reorderValues(past.data, locations.data ?? []),
+      }}
+    />
+  )
+}
+const CreationForm = ({
+  userId,
+  copied,
+}: {
+  userId: string
+  copied?: CopiedErrand
+}) => {
   const [original, setOriginal] = useState<PendingCreation | null>(() =>
     loadCreation(userId),
   )
   const [values, setValues] = useState<CreateErrandValues>(
     () =>
-      original?.values ?? {
+      original?.values ??
+      copied?.values ?? {
         pickup: null,
         deliveryLocation: '',
         description: '',
@@ -56,6 +85,16 @@ const CreationForm = ({ userId }: { userId: string }) => {
   const [localError, setLocalError] = useState<string | null>(null)
   const [knownOrder, setKnownOrder] = useState<KnownOrder | null>(null)
   const { create } = useOrderActions()
+  const active = useMyErrands({
+    as: 'requester',
+    view: 'active',
+    page: 0,
+    size: 100,
+  })
+  const sameRequest =
+    review && !knownOrder && !unknown && !failed
+      ? findSameActiveRequest(values, active.data?.items ?? [])
+      : undefined
   const retryFailureReason = orderErrorReason(create.error)
   const navigate = useNavigate()
   const lock = useRef(false)
@@ -157,6 +196,25 @@ const CreationForm = ({ userId }: { userId: string }) => {
           title={orderErrorMessage(create.error)}
         />
       ) : null}
+      {copied && !original && !knownOrder && (
+        <OrderNotice
+          tone="success"
+          title={`Copied from your request on ${formatOrderTime(copied.from.createdAt)}`}
+        >
+          {copied.values.pickup
+            ? 'Check the details, including any order number in the notes, then post it again.'
+            : `${copied.from.pickup.name} is no longer available. Choose another pickup location.`}
+        </OrderNotice>
+      )}
+      {sameRequest && (
+        <OrderNotice
+          tone="warning"
+          title="You already have the same request in progress"
+        >
+          It was posted {formatOrderTime(sameRequest.createdAt)}. Post another
+          one anyway?
+        </OrderNotice>
+      )}
       <h1 className={styles.pageTitle}>
         {knownOrder
           ? 'View your errand'
@@ -199,7 +257,9 @@ const CreationForm = ({ userId }: { userId: string }) => {
               ? 'Retry original request'
               : failed
                 ? 'Try a new request'
-                : undefined
+                : sameRequest
+                  ? 'Post another request'
+                  : undefined
           }
         />
       ) : (

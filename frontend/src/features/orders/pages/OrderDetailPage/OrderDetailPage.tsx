@@ -14,6 +14,7 @@ import { useOrder, useOrderClock } from '../../hooks/useOrders'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { clearCreation } from '../../utils/creationRequest'
 import { orderErrorMessage } from '../../utils/orderErrors'
+import { canRequestAgain, shortOrderId } from '../../utils/orderFormat'
 import styles from '../../styles/order.module.scss'
 
 export const OrderDetailPage = () => {
@@ -108,7 +109,9 @@ export const OrderDetailPage = () => {
             <h1 className={styles.pageTitle}>{title}</h1>
             <OrderStatusBadge status={order.status} />
           </div>
-          <p className={styles.muted}>Errand #{order.id}</p>
+          <p className={styles.muted} title={`Errand ID ${order.id}`}>
+            Errand #{shortOrderId(order.id)}
+          </p>
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
             <OrderTimeline order={order} />
@@ -133,12 +136,19 @@ export const OrderDetailPage = () => {
                 </Button>
               </div>
             )}
-          {order.status === 'CREATE_FAILED' &&
-            order.requester.id === query.userId && (
-              <Link className={styles.button} to="/errands/new">
-                Create a new request
+          {canRequestAgain(order, query.userId) && (
+            <div className={styles.actions}>
+              <Link
+                className={styles.button}
+                to="/errands/new"
+                search={{ from: order.id }}
+              >
+                {order.status === 'CREATE_FAILED'
+                  ? 'Create a new request'
+                  : 'Request again'}
               </Link>
-            )}
+            </div>
+          )}
           <OrderActions
             key={`${query.userId}:${order.id}`}
             order={order}
