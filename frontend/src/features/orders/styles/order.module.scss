@@ -7,6 +7,9 @@
     outline: 3px solid var(--color-primary);
     outline-offset: 3px;
   }
+  a:focus-visible {
+    outline: none;
+  }
 }
 .pageTitle {
   font-size: 26px;
