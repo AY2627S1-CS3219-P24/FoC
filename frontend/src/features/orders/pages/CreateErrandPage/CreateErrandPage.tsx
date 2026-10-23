@@ -335,8 +335,8 @@ const CreationGuide = ({ userId }: { userId: string }) => {
           <li>
             <strong>Confirm received</strong>
             <span>
-              The credits transferred to courier.
-              Cancelling before acceptance will return your credits.
+              The credits transferred to courier. Cancelling before acceptance
+              will return your credits.
             </span>
           </li>
         </ol>
