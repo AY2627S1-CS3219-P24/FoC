@@ -12,14 +12,16 @@ import type { SupplierCategory } from '../../types/supplier.types'
 import { categoryLabels } from '../../utils/supplierFormat'
 import styles from './CategoryTiles.module.scss'
 
-const categoryArt: Record<SupplierCategory, { Icon: LucideIcon; tone: string }> =
-  {
-    FOOD: { Icon: UtensilsCrossed, tone: 'orange' },
-    COFFEE: { Icon: Coffee, tone: 'blue' },
-    SHOPPING: { Icon: ShoppingBag, tone: 'purple' },
-    PRINTING: { Icon: Printer, tone: 'navy' },
-    OTHER: { Icon: Package, tone: 'green' },
-  }
+const categoryArt: Record<
+  SupplierCategory,
+  { Icon: LucideIcon; tone: string }
+> = {
+  FOOD: { Icon: UtensilsCrossed, tone: 'orange' },
+  COFFEE: { Icon: Coffee, tone: 'blue' },
+  SHOPPING: { Icon: ShoppingBag, tone: 'purple' },
+  PRINTING: { Icon: Printer, tone: 'navy' },
+  OTHER: { Icon: Package, tone: 'green' },
+}
 
 export const CategoryTiles = () => (
   <ul className={styles.categories} aria-label="Supplier categories">

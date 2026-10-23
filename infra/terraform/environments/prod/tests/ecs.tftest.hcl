@@ -31,7 +31,7 @@ variable "start_services" {
 }
 
 run "admin_credentials_stay_on_the_admin_task" {
-  command = plan
+  command = apply
 
   module {
     source = "../../modules/ecs"

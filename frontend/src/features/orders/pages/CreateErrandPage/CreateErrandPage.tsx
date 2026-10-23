@@ -85,7 +85,11 @@ const CreationForm = ({
   userId: string
   copied?: CopiedErrand
 }) => {
-  const { supplier: supplierId, from, category } = useSearch({
+  const {
+    supplier: supplierId,
+    from,
+    category,
+  } = useSearch({
     from: '/authenticated/user/errands/new',
   })
   const returnTo = isReturnTo(from) ? from : undefined
@@ -125,10 +129,7 @@ const CreationForm = ({
   const formValues: CreateErrandValues =
     values.pickup || !preset ? values : { ...values, pickup: preset }
   const waitingForPickup =
-    Boolean(supplierId) &&
-    !original &&
-    !formValues.pickup &&
-    pickups.isPending
+    Boolean(supplierId) && !original && !formValues.pickup && pickups.isPending
   const balance = useCreditBalance(userId)
   const availableCredits = balance.isSuccess
     ? balance.data.availableBalance
@@ -384,4 +385,3 @@ const CreationForm = ({
     </div>
   )
 }
-

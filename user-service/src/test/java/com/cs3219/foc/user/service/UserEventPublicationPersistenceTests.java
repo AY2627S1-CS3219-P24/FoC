@@ -137,8 +137,7 @@ class UserEventPublicationPersistenceTests extends AbstractIntegrationTest {
         awaitPublicationCompleted();
         reset(publisher);
 
-        assertThatThrownBy(() ->
-                        userService.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
+        assertThatThrownBy(() -> userService.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
                 .isInstanceOf(EntityAlreadyExistsException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM event_publication", Long.class))
                 .isZero();

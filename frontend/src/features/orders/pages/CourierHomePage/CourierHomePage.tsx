@@ -32,8 +32,7 @@ export const CourierHomePage = () => {
   const orders = useAvailableOrders(search.q ?? '', search.page ?? 0)
   const now = useOrderClock()
   const items = orders.data?.items ?? []
-  const selected =
-    items.find((order) => order.id === selectedId) ?? items[0] ?? null
+  const selected = items.find((order) => order.id === selectedId) ?? items.at(0)
 
   return (
     <section className={styles.page} aria-labelledby="courier-heading">

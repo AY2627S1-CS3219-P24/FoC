@@ -1,4 +1,11 @@
-import { Children, cloneElement, isValidElement, useEffect, useId, useState } from 'react'
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useId,
+  useState,
+} from 'react'
 import { Button } from '@base-ui/react/button'
 import { Menu } from '@base-ui/react/menu'
 import type { ReactElement, ReactNode } from 'react'
@@ -40,7 +47,9 @@ const illustratedNavigation = (navigation: ReactNode) =>
     const label = child.props.children
     if (typeof label !== 'string' || !(label in ITEM_ICONS)) return child
     const Icon = ITEM_ICONS[label as keyof typeof ITEM_ICONS]
-    return cloneElement(child as ReactElement<{ children?: ReactNode }>, undefined, (
+    return cloneElement(
+      child as ReactElement<{ children?: ReactNode }>,
+      undefined,
       <>
         <Icon
           className={styles.navIcon}
@@ -49,8 +58,8 @@ const illustratedNavigation = (navigation: ReactNode) =>
           aria-hidden="true"
         />
         <span>{label}</span>
-      </>
-    ))
+      </>,
+    )
   })
 
 export type UserHeaderProps = {
@@ -216,7 +225,10 @@ export const UserHeader = ({
                     Profile
                   </Menu.Item>
                   {onAdminClick && (
-                    <Menu.Item className={styles.menuItem} onClick={onAdminClick}>
+                    <Menu.Item
+                      className={styles.menuItem}
+                      onClick={onAdminClick}
+                    >
                       Admin
                     </Menu.Item>
                   )}

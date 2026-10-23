@@ -177,9 +177,7 @@ it('fills the form from a past errand and warns before posting the same request 
     await screen.findByText(/Copied from your request on/),
   ).toBeInTheDocument()
   expect(screen.getByLabelText('Pickup location *')).toHaveValue(CAFE_ID)
-  expect(screen.getByLabelText('Item *')).toHaveValue(
-    'Iced latte, less sugar',
-  )
+  expect(screen.getByLabelText('Item *')).toHaveValue('Iced latte, less sugar')
   expect(screen.getByLabelText('Notes')).toHaveValue('Order #1042')
   expect(screen.getByLabelText('Courier reward *')).toHaveValue(7)
 

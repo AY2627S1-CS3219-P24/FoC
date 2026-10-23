@@ -2,10 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { categoryLabels, formatLocation } from '../../utils/supplierFormat'
-import {
-  describeOpenStatus,
-  formatWeeklyHours,
-} from '../../utils/openingHours'
+import { describeOpenStatus, formatWeeklyHours } from '../../utils/openingHours'
 import type { Supplier, SupplierCategory } from '../../types/supplier.types'
 import styles from './SupplierSlideOver.module.scss'
 
@@ -62,7 +59,11 @@ export const SupplierSlideOver = ({
                 <Dialog.Title className={styles.title}>
                   {supplier.name}
                 </Dialog.Title>
-                <p className={openStatus === 'Closed' ? styles.closed : styles.open}>
+                <p
+                  className={
+                    openStatus === 'Closed' ? styles.closed : styles.open
+                  }
+                >
                   {openStatus}
                 </p>
                 <Dialog.Description className={styles.location}>

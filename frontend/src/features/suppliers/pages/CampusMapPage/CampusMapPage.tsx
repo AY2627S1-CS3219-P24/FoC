@@ -46,7 +46,11 @@ export const CampusMapPage = () => {
     .filter((supplier) => {
       const open = describeOpenStatus(supplier.openingHours, now) !== 'Closed'
       if (filter === 'open' && !open) return false
-      if (filter !== 'all' && filter !== 'open' && supplier.category !== filter) {
+      if (
+        filter !== 'all' &&
+        filter !== 'open' &&
+        supplier.category !== filter
+      ) {
         return false
       }
       const needle = query.trim().toLowerCase()
@@ -137,7 +141,9 @@ export const CampusMapPage = () => {
                   <button
                     type="button"
                     className={
-                      selected?.id === supplier.id ? styles.selected : styles.card
+                      selected?.id === supplier.id
+                        ? styles.selected
+                        : styles.card
                     }
                     aria-pressed={selected?.id === supplier.id}
                     onClick={() => setSelectedId(supplier.id)}

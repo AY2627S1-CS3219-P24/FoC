@@ -9,7 +9,7 @@ import { orderFixture } from '../../test/orderFixtures'
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   query: vi.fn(),
-  search: { q: '', page: 0 } as { q?: string; page?: number },
+  search: { q: '', page: 0 },
 }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,

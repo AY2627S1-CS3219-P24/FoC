@@ -174,8 +174,9 @@ const requestRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/request',
   validateSearch: (search: Record<string, unknown>) => {
-    const categories = toSupplierFilters(parseSupplierListSearch(search))
-      .category
+    const categories = toSupplierFilters(
+      parseSupplierListSearch(search),
+    ).category
     return {
       category: categories?.length === 1 ? categories[0] : undefined,
     }

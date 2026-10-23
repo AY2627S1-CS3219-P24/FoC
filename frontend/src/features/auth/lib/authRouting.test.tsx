@@ -169,7 +169,9 @@ it('opens deliver from home and returns with the browser history', async () => {
   await user.click(screen.getByRole('link', { name: /Deliver/ }))
   await screen.findByRole('heading', { name: 'Find an errand' })
   expect(router.state.location.pathname).toBe('/deliver')
-  expect(screen.queryByRole('heading', { name: 'Home' })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'Home' }),
+  ).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('link', { name: 'Home' }))
   await screen.findByRole('heading', { name: 'Home' })
@@ -375,9 +377,7 @@ it.each(['/home', '/'])(
 
     await act(async () => resolve(tokens()))
 
-    expect(
-      screen.getByRole('heading', { name: 'Home' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/home')
     expect(refresh).toHaveBeenCalledTimes(1)
   },
@@ -399,9 +399,7 @@ it('opens the app without showing loading when recovery finishes before 500ms', 
 
   await act(async () => resolve(tokens()))
 
-  expect(
-    screen.getByRole('heading', { name: 'Home' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
   await act(async () => vi.advanceTimersByTimeAsync(500))
   expect(screen.queryByRole('status')).not.toBeInTheDocument()
 })
@@ -550,9 +548,7 @@ it.each(['success', 'failure'])(
     fireEvent.click(button)
     await waitFor(() => expect(logoutUser).toHaveBeenCalledTimes(1))
 
-    expect(
-      screen.getByRole('heading', { name: 'Home' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/home')
 
     await act(async () => finish())

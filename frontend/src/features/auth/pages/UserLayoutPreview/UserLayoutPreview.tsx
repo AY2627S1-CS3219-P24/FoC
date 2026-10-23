@@ -35,8 +35,8 @@ export const UserLayoutPreview = () => {
       <h1>User layout preview</h1>
       <p role="status">{message}</p>
       <p>
-        This preview uses sample account information. Request, deliver, and
-        the campus map are separate pages from Home.
+        This preview uses sample account information. Request, deliver, and the
+        campus map are separate pages from Home.
       </p>
     </UserLayout>
   )
