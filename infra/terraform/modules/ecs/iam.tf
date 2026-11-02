@@ -49,41 +49,15 @@ resource "aws_iam_role_policy_attachment" "images" {
 }
 
 resource "aws_iam_role_policy" "messaging" {
-  for_each = var.services
+  for_each = setunion(toset(keys(var.topic_arns)), toset(keys(var.queue_arns)))
   role     = aws_iam_role.task[each.key].id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["sns:Publish"]
-        Resource = var.topic_arns[each.key]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "sqs:ReceiveMessage",
-          "sqs:DeleteMessage",
-          "sqs:ChangeMessageVisibility",
-          "sqs:GetQueueAttributes",
-          "sqs:GetQueueUrl"
-        ]
-        Resource = var.queue_arns[each.key]
-      },
-      {
-        Effect    = "Allow"
-        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
-        Resource  = var.messaging_kms_key_arn
-        Condition = { StringEquals = { "kms:ViaService" = "sns.${var.region}.${data.aws_partition.current.dns_suffix}" } }
-      },
-      {
-        Effect    = "Allow"
-        Action    = ["kms:Decrypt"]
-        Resource  = var.messaging_kms_key_arn
-        Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.region}.${data.aws_partition.current.dns_suffix}" } }
-      }
-    ]
+    Statement = concat(
+      lookup(local.publisher_permissions, each.key, []),
+      lookup(local.consumer_permissions, each.key, [])
+    )
   })
 }
 
@@ -174,7 +148,7 @@ resource "aws_iam_role_policy" "bootstrap_secrets" {
         Effect = "Allow"
         Action = ["ssm:GetParameters"]
         Resource = concat(
-          [for service in keys(var.services) : "${local.parameter_arn}-database-${service}"],
+          [for service in keys(local.database_services) : "${local.parameter_arn}-database-${service}"],
           ["${local.parameter_arn}-initial-admin-email", "${local.parameter_arn}-initial-admin-password"]
         )
       }

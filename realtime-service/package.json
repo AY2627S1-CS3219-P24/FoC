@@ -10,8 +10,7 @@
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "amqp-connection-manager": "^5.0.0",
-    "amqplib": "^2.0.1",
+    "@aws-sdk/client-sqs": "^3.1161.0",
     "hono": "^4.13.7",
     "pino": "^10.3.1",
     "socket.io": "^4.8.4",

@@ -27,7 +27,6 @@ const createSubscriptions = () => {
     };
     const socketServerMock = socketServer as unknown as Server;
     const subscriptions = createEventSubscriptions(
-        {userUpdatesDestination: 'user.updates', supplierChangedDestination: 'supplier.updates'},
         socketServerMock,
     );
     return {emissions, subscriptions};
@@ -36,10 +35,10 @@ const createSubscriptions = () => {
 const body = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 describe('realtime event subscriptions', () => {
-    it('routes user updates from their configured exchange', () => {
+    it('routes user updates from their event type', () => {
         const {emissions, subscriptions} = createSubscriptions();
 
-        assert.equal(subscriptions[0].destination, 'user.updates');
+        assert.equal(subscriptions[0].eventType, 'UserUpdatedEvent');
         subscriptions[0].handle(body({userId: 'user-1', event: 'order.updated', data: {orderId: 'order-1'}}));
 
         assert.deepEqual(emissions, [
@@ -47,10 +46,10 @@ describe('realtime event subscriptions', () => {
         ]);
     });
 
-    it('routes supplier changes from their configured exchange', () => {
+    it('routes supplier changes from their event type', () => {
         const {emissions, subscriptions} = createSubscriptions();
 
-        assert.equal(subscriptions[1].destination, 'supplier.updates');
+        assert.equal(subscriptions[1].eventType, 'SupplierChangedEvent');
         subscriptions[1].handle(body(validSupplierEvent));
 
         assert.deepEqual(emissions, [{event: 'supplier.changed', data: {supplierId, change: 'DEACTIVATED'}}]);

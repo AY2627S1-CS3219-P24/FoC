@@ -1,3 +1,8 @@
+output "databases" {
+  description = "Database names keyed by owning service."
+  value       = { for name, service in local.database_services : name => service.database }
+}
+
 output "bootstrap_task_arns" {
   description = "Database bootstrap task definition ARNs keyed by service."
   value       = { for service, task in aws_ecs_task_definition.database_bootstrap : service => task.arn }
@@ -16,7 +21,7 @@ output "admin_task_definition" {
 output "task_definition_arns" {
   description = "Application task definition ARNs keyed by service."
   value = merge(
-    { for name, service in module.app : name => service.task_definition_arn },
+    { for name, task in aws_ecs_task_definition.app : name => task.arn },
     { gateway = aws_ecs_task_definition.gateway.arn }
   )
 }
@@ -43,7 +48,7 @@ output "core_capacity_provider" {
 
 output "parameter_prefix" {
   description = "SSM parameter prefix for this environment."
-  value       = local.parameter_prefix
+  value       = var.name_prefix
 }
 
 output "grafana_cloudwatch_role_arn" {

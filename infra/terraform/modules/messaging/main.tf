@@ -3,11 +3,11 @@ data "aws_partition" "current" {}
 
 locals {
   topic_arns = [
-    for service in var.service_names :
+    for service in var.publisher_names :
     "arn:${data.aws_partition.current.partition}:sns:${var.region}:${data.aws_caller_identity.current.account_id}:${var.name_prefix}-${service}-events"
   ]
   publisher_arns = {
-    for consumer in var.service_names : consumer => distinct([
+    for consumer in var.consumer_names : consumer => distinct([
       for route in values(var.event_subscriptions) : aws_sns_topic.events[route.publisher].arn
       if route.consumer == consumer
     ])
@@ -49,20 +49,20 @@ resource "aws_kms_alias" "messaging" {
 }
 
 resource "aws_sns_topic" "events" {
-  for_each          = var.service_names
+  for_each          = var.publisher_names
   name              = "${var.name_prefix}-${each.key}-events"
   kms_master_key_id = aws_kms_key.messaging.arn
 }
 
 resource "aws_sqs_queue" "dead_letter" {
-  for_each                  = var.service_names
+  for_each                  = var.consumer_names
   name                      = "${var.name_prefix}-${each.key}-dlq"
   message_retention_seconds = 1209600
   kms_master_key_id         = aws_kms_key.messaging.arn
 }
 
 resource "aws_sqs_queue" "events" {
-  for_each                   = var.service_names
+  for_each                   = var.consumer_names
   name                       = "${var.name_prefix}-${each.key}-events"
   message_retention_seconds  = 345600
   visibility_timeout_seconds = 60
@@ -75,7 +75,7 @@ resource "aws_sqs_queue" "events" {
 }
 
 resource "aws_sqs_queue_redrive_allow_policy" "events" {
-  for_each  = var.service_names
+  for_each  = var.consumer_names
   queue_url = aws_sqs_queue.dead_letter[each.key].url
   redrive_allow_policy = jsonencode({
     redrivePermission = "byQueue"
@@ -84,7 +84,7 @@ resource "aws_sqs_queue_redrive_allow_policy" "events" {
 }
 
 resource "aws_sqs_queue_policy" "sns" {
-  for_each  = var.service_names
+  for_each  = var.consumer_names
   queue_url = aws_sqs_queue.events[each.key].url
   policy = jsonencode({
     Version = "2012-10-17"

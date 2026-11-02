@@ -169,12 +169,9 @@ services:
       NODE_ENV: production
       PORT: 8084
       JWKS_URL: http://user-service:8080/api/.well-known/jwks.json
-      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
-      USER_UPDATES_DESTINATION: user.updates
-      SUPPLIER_CHANGED_DESTINATION: foc.supplier-changed.v1
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SQS_QUEUE_URL: ${REALTIME_EVENTS_QUEUE_URL}
     depends_on:
-      rabbitmq:
-        condition: service_healthy
       user-service:
         condition: service_healthy
     healthcheck:

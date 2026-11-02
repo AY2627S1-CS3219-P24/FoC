@@ -1,38 +1,48 @@
 # Realtime service
 
+Run the local AWS emulator with `docker compose up -d`. Its initialization hook
+creates the realtime queue and subscribes it to supplier events.
+
 ```sh
-npm install
-JWKS_URL=http://localhost:8080/api/.well-known/jwks.json RABBITMQ_URL=amqp://foc:pass@localhost:5672 npm run dev
+npm ci
+JWKS_URL=http://localhost:8080/api/.well-known/jwks.json \
+SQS_QUEUE_URL=http://localhost:4566/000000000000/foc-dev-realtime-events \
+AWS_REGION=ap-southeast-1 AWS_ENDPOINT_URL=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test npm run dev
 ```
 
-The shared `RealtimeService` run configuration supplies the local development profile and environment. `JWKS_URL` and `RABBITMQ_URL` are required. The service listens on `PORT` (default `8084`), after the existing backend services on ports `8080` through `8083`. The RabbitMQ consumer receives message bodies and forwards validated events through the Socket.IO functions.
+The shared `RealtimeService` run configuration supplies these local settings.
+The service listens on `PORT` (default `8084`). `JWKS_URL` and `SQS_QUEUE_URL` are
+required. `AWS_REGION` defaults to `ap-southeast-1`; `AWS_ENDPOINT_URL` is optional.
+Production uses the ECS task role for AWS credentials.
 
 `npm run build` compiles the service; `npm start` runs the compiled output.
 
-`src/index.ts` starts the HTTP server, Socket.IO, and RabbitMQ consumer. Settings and access
-token verification live in `src/config.ts` and `src/auth.ts`; event schemas and
-parsers live in `src/events.ts`, with RabbitMQ routing in `src/event-subscriptions.ts`.
-The Socket.IO and RabbitMQ integrations are in `src/socket.ts` and `src/rabbitmq.ts`.
+`src/index.ts` starts HTTP, Socket.IO, and the SQS consumer. Configuration and token
+verification live in `src/config.ts` and `src/auth.ts`; event parsers live in
+`src/events.ts`. `src/event-subscriptions.ts` routes by the SQS `eventType` message
+attribute. `src/sqs.ts` long polls and deletes messages only after successful handling.
+Failed or malformed messages remain for retry and eventually move to the queue's DLQ.
 
-Connect with Socket.IO at the same origin as the HTTP server. Pass the access token on the handshake:
+Connect with Socket.IO at the same origin as the HTTP server. Pass the access token
+on the handshake:
 
 ```js
 io({auth: {token}})
 ```
 
-The handshake verifies ES256 tokens against the user-service JWKS. The token `sub` is the user id, and the socket joins `user:{userId}`.
+The handshake verifies ES256 tokens against user-service JWKS. The token `sub` is
+the user id, and the socket joins `user:{userId}`.
 
-Publish user JSON to the durable fanout exchange (`user.updates` by default):
+Terraform subscribes the realtime queue to `SupplierChangedEvent` from the supplier
+SNS topic. Every connected socket receives `supplier.changed` with `{supplierId, change}`.
+The consumer also understands `UserUpdatedEvent` with `{userId, event, data}` for
+user-scoped notifications, but no producer or subscription for that event exists yet.
+SNS subscriptions must use raw delivery and preserve the `eventType` message attribute.
 
-```json
-{"userId":"user-123","event":"order.updated","data":{"orderId":"order-456","status":"shipped"}}
-```
-
-The matching socket receives event `order.updated` with the `data` object.
-
-Supplier changes arrive on the versioned `foc.supplier-changed.v1` exchange. Every connected socket receives `supplier.changed` with `{supplierId, change}`.
-
-Malformed messages are rejected without requeueing. Each instance has an exclusive temporary queue, so an update reaches every instance. Delivery is live and best effort. Clients refetch current state after reconnecting.
+Run one realtime instance. Multiple consumers of one queue would split updates
+between instances rather than deliver them to all connected clients. Clients refetch
+current state after reconnecting; duplicate notifications are possible on retries.
 
 ## Verification
 
@@ -40,3 +50,6 @@ Malformed messages are rejected without requeueing. Each instance has an exclusi
 npm ci
 npm run check
 ```
+
+`check` typechecks source and tests, runs unit tests, and builds the service.
+Tests use mocked AWS operations and do not need a broker or AWS credentials.

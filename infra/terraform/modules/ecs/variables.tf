@@ -39,12 +39,20 @@ variable "services" {
     port       = number
     cpu        = number
     memory     = number
-    database   = string
-    username   = string
-    jwt        = bool
-    mail       = bool
+    runtime    = optional(string, "java")
+    database   = optional(string)
+    username   = optional(string)
+    jwt        = optional(bool, false)
+    mail       = optional(bool, false)
     bucket_env = optional(string)
   }))
+  validation {
+    condition = alltrue([
+      for service in values(var.services) : contains(["java", "node"], service.runtime)
+      && ((service.database == null) == (service.username == null))
+    ])
+    error_message = "Services must use the java or node runtime; database and username must be set together."
+  }
 }
 
 variable "image_bucket_names" {
@@ -117,4 +125,9 @@ variable "grafana_cloudwatch_reader" {
   type        = object({ account_id = string, external_id = string })
   default     = null
   sensitive   = true
+}
+
+variable "queue_urls" {
+  description = "SQS queue URLs keyed by consuming service."
+  type        = map(string)
 }

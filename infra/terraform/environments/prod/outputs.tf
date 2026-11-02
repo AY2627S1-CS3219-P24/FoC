@@ -15,7 +15,7 @@ output "deployment" {
     bootstrap_tasks             = module.ecs.bootstrap_task_arns
     bootstrap_log_group         = module.ecs.bootstrap_log_group
     admin_task_definition       = module.ecs.admin_task_definition
-    databases                   = { for service, settings in local.services : service => settings.database }
+    databases                   = module.ecs.databases
     task_definitions            = module.ecs.task_definition_arns
     region                      = local.region
     cluster                     = module.ecs.cluster_name

@@ -25,6 +25,12 @@ upstream credit_backend {
     keepalive 8;
 }
 
+upstream realtime_backend {
+    zone realtime_backend 64k;
+    server ${FOC_REALTIME_UPSTREAM} resolve;
+    keepalive 8;
+}
+
 server {
     listen 80;
     server_name _;
@@ -81,7 +87,7 @@ server {
     proxy_set_header X-Forwarded-Proto https;
 
     location /socket.io/ {
-        proxy_pass http://realtime-service:8084;
+        proxy_pass http://realtime_backend;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 75s;

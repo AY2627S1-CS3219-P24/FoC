@@ -14,7 +14,17 @@ port 5432 only from the ECS hosts. The gateway runs as an ECS container:
 it serves the frontend, terminates HTTPS, and proxies to the backend services.
 `mail_from` is the account-email sender and does not have to match `domain_name`.
 
-All five services share one fixed EC2 host, with one task per service when enabled.
+Realtime runs on port 8084, behind the gateway's `/socket.io/` route. Its dedicated
+SQS queue subscribes to `SupplierChangedEvent` on the supplier SNS topic, with raw
+message delivery, encryption, and a DLQ. Its task role can consume from
+that queue and decrypt through SQS; it has no publishing or database access.
+The gateway uses Cloud Map SRV discovery for realtime, matching the existing
+[bridge-network service discovery](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-discovery.html).
+Keep realtime at one task: consuming one shared SQS queue across multiple Socket.IO
+instances would deliver an update to only one instance's clients. Scaling requires
+a fanout adapter or a separate subscription per instance.
+
+All six services share one fixed EC2 host, with one task per service when enabled.
 The host's Auto Scaling Group has minimum, desired, and maximum capacity set to one;
 it replaces a failed host without adding capacity. There is no service autoscaling
 or burst host pool.
@@ -49,6 +59,12 @@ event_subscriptions = {
 }
 ```
 
+Realtime is a `runtime = "node"` entry in the shared services map; Java is the default.
+Database and username fields control database setup and credentials. Runtime controls
+Spring or Node configuration. `event_publishers` and `event_consumers` in `locals.tf`
+explicitly select services that get SNS topics and SQS queues, respectively.
+Task permissions and messaging environment variables follow those resources.
+
 Service task settings are not tfvars. Production defines them in
 [`locals.tf`](environments/prod/locals.tf). Each `services` entry is:
 
@@ -66,6 +82,13 @@ user = {
 ```
 
 ## Bootstrap
+
+Application task definitions use the native `aws_ecs_task_definition` resource.
+Runtime defaults and service environment/secret maps live in
+`modules/ecs/application-config.tf`; `services.tf` handles ECS wiring.
+`modules/ecs/moved.tf` maps the former ECS service module's task definitions to
+these resources. Review the saved plan for those address moves and any new task
+revisions before applying; the release workflow still selects the running revisions.
 
 Terraform task definitions use `bootstrap` as an image placeholder. Deploy Production
 replaces it with the run's immutable commit tag before updating ECS services.
@@ -126,10 +149,10 @@ ones. An infrastructure apply alone does not activate them. Host-size changes ca
 replace the single core host and cause downtime; review the saved plan before applying.
 
 Setting `start_services=false` stops all application services, including Order.
-Setting it to `true` runs one task for each of the five services.
+Setting it to `true` runs one task for each of the six services.
 
 For a quick runtime toggle, open GitHub Actions → **Start or stop services** →
-**Run workflow** on `main`, then choose `start` or `stop`. It sets all five ECS
+**Run workflow** on `main`, then choose `start` or `stop`. It sets all six ECS
 services to one or zero tasks and waits for them to stabilize, using the existing
 production role and shared workflow lock. It requires `ecs:UpdateService` and
 `ecs:DescribeServices` on that role. Stopping services leaves EC2 and RDS running
@@ -267,9 +290,9 @@ always run before publication. Images use that commit SHA as their immutable tag
 
 Publication reuses existing commit tags and builds only missing images. Re-run a
 failed workflow to retry its original commit; start a new run to deploy the latest
-`main`. A new commit builds all five images, including configuration-only commits.
+`main`. A new commit builds all six images, including configuration-only commits.
 A release with services disabled only stages task definitions; it does not
-validate running applications. A five-service matrix uses Amazon's ECS render and
+validate running applications. A six-service matrix uses Amazon's ECS render and
 deploy GitHub Actions to set the image and desired count. Active releases wait for
 deployment, and the deploy action reports a circuit-breaker rollback as failure.
 Disabled releases explicitly set zero desired tasks and skip the runtime wait.
@@ -319,7 +342,7 @@ firewall behavior, stopping services, or public DNS/certificate readiness.
 
 ## Grafana Cloud
 
-Container Insights stays disabled. The four Spring services push heap, GC, process CPU, HTTP, and Hikari metrics to Grafana Cloud once a minute. Application logs stay in CloudWatch for 7 days under `/ecs/<name_prefix>/user`, `supplier`, `order`, `credit`, `gateway`, and `database-bootstrap`. At a quiet log level that is about $1–2 for the month.
+Container Insights stays disabled. The four Spring services push heap, GC, process CPU, HTTP, and Hikari metrics to Grafana Cloud once a minute. Application logs stay in CloudWatch for 7 days under `/ecs/<name_prefix>/user`, `supplier`, `order`, `credit`, `realtime`, `gateway`, and `database-bootstrap`. At a quiet log level that is about $1–2 for the month.
 
 Create a Grafana Cloud free stack and an access-policy token with the `metrics:write` scope. In the stack, open the OpenTelemetry endpoint and append `/v1/metrics` if the shown URL ends at `/otlp`. Store that URL and a Basic authorization header as SecureString parameters. The header value is `Basic` plus a space plus the base64 encoding of `<instance id>:<token>`, with no trailing newline. Replace `foc-prod` with `name_prefix` when that differs:
 
