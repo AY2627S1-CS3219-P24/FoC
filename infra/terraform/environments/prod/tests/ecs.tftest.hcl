@@ -81,25 +81,32 @@ run "service_credentials_and_messaging_permissions" {
       order    = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-order-events"
       credit   = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-credit-events"
     }
-    queue_urls            = { realtime = "https://sqs.ap-southeast-1.amazonaws.com/123456789012/foc-test-realtime-events" }
+    queue_urls = {
+      for name in ["user", "supplier", "order", "credit", "realtime"] :
+      name => "https://sqs.ap-southeast-1.amazonaws.com/123456789012/foc-test-${name}-events"
+    }
     messaging_kms_key_arn = "arn:aws:kms:ap-southeast-1:123456789012:key/00000000-0000-0000-0000-000000000001"
     services = {
       realtime = { port = 8084, cpu = 128, memory = 256, runtime = "node" }
       user = {
-        port = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
-        jwt  = true, mail = true, bucket_env = "FOC_USER_BUCKET"
+        runtime = "java"
+        port    = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
+        jwt     = true, mail = true, bucket_env = "FOC_USER_BUCKET"
       }
       supplier = {
-        port = 8081, cpu = 256, memory = 640, database = "foc_supplier", username = "foc_supplier"
-        jwt  = false, mail = false, bucket_env = "FOC_SUPPLIER_BUCKET"
+        runtime = "java"
+        port    = 8081, cpu = 256, memory = 640, database = "foc_supplier", username = "foc_supplier"
+        jwt     = false, mail = false, bucket_env = "FOC_SUPPLIER_BUCKET"
       }
       order = {
-        port = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
-        jwt  = false, mail = false
+        runtime = "java"
+        port    = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
+        jwt     = false, mail = false
       }
       credit = {
-        port = 8083, cpu = 256, memory = 512, database = "foc_credit", username = "foc_credit"
-        jwt  = false, mail = false
+        runtime = "java"
+        port    = 8083, cpu = 256, memory = 512, database = "foc_credit", username = "foc_credit"
+        jwt     = false, mail = false
       }
     }
   }
@@ -152,7 +159,7 @@ run "service_credentials_and_messaging_permissions" {
       length(jsondecode(aws_ecs_task_definition.app["realtime"].container_definitions)[0].secrets) == 0
       && toset([
         for entry in jsondecode(aws_ecs_task_definition.app["realtime"].container_definitions)[0].environment : entry.name
-      ]) == toset(["AWS_REGION", "NODE_ENV", "PORT", "JWKS_URL", "SQS_QUEUE_URL"])
+      ]) == toset(["AWS_REGION", "NODE_ENV", "JWKS_URL", "SQS_QUEUE_URL"])
     )
     error_message = "Realtime must receive its Node and SQS configuration without Java settings or application secrets."
   }

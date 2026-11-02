@@ -167,7 +167,6 @@ services:
       target: realtime-service
     environment:
       NODE_ENV: production
-      PORT: 8084
       JWKS_URL: http://user-service:8080/api/.well-known/jwks.json
       AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       SQS_QUEUE_URL: ${REALTIME_EVENTS_QUEUE_URL}

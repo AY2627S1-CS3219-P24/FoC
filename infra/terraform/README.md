@@ -59,7 +59,9 @@ event_subscriptions = {
 }
 ```
 
-Realtime is a `runtime = "node"` entry in the shared services map; Java is the default.
+Each service explicitly declares its `runtime`. Optional `jwt` and `mail`
+capabilities default to disabled.
+Realtime uses `runtime = "node"`; the Spring services use `runtime = "java"`.
 Database and username fields control database setup and credentials. Runtime controls
 Spring or Node configuration. `event_publishers` and `event_consumers` in `locals.tf`
 explicitly select services that get SNS topics and SQS queues, respectively.
@@ -70,6 +72,7 @@ Service task settings are not tfvars. Production defines them in
 
 ```hcl
 user = {
+  runtime    = "java"
   port       = 8080
   cpu        = 256
   memory     = 768
@@ -84,8 +87,9 @@ user = {
 ## Bootstrap
 
 Application task definitions use the native `aws_ecs_task_definition` resource.
-Runtime defaults and service environment/secret maps live in
-`modules/ecs/application-config.tf`; `services.tf` handles ECS wiring.
+Runtime defaults, service environment/secret maps, and ECS wiring live in
+`modules/ecs/services.tf`. Messaging permissions live with the task-role policies
+in `modules/ecs/iam.tf`.
 `modules/ecs/moved.tf` maps the former ECS service module's task definitions to
 these resources. Review the saved plan for those address moves and any new task
 revisions before applying; the release workflow still selects the running revisions.

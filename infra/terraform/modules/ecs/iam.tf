@@ -1,4 +1,49 @@
 locals {
+  publisher_permissions = {
+    for name, arn in var.topic_arns : name => [
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = arn
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sns.${var.region}.${data.aws_partition.current.dns_suffix}" } }
+      }
+    ]
+  }
+
+  consumer_permissions = {
+    for name, arn in var.queue_arns : name => [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:ChangeMessageVisibility",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = arn
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.region}.${data.aws_partition.current.dns_suffix}" } }
+      }
+    ]
+  }
+
+  messaging_permissions = {
+    for name in setunion(toset(keys(var.topic_arns)), toset(keys(var.queue_arns))) : name => flatten([
+      for permissions in [local.publisher_permissions, local.consumer_permissions] :
+      permissions[name] if contains(keys(permissions), name)
+    ])
+  }
+
   ecs_trust = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -49,15 +94,12 @@ resource "aws_iam_role_policy_attachment" "images" {
 }
 
 resource "aws_iam_role_policy" "messaging" {
-  for_each = setunion(toset(keys(var.topic_arns)), toset(keys(var.queue_arns)))
+  for_each = local.messaging_permissions
   role     = aws_iam_role.task[each.key].id
 
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = concat(
-      lookup(local.publisher_permissions, each.key, []),
-      lookup(local.consumer_permissions, each.key, [])
-    )
+    Version   = "2012-10-17"
+    Statement = each.value
   })
 }
 

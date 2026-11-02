@@ -3,6 +3,7 @@ locals {
 
   services = {
     user = {
+      runtime    = "java"
       database   = "foc_user"
       username   = "foc_user"
       port       = 8080
@@ -14,6 +15,7 @@ locals {
     }
 
     supplier = {
+      runtime    = "java"
       database   = "foc_supplier"
       username   = "foc_supplier"
       port       = 8081
@@ -23,6 +25,7 @@ locals {
     }
 
     order = {
+      runtime  = "java"
       database = "foc_order"
       username = "foc_order"
       port     = 8082
@@ -31,6 +34,7 @@ locals {
     }
 
     credit = {
+      runtime  = "java"
       database = "foc_credit"
       username = "foc_credit"
       port     = 8083

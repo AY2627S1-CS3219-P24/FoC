@@ -5,6 +5,7 @@ creates the realtime queue and subscribes it to supplier events.
 
 ```sh
 npm ci
+NODE_ENV=development \
 JWKS_URL=http://localhost:8080/api/.well-known/jwks.json \
 SQS_QUEUE_URL=http://localhost:4566/000000000000/foc-dev-realtime-events \
 AWS_REGION=ap-southeast-1 AWS_ENDPOINT_URL=http://localhost:4566 \
@@ -12,8 +13,9 @@ AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test npm run dev
 ```
 
 The shared `RealtimeService` run configuration supplies these local settings.
-The service listens on `PORT` (default `8084`). `JWKS_URL` and `SQS_QUEUE_URL` are
-required. `AWS_REGION` defaults to `ap-southeast-1`; `AWS_ENDPOINT_URL` is optional.
+The service listens on port `8084`.
+`NODE_ENV`, `AWS_REGION`, `JWKS_URL`, and `SQS_QUEUE_URL` are required.
+Startup fails if any are missing or invalid. `AWS_ENDPOINT_URL` is optional for local emulation.
 Production uses the ECS task role for AWS credentials.
 
 `npm run build` compiles the service; `npm start` runs the compiled output.

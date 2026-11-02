@@ -39,7 +39,7 @@ variable "services" {
     port       = number
     cpu        = number
     memory     = number
-    runtime    = optional(string, "java")
+    runtime    = string
     database   = optional(string)
     username   = optional(string)
     jwt        = optional(bool, false)
@@ -130,4 +130,8 @@ variable "grafana_cloudwatch_reader" {
 variable "queue_urls" {
   description = "SQS queue URLs keyed by consuming service."
   type        = map(string)
+  validation {
+    condition     = toset(keys(var.queue_urls)) == toset(keys(var.queue_arns))
+    error_message = "Queue URLs and ARNs must describe the same consuming services."
+  }
 }

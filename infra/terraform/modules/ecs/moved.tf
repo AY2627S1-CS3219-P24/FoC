@@ -19,8 +19,3 @@ moved {
   from = module.app["credit"].aws_ecs_task_definition.this[0]
   to   = aws_ecs_task_definition.app["credit"]
 }
-
-moved {
-  from = module.app["realtime"].aws_ecs_task_definition.this[0]
-  to   = aws_ecs_task_definition.app["realtime"]
-}

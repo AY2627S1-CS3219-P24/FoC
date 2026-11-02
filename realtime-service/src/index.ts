@@ -6,6 +6,7 @@ import {SQSClient} from '@aws-sdk/client-sqs';
 import {createSqsEventConsumer} from './sqs.js';
 import {createSocketIoServer} from './socket.js';
 
+const PORT = 8084;
 const config = readConfig();
 const logger = pino({
     transport: config.isDevelopment ? {target: 'pino-pretty'} : undefined,
@@ -25,9 +26,9 @@ const httpServer = createServer(handleHttpRequest);
 
 socketServer.attach(httpServer);
 const logListening = (): void => {
-    logger.info({port: config.port}, 'Realtime service listening');
+    logger.info({port: PORT}, 'Realtime service listening');
 };
-httpServer.listen(config.port, logListening);
+httpServer.listen(PORT, logListening);
 
 const consumer = createSqsEventConsumer(config.queueUrl, new SQSClient({region: config.region, endpoint: config.endpoint}), logger);
 consumer.start(createEventHandlers(socketServer));

@@ -9,7 +9,6 @@
     <package-manager value="npm" />
     <envs>
       <env name="NODE_ENV" value="development" />
-      <env name="PORT" value="8084" />
       <env name="JWKS_URL" value="http://localhost:8080/api/.well-known/jwks.json" />
       <env name="AWS_REGION" value="ap-southeast-1" />
       <env name="AWS_ACCESS_KEY_ID" value="test" />
