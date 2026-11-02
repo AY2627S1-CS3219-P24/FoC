@@ -30,7 +30,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Backend check
+      - name: Check backend
         run: ./gradlew check -x :e2e-tests:test --no-daemon
         env:
           CI: true
@@ -47,7 +47,7 @@ jobs:
         run: npm run lint
       - name: Check frontend formatting
         working-directory: frontend
-        run: npm run check
+        run: npm run format:check
       - name: Test frontend
         working-directory: frontend
         run: npm run test:run

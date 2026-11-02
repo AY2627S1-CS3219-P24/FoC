@@ -21,3 +21,7 @@ management:
 storage:
   s3:
     bucket: ${FOC_SUPPLIER_BUCKET}
+
+events:
+  messaging:
+    topic-arn: ${EVENTS_MESSAGING_TOPIC_ARN}

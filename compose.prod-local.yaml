@@ -57,6 +57,7 @@ services:
   supplier-service:
     environment:
       <<: *floci-client
+      EVENTS_MESSAGING_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-ap-southeast-1}:000000000000:foc-prod-supplier-events
     depends_on:
       floci:
         condition: service_healthy

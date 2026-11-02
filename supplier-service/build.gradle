@@ -29,6 +29,7 @@ dependencies {
     runtimeOnly "org.springframework.modulith:spring-modulith-events-jdbc"
     runtimeOnly "org.springframework.modulith:spring-modulith-events-jackson"
     implementation "io.awspring.cloud:spring-cloud-aws-starter-s3"
+    implementation "io.awspring.cloud:spring-cloud-aws-starter-sns"
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-otlp'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'

@@ -37,6 +37,6 @@ Malformed messages are rejected without requeueing. Each instance has an exclusi
 ## Verification
 
 ```sh
-npm run build
-npm test
+npm ci
+npm run check
 ```
