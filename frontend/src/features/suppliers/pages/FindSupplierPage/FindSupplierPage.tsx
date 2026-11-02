@@ -5,7 +5,7 @@ import { SupplierSlideOver } from '../../components/SupplierSlideOver/SupplierSl
 import { useSuppliers } from '../../hooks/useSuppliers'
 import type { Supplier } from '../../types/supplier.types'
 import { formatLocation } from '../../utils/supplierFormat'
-import { describeOpenStatus } from '../../utils/openingHours'
+import { getOpenStatus } from '../../utils/openingHours'
 import styles from './FindSupplierPage.module.scss'
 
 export const FindSupplierPage = () => {
@@ -37,7 +37,7 @@ export const FindSupplierPage = () => {
         {suppliers.isSuccess && suppliers.data.length > 0 ? (
           <ul className={styles.grid}>
             {suppliers.data.map((supplier) => {
-              const open = describeOpenStatus(supplier.openingHours, new Date())
+              const status = getOpenStatus(supplier.openingHours, new Date())
               return (
                 <li key={supplier.id}>
                   <Button
@@ -54,7 +54,7 @@ export const FindSupplierPage = () => {
                     <span className={styles.name}>{supplier.name}</span>
                     <span className={styles.meta}>
                       {formatLocation(supplier)} ·{' '}
-                      {open === 'Closed' ? 'Closed' : 'Open now'}
+                      {status.isOpen ? 'Open now' : 'Closed'}
                     </span>
                   </Button>
                 </li>

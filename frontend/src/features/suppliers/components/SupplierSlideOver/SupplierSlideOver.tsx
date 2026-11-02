@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { categoryLabels, formatLocation } from '../../utils/supplierFormat'
-import { describeOpenStatus, formatWeeklyHours } from '../../utils/openingHours'
+import { getOpenStatus, formatWeeklyHours } from '../../utils/openingHours'
 import type { Supplier, SupplierCategory } from '../../types/supplier.types'
 import styles from './SupplierSlideOver.module.scss'
 
@@ -21,8 +21,13 @@ export const SupplierSlideOver = ({
 }) => {
   const hours = supplier ? formatWeeklyHours(supplier.openingHours) : []
   const openStatus = supplier
-    ? describeOpenStatus(supplier.openingHours, new Date())
+    ? getOpenStatus(supplier.openingHours, new Date())
     : null
+  let statusLabel = 'Closed'
+  if (openStatus?.isOpen && openStatus.is24Hours) statusLabel = 'Open 24 hours'
+  if (openStatus?.isOpen && !openStatus.is24Hours)
+    statusLabel = `Open now · Closes at ${openStatus.closesAt}`
+  const statusClassName = openStatus?.isOpen ? styles.open : styles.closed
   const located =
     supplier?.latitude != null && supplier.longitude != null
       ? `${supplier.latitude},${supplier.longitude}`
@@ -59,13 +64,7 @@ export const SupplierSlideOver = ({
                 <Dialog.Title className={styles.title}>
                   {supplier.name}
                 </Dialog.Title>
-                <p
-                  className={
-                    openStatus === 'Closed' ? styles.closed : styles.open
-                  }
-                >
-                  {openStatus}
-                </p>
+                <p className={statusClassName}>{statusLabel}</p>
                 <Dialog.Description className={styles.location}>
                   {formatLocation(supplier)}
                 </Dialog.Description>

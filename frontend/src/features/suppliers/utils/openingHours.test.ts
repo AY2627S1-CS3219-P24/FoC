@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   closesAfterMidnight,
-  describeOpenStatus,
+  getOpenStatus,
   formatTodayHours,
   formatWeeklyHours,
   isOpenAt,
@@ -44,6 +44,18 @@ describe('isOpenAt', () => {
 })
 
 describe('formatWeeklyHours', () => {
+  it('labels full-day schedules without an artificial closing time', () => {
+    expect(formatWeeklyHours(on(DAYS_OF_WEEK, '00:00', '23:59'))).toEqual([
+      'Daily 24 hours',
+    ])
+    expect(formatWeeklyHours(on(['MONDAY'], '00:00:00', '23:59:00'))).toEqual([
+      'Mon 24 hours',
+    ])
+    expect(
+      formatTodayHours(on(['MONDAY'], '00:00', '23:59'), at(MONDAY, 12)),
+    ).toBe('24 hours')
+  })
+
   it('groups consecutive days with the same hours', () => {
     expect(
       formatWeeklyHours([
@@ -75,13 +87,61 @@ describe('formatTodayHours', () => {
   })
 })
 
-describe('describeOpenStatus', () => {
+describe('getOpenStatus', () => {
+  it('recognises full-day hours including the final minute of the day', () => {
+    const hours = on(['MONDAY'], '00:00:00', '23:59:00')
+    for (const time of [at(MONDAY, 0), at(MONDAY, 12), at(MONDAY, 23, 59)]) {
+      expect(getOpenStatus(hours, time)).toEqual({
+        isOpen: true,
+        is24Hours: true,
+      })
+      expect(isOpenAt(hours, time)).toBe(true)
+    }
+    expect(getOpenStatus(hours, at(TUESDAY, 0))).toEqual({ isOpen: false })
+  })
+
+  it('does not treat every shop closing at 23:59 as open 24 hours', () => {
+    const hours = on(['MONDAY'], '09:00', '23:59')
+    expect(getOpenStatus(hours, at(MONDAY, 12))).toEqual({
+      isOpen: true,
+      is24Hours: false,
+      closesAt: '23:59',
+    })
+    expect(isOpenAt(hours, at(MONDAY, 23, 59))).toBe(false)
+  })
+
+  it('uses yesterday’s closing time during an overnight opening', () => {
+    const hours = [
+      ...on(['TUESDAY'], '09:00', '18:00'),
+      ...on(['MONDAY'], '18:00:00', '02:00:00'),
+    ]
+    expect(getOpenStatus(hours, at(TUESDAY, 1, 30))).toEqual({
+      isOpen: true,
+      is24Hours: false,
+      closesAt: '02:00',
+    })
+    expect(getOpenStatus(hours, at(TUESDAY, 2))).toEqual({ isOpen: false })
+  })
+
+  it('carries Sunday opening hours into Monday and handles empty hours', () => {
+    expect(
+      getOpenStatus(on(['SUNDAY'], '18:00', '02:00'), at(MONDAY, 1)),
+    ).toEqual({
+      isOpen: true,
+      is24Hours: false,
+      closesAt: '02:00',
+    })
+    expect(getOpenStatus([], at(MONDAY, 12))).toEqual({ isOpen: false })
+  })
+
   it('includes the closing time while the supplier is open', () => {
     const hours = on(['MONDAY'], '09:00', '20:00')
-    expect(describeOpenStatus(hours, at(MONDAY, 12))).toBe(
-      'Open now · Closes at 20:00',
-    )
-    expect(describeOpenStatus(hours, at(TUESDAY, 12))).toBe('Closed')
+    expect(getOpenStatus(hours, at(MONDAY, 12))).toEqual({
+      isOpen: true,
+      is24Hours: false,
+      closesAt: '20:00',
+    })
+    expect(getOpenStatus(hours, at(TUESDAY, 12))).toEqual({ isOpen: false })
   })
 })
 

@@ -1,5 +1,9 @@
 import { DAYS_OF_WEEK } from '../types/supplier.types'
-import type { DayOfWeek, OpeningHours } from '../types/supplier.types'
+import type {
+  DayOfWeek,
+  OpeningHours,
+  OpenStatus,
+} from '../types/supplier.types'
 
 export const dayLabels: Record<DayOfWeek, string> = {
   MONDAY: 'Mon',
@@ -13,6 +17,10 @@ export const dayLabels: Record<DayOfWeek, string> = {
 
 export const toHourMinute = (time: string) => time.slice(0, 5)
 
+// The catalog and admin form represent a full day as 00:00–23:59.
+const isFullDay = ({ opensAt, closesAt }: OpeningHours) =>
+  toHourMinute(opensAt) === '00:00' && toHourMinute(closesAt) === '23:59'
+
 export const closesAfterMidnight = ({ opensAt, closesAt }: OpeningHours) =>
   toHourMinute(closesAt) < toHourMinute(opensAt)
 
@@ -22,27 +30,42 @@ const dayIndexOf = (date: Date) => (date.getDay() + 6) % 7
 const timeOf = (date: Date) =>
   `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 
-/**
- * if a supplier is open `now`
- */
-export const isOpenAt = (hours: Array<OpeningHours>, now: Date) => {
+export const getOpenStatus = (
+  hours: Array<OpeningHours>,
+  now: Date,
+): OpenStatus => {
   const today = DAYS_OF_WEEK[dayIndexOf(now)]
   const yesterday = DAYS_OF_WEEK[(dayIndexOf(now) + 6) % 7]
   const time = timeOf(now)
 
-  return hours.some((entry) => {
+  const activeEntry = hours.find((entry) => {
     const opensAt = toHourMinute(entry.opensAt)
     const closesAt = toHourMinute(entry.closesAt)
     const overnight = closesAt < opensAt
     if (entry.dayOfWeek === today) {
+      if (isFullDay(entry)) return true
       return time >= opensAt && (overnight || time < closesAt)
     }
     return entry.dayOfWeek === yesterday && overnight && time < closesAt
   })
+
+  if (!activeEntry) return { isOpen: false }
+  if (isFullDay(activeEntry)) return { isOpen: true, is24Hours: true }
+  return {
+    isOpen: true,
+    is24Hours: false,
+    closesAt: toHourMinute(activeEntry.closesAt),
+  }
 }
 
-const formatRange = (entry: OpeningHours) =>
-  `${toHourMinute(entry.opensAt)} – ${toHourMinute(entry.closesAt)}${closesAfterMidnight(entry) ? ' (next day)' : ''}`
+/** Whether a supplier is open at the given time. */
+export const isOpenAt = (hours: Array<OpeningHours>, now: Date) =>
+  getOpenStatus(hours, now).isOpen
+
+const formatRange = (entry: OpeningHours) => {
+  if (isFullDay(entry)) return '24 hours'
+  return `${toHourMinute(entry.opensAt)} – ${toHourMinute(entry.closesAt)}${closesAfterMidnight(entry) ? ' (next day)' : ''}`
+}
 
 /**
  * design that the grouping consecutive days open same hours will be like
@@ -86,14 +109,4 @@ export const formatTodayHours = (hours: Array<OpeningHours>, now: Date) => {
     ({ dayOfWeek }) => dayOfWeek === DAYS_OF_WEEK[dayIndexOf(now)],
   )
   return entry ? formatRange(entry) : 'Closed today'
-}
-
-export const describeOpenStatus = (hours: Array<OpeningHours>, now: Date) => {
-  if (!isOpenAt(hours, now)) return 'Closed'
-  const entry = hours.find(
-    ({ dayOfWeek }) => dayOfWeek === DAYS_OF_WEEK[dayIndexOf(now)],
-  )
-  return entry
-    ? `Open now · Closes at ${toHourMinute(entry.closesAt)}`
-    : 'Open now'
 }
