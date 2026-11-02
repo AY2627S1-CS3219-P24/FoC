@@ -1,7 +1,7 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import pino from 'pino';
 import {readConfig} from './config.js';
-import {createEventSubscriptions} from './event-subscriptions.js';
+import {createEventHandlers} from './event-handlers.js';
 import {SQSClient} from '@aws-sdk/client-sqs';
 import {createSqsEventConsumer} from './sqs.js';
 import {createSocketIoServer} from './socket.js';
@@ -30,7 +30,7 @@ const logListening = (): void => {
 httpServer.listen(config.port, logListening);
 
 const consumer = createSqsEventConsumer(config.queueUrl, new SQSClient({region: config.region, endpoint: config.endpoint}), logger);
-consumer.start(createEventSubscriptions(socketServer));
+consumer.start(createEventHandlers(socketServer));
 
 let isShuttingDown = false;
 

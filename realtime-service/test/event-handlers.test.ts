@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import type {Server} from 'socket.io';
-import {createEventSubscriptions} from '../src/event-subscriptions.js';
+import {createEventHandlers} from '../src/event-handlers.js';
 
 const supplierId = '11111111-1111-4111-8111-111111111111';
 const validSupplierEvent = {
@@ -10,7 +10,7 @@ const validSupplierEvent = {
     payload: {supplierId, change: 'DEACTIVATED'},
 };
 
-const createSubscriptions = () => {
+const createHandlers = () => {
     const emissions: {room?: string; event: string; data: unknown}[] = [];
     const socketServer = {
         to(room: string) {
@@ -26,20 +26,20 @@ const createSubscriptions = () => {
         sockets: {sockets: new Map()},
     };
     const socketServerMock = socketServer as unknown as Server;
-    const subscriptions = createEventSubscriptions(
+    const handlers = createEventHandlers(
         socketServerMock,
     );
-    return {emissions, subscriptions};
+    return {emissions, handlers};
 };
 
 const body = (value: unknown) => Buffer.from(JSON.stringify(value));
 
-describe('realtime event subscriptions', () => {
+describe('realtime event handlers', () => {
     it('routes user updates from their event type', () => {
-        const {emissions, subscriptions} = createSubscriptions();
+        const {emissions, handlers} = createHandlers();
 
-        assert.equal(subscriptions[0].eventType, 'UserUpdatedEvent');
-        subscriptions[0].handle(body({userId: 'user-1', event: 'order.updated', data: {orderId: 'order-1'}}));
+        assert.equal(handlers[0].eventType, 'UserUpdatedEvent');
+        handlers[0].handle(body({userId: 'user-1', event: 'order.updated', data: {orderId: 'order-1'}}));
 
         assert.deepEqual(emissions, [
             {room: 'user:user-1', event: 'order.updated', data: {orderId: 'order-1'}},
@@ -47,18 +47,18 @@ describe('realtime event subscriptions', () => {
     });
 
     it('routes supplier changes from their event type', () => {
-        const {emissions, subscriptions} = createSubscriptions();
+        const {emissions, handlers} = createHandlers();
 
-        assert.equal(subscriptions[1].eventType, 'SupplierChangedEvent');
-        subscriptions[1].handle(body(validSupplierEvent));
+        assert.equal(handlers[1].eventType, 'SupplierChangedEvent');
+        handlers[1].handle(body(validSupplierEvent));
 
         assert.deepEqual(emissions, [{event: 'supplier.changed', data: {supplierId, change: 'DEACTIVATED'}}]);
     });
 
     it('throws for malformed event bodies so the consumer can reject them', () => {
-        const {subscriptions} = createSubscriptions();
+        const {handlers} = createHandlers();
 
-        assert.throws(() => subscriptions[0].handle(body({event: 'missing user id'})));
-        assert.throws(() => subscriptions[1].handle(body({payload: {supplierId, change: 'UNKNOWN'}})));
+        assert.throws(() => handlers[0].handle(body({event: 'missing user id'})));
+        assert.throws(() => handlers[1].handle(body({payload: {supplierId, change: 'UNKNOWN'}})));
     });
 });

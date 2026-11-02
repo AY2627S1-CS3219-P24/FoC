@@ -4,7 +4,7 @@ import {DeleteMessageCommand, ReceiveMessageCommand, SQSClient} from '@aws-sdk/c
 import pino from 'pino';
 import {createSqsEventConsumer} from '../src/sqs.js';
 
-it('deletes successful events and leaves failed events for retry, then aborts long polling on shutdown', {timeout: 2000}, async () => {
+it('acknowledges handled events, retains failed events for retry, and aborts long polling on shutdown', {timeout: 2000}, async () => {
     const client = new SQSClient({region: 'ap-southeast-1'});
     const deleted: string[] = [];
     let polled = false;

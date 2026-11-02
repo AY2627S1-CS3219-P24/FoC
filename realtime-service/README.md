@@ -20,7 +20,7 @@ Production uses the ECS task role for AWS credentials.
 
 `src/index.ts` starts HTTP, Socket.IO, and the SQS consumer. Configuration and token
 verification live in `src/config.ts` and `src/auth.ts`; event parsers live in
-`src/events.ts`. `src/event-subscriptions.ts` routes by the SQS `eventType` message
+`src/events.ts`. `src/event-handlers.ts` routes by the SQS `eventType` message
 attribute. `src/sqs.ts` long polls and deletes messages only after successful handling.
 Failed or malformed messages remain for retry and eventually move to the queue's DLQ.
 

@@ -1,11 +1,11 @@
 import type {Server} from 'socket.io';
-import type {EventSubscription} from './sqs.js';
+import type {EventHandler} from './sqs.js';
 import {broadcast, emitToUser} from './socket.js';
 import {parseSupplierChangedEvent, parseUserUpdateEvent} from './events.js';
 
-export const createEventSubscriptions = (
+export const createEventHandlers = (
     socketServer: Server,
-): EventSubscription[] => [
+): EventHandler[] => [
     {
         eventType: 'UserUpdatedEvent',
         handle: (body) => {
