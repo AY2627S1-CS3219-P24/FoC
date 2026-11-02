@@ -9,14 +9,16 @@ COPY user-service ./user-service
 COPY supplier-service ./supplier-service
 COPY order-service ./order-service
 COPY credit-service ./credit-service
+COPY e2e-tests/build.gradle ./e2e-tests/build.gradle
 
 RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
-    chmod +x gradlew && ./gradlew bootJar --no-daemon
+    chmod +x gradlew && ./gradlew :user-service:bootJar :supplier-service:bootJar :order-service:bootJar :credit-service:bootJar --no-daemon
 
 FROM eclipse-temurin:25-jre-alpine AS runtime
 WORKDIR /app
 RUN apk add --no-cache curl \
-    && addgroup -S app && adduser -S app -G app
+    && addgroup -S -g 10001 app && adduser -S -u 10001 app -G app
+RUN curl -fsS https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem -o /app/rds-ca.pem
 USER app
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 

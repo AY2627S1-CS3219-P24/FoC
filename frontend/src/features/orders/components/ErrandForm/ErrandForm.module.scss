@@ -1,0 +1,22 @@
+.form {
+  display: grid;
+  gap: 24px;
+}
+.field {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  min-width: 0;
+  textarea {
+    resize: vertical;
+  }
+}
+.columns {
+  display: grid;
+  gap: 24px;
+}
+@media (min-width: 600px) {
+  .columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -22,14 +22,23 @@ export const UserViewPage = () => {
           <h1>{user?.name ?? 'User'}</h1>
         </div>
         {user && (
-          <Link
-            to="/admin/users/$userId/edit"
-            params={{ userId }}
-            search={listSearch}
-            className={styles.editLink}
-          >
-            Edit user
-          </Link>
+          <div className={styles.headerActions}>
+            <Link
+              to="/admin/orders"
+              search={{ requesterId: userId, page: 0 }}
+              className={styles.ordersLink}
+            >
+              View requested orders
+            </Link>
+            <Link
+              to="/admin/users/$userId/edit"
+              params={{ userId }}
+              search={listSearch}
+              className={styles.editLink}
+            >
+              Edit user
+            </Link>
+          </div>
         )}
       </header>
 

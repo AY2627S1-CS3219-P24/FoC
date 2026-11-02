@@ -1,4 +1,4 @@
-import type { OrderSummary } from '../types/order.types'
+import type { AdminOverviewOrderSummary } from '../types/adminOverview.types'
 
 // temporary sample data for the admin overview.
 // TODO after the corresponding part done, link tgt
@@ -8,7 +8,7 @@ export const sampleOrderStats = {
   openDisputes: 3,
 }
 
-export const sampleLiveOrders: Array<OrderSummary> = [
+export const sampleLiveOrders: Array<AdminOverviewOrderSummary> = [
   {
     id: 1001,
     requester: 'Jamie Lee',

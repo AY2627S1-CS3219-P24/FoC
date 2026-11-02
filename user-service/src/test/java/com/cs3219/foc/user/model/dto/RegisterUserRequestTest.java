@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -27,6 +28,16 @@ class RegisterUserRequestTest {
     @AfterAll
     static void tearDown() {
         factory.close();
+    }
+
+    @Test
+    void normalizesAccountDetailsBeforeValidation() {
+        var request = new RegisterUserRequest(" ADMIN@U.NUS.EDU ", " Admin ", " password123 ");
+
+        assertEquals("admin@u.nus.edu", request.email());
+        assertEquals("Admin", request.name());
+        assertEquals(" password123 ", request.password());
+        assertTrue(validator.validate(request).isEmpty());
     }
 
     @ParameterizedTest

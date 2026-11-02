@@ -1,21 +1,26 @@
 import { useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
-import {
-  categories,
-  favouriteLocations,
-  recentErrands,
-} from './requesterHome.data'
+import { categories } from './requesterHome.data'
 import styles from './RequesterHomePage.module.scss'
+import { Link } from '@tanstack/react-router'
 import { RoleSwitcher } from '#/features/orders/components/RoleSwitcher/RoleSwitcher'
+import { OrderCard } from '../../components/OrderCard/OrderCard'
+import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
+import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+
+import common from '../../styles/order.module.scss'
 
 export const RequesterHomePage = () => {
+  const orders = useMyErrands({ as: 'all', view: 'all', page: 0, size: 3 })
+  const now = useOrderClock()
+  const recent = orders.data?.items ?? []
   const [preview, setPreview] = useState<{
     title: string
     description: string
   } | null>(null)
   return (
-    <div className={styles.page}>
+    <div className={`${common.page} ${styles.page}`}>
       <RoleSwitcher activeMode="requestor" />
       <h1>What do you need?</h1>
       <ul className={styles.categories} aria-label="Location categories">
@@ -40,72 +45,43 @@ export const RequesterHomePage = () => {
       <section className={styles.section} aria-labelledby="favourites-heading">
         <h2 id="favourites-heading">Favourite locations</h2>
         <ul className={styles.cards}>
-          {favouriteLocations.map((location) => (
-            <li key={location.id}>
-              <Button
-                className={styles.card}
-                onClick={() =>
-                  setPreview({
-                    title: location.name,
-                    description: `${location.hours}. This is a sample location; live hours and location details are not connected yet.`,
-                  })
-                }
-              >
-                <span>
-                  <span className={styles.cardTitle}>{location.name}</span>{' '}
-                  <span className={styles.status}>{location.hours}</span>
-                </span>
-                <span className={styles.arrow} aria-hidden="true">
-                  ›
-                </span>
-              </Button>
-            </li>
-          ))}
+          <li>
+            <div className={styles.card} aria-disabled="true">
+              <span className={styles.cardTitle}>
+                Favourites not connected yet
+              </span>
+            </div>
+          </li>
         </ul>
       </section>
 
       <section className={styles.section} aria-labelledby="recent-heading">
         <h2 id="recent-heading">Recent errands</h2>
-        <ul className={styles.cards}>
-          {recentErrands.map((errand) => (
-            <li key={errand.id}>
-              <Button
-                className={styles.card}
-                onClick={() =>
-                  setPreview({
-                    title: `${errand.pickup} → ${errand.destination}`,
-                    description: `${errand.label}: ${errand.description} This is a sample errand.`,
-                  })
-                }
-              >
-                <span>
-                  <span className={styles.cardTitle}>
-                    {errand.pickup} → {errand.destination}
-                  </span>{' '}
-                  <span className={styles.status}>{errand.label}</span>
-                </span>
-                <span className={styles.arrow} aria-hidden="true">
-                  ›
-                </span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
 
-      <Button
-        className={styles.create}
-        onClick={() =>
-          setPreview({
-            title: 'Create Errand',
-            description:
-              'The errand creation form is not connected yet. No errand has been created.',
-          })
-        }
-      >
+        <OrderFeedback
+          error={orders.error}
+          loading={orders.isPending}
+          retry={() => void orders.refetch()}
+        />
+        {!orders.isPending && !orders.error && (
+          <ul className={common.list}>
+            {recent.map((order) => (
+              <li key={order.id}>
+                <OrderCard order={order} userId={orders.userId!} now={now} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {!orders.isPending && !orders.error && recent.length === 0 && (
+          <p className={common.muted}>
+            No errands yet. Create your first request or switch to Courier to
+            help someone.
+          </p>
+        )}
+      </section>
+      <Link to="/errands/new" className={`${common.button} ${styles.create}`}>
         Create Errand
-      </Button>
-      <p className={styles.sample}>Sample dashboard content</p>
+      </Link>
 
       <Dialog.Root
         open={preview !== null}

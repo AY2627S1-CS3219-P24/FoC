@@ -9,16 +9,15 @@
 
 ## Setup
 
-Create the local environment file and start **Postgres + RabbitMQ + FLoCI**:
+Create the local environment file and start **Postgres + Floci**:
 
 ```bash
   cp .env.example .env
   docker compose up -d
 ```
 
-You only need to create `.env` once. RabbitMQ for the Spring apps is configured via
-`SPRING_RABBITMQ_ADDRESSES` in the IntelliJ run configurations
-(`amqp://foc:pass@localhost:5672`).
+You only need to create `.env` once. Floci provides local S3, SNS, and SQS;
+the `dev` profile configures the Spring services to use it.
 
 Also set up the keys needed for signing and verifying JWT tokens:
 
@@ -61,7 +60,7 @@ email address whose inbox you can access.
    credentials. The `.run/` directory is ignored by Git; `docs/run-configs/`
    contains the shared templates and must not contain personal credentials.
 4. Open **Environment variables** and add these values, preserving the existing
-   database and RabbitMQ variables and the `dev` active profile:
+   database and AWS variables and the `dev` active profile:
 
    | Variable           | Value                                                                       |
    | ------------------ | --------------------------------------------------------------------------- |
@@ -111,15 +110,28 @@ frontend. The link confirms the email automatically; then follow **Log in** and
 sign in with the registered password. A `201` registration response alone does
 not confirm that the email was delivered.
 
+### Load supplier data
+
+At beginning, the supplier data is empty. After the supplier service has started once
+(Flyway created supplier table), then will load the suppliers' data from `data/csv`:
+
+```bash
+docker cp docker/postgres/seed-suppliers.sh foc-postgres-1:/tmp/seed-suppliers.sh
+docker cp data/csv/. foc-postgres-1:/tmp/seed
+docker exec -e PGUSER=foc -e PGDATABASE=foc foc-postgres-1 sh /tmp/seed-suppliers.sh /tmp/seed
+```
+
+The script will only add suppliers that are not in database, so run it again is safe.
+
 ## Stop
 
-Stop the frontend dev server and services in IntelliJ, then stop Postgres and RabbitMQ:
+Stop the frontend dev server and services in IntelliJ, then stop Postgres and Floci:
 
 ```bash
 docker compose down
 ```
 
-If you'd like to delete the database volumes, run this instead:
+To delete the local database and Floci volumes as well:
 
 ```bash
 docker compose down -v

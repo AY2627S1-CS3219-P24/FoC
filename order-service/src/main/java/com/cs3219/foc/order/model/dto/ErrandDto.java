@@ -23,6 +23,7 @@ public record ErrandDto(
         OffsetDateTime expiresAt,
         OffsetDateTime acceptedAt,
         OffsetDateTime pickedUpAt,
-        OffsetDateTime endedAt) {
+        OffsetDateTime endedAt,
+        UUID createRequestId) {
     public record PickupDto(String name, String address) {}
 }

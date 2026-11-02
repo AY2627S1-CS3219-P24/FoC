@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.user.exception.EntityAlreadyExistsException;
 import com.cs3219.foc.user.exception.UnsupportedEmailDomainException;
 import com.cs3219.foc.user.exception.UserNotFoundException;
 import com.cs3219.foc.user.model.dto.RegisterUserRequest;
@@ -17,10 +18,13 @@ import com.cs3219.foc.user.model.entity.UserRole;
 import com.cs3219.foc.user.repository.UserRepository;
 import com.cs3219.foc.user.security.CurrentUserService;
 import com.cs3219.foc.user.support.TestMappers;
+import jakarta.validation.Validation;
+import jakarta.validation.ValidatorFactory;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -33,19 +37,23 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 class UserServiceTests {
+    private static final ValidatorFactory VALIDATION = Validation.buildDefaultValidatorFactory();
+
     private final UserRepository repository = mock(UserRepository.class);
     private final ApplicationEventPublisher provisioning = mock(ApplicationEventPublisher.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AvatarStorageService avatarStorageService = mock(AvatarStorageService.class);
+    private final PasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final EmailChangeService emailChangeService = mock(EmailChangeService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final UserService service = new UserService(
             repository,
-            mock(PasswordEncoder.class),
+            encoder,
             TestMappers.mapper(),
             provisioning,
             verification,
@@ -54,6 +62,11 @@ class UserServiceTests {
             currentUserService);
     private final UUID userId = UUID.randomUUID();
     private User user;
+
+    @AfterAll
+    static void closeValidation() {
+        VALIDATION.close();
+    }
 
     @BeforeEach
     void setUp() {
@@ -254,6 +267,63 @@ class UserServiceTests {
     @ValueSource(strings = {"jamie@gmail.com", "jamie@u.nus.edu.example.com"})
     void rejectsRegistrationWithUnsupportedDomain(String email) {
         assertThatThrownBy(() -> service.registerUser(new RegisterUserRequest(email, "Jamie", "password123")))
+                .isInstanceOf(UnsupportedEmailDomainException.class);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void createsVerifiedAdminUsingNormalizedAccountDetails() {
+        when(repository.save(any(User.class))).thenAnswer(call -> call.getArgument(0));
+
+        assertThat(service.initializeAdmin(new RegisterUserRequest(" ADMIN@U.NUS.EDU ", " Admin ", " password123 ")))
+                .isTrue();
+
+        verify(repository)
+                .save(argThat(user -> user.getEmail().equals("admin@u.nus.edu")
+                        && user.getName().equals("Admin")
+                        && user.isEmailVerified()
+                        && user.getRoles().equals(List.of(UserRole.USER, UserRole.ADMIN))
+                        && encoder.matches(" password123 ", user.getPasswordHash())));
+        verifyNoInteractions(verification);
+    }
+
+    @Test
+    void preservesExistingAdminIncludingItsPasswordAndVerificationState() {
+        var existing = User.builder()
+                .email("admin@u.nus.edu")
+                .name("Existing admin")
+                .passwordHash("original-hash")
+                .roles(List.of(UserRole.USER, UserRole.ADMIN))
+                .emailVerified(false)
+                .build();
+        when(repository.findByEmail(existing.getEmail())).thenReturn(Optional.of(existing));
+
+        assertThat(service.initializeAdmin(new RegisterUserRequest(existing.getEmail(), "Changed", "replacement123")))
+                .isFalse();
+
+        assertThat(existing.getName()).isEqualTo("Existing admin");
+        assertThat(existing.getPasswordHash()).isEqualTo("original-hash");
+        assertThat(existing.isEmailVerified()).isFalse();
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void neverPromotesAnExistingNonAdmin() {
+        var existing = User.builder().roles(List.of(UserRole.USER)).build();
+        when(repository.findByEmail("admin@u.nus.edu")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() ->
+                        service.initializeAdmin(new RegisterUserRequest("admin@u.nus.edu", "Admin", "password123")))
+                .isInstanceOf(EntityAlreadyExistsException.class);
+
+        assertThat(existing.getRoles()).containsExactly(UserRole.USER);
+        verify(repository, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"admin@example.com", "admin@u.nus.edu.example.com"})
+    void rejectsNonNusAdmins(String email) {
+        assertThatThrownBy(() -> service.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
                 .isInstanceOf(UnsupportedEmailDomainException.class);
         verifyNoInteractions(repository);
     }

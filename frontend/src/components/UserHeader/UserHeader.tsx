@@ -11,6 +11,7 @@ export type UserHeaderProps = {
   name: string
   avatarUrl?: string | null
   availableCredits?: number | null
+  balanceLabel?: string
   hasUnreadNotifications?: boolean
   onNotificationsClick?: () => void
   onAccountClick?: () => void
@@ -23,6 +24,7 @@ export const UserHeader = ({
   name,
   avatarUrl,
   availableCredits,
+  balanceLabel,
   hasUnreadNotifications = false,
   onNotificationsClick,
   onAccountClick,
@@ -54,7 +56,7 @@ export const UserHeader = ({
         <span className={styles.name}>{name}</span>
         <span className={styles.balance}>
           {availableCredits == null
-            ? 'Balance unavailable'
+            ? (balanceLabel ?? 'Balance unavailable')
             : `${availableCredits} credits`}
         </span>
       </span>

@@ -206,29 +206,50 @@ public class UserService {
 
     @Transactional
     public UserProfileDto registerUser(RegisterUserRequest request) {
-        var email = request.email().strip().toLowerCase();
-        if (!NusEmailPolicy.isAllowed(email)) {
-            throw new UnsupportedEmailDomainException();
-        }
+        validateRegistration(request);
 
-        if (userRepository.existsByEmail(email)) {
+        var isExistingUser = userRepository.existsByEmail(request.email());
+        if (isExistingUser) {
             throw new EntityAlreadyExistsException("User already exists with this email");
         }
 
-        var name = request.name().strip();
-        var passwordHash = encoder.encode(request.password());
-
-        var user = User.builder()
-                .email(email)
-                .name(name)
-                .passwordHash(passwordHash)
-                .roles(List.of(UserRole.USER))
-                .build();
-
-        var savedUser = userRepository.save(user);
-        events.publishEvent(UserCreatedEvent.of(UUID.randomUUID(), savedUser.getId(), OffsetDateTime.now()));
+        var savedUser = createUser(request, List.of(UserRole.USER), false);
+        events.publishEvent(new UserCreatedEvent(
+                UUID.randomUUID(), 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(savedUser.getId())));
         emailVerification.createRegistrationVerification(savedUser);
         return buildUserProfileDto(savedUser);
+    }
+
+    @Transactional
+    public boolean initializeAdmin(RegisterUserRequest request) {
+        validateRegistration(request);
+
+        var existingUser = userRepository.findByEmail(request.email()).orElse(null);
+        if (existingUser != null) {
+            if (!existingUser.getRoles().contains(UserRole.ADMIN)) {
+                throw new EntityAlreadyExistsException("An account with this email exists without the ADMIN role");
+            }
+            return false;
+        }
+
+        createUser(request, List.of(UserRole.USER, UserRole.ADMIN), true);
+        return true;
+    }
+
+    private void validateRegistration(RegisterUserRequest request) {
+        if (!NusEmailPolicy.isAllowed(request.email())) {
+            throw new UnsupportedEmailDomainException();
+        }
+    }
+
+    private User createUser(RegisterUserRequest request, List<UserRole> roles, boolean emailVerified) {
+        return userRepository.save(User.builder()
+                .email(request.email())
+                .name(request.name())
+                .passwordHash(encoder.encode(request.password()))
+                .roles(roles)
+                .emailVerified(emailVerified)
+                .build());
     }
 
     private UserProfileDto buildUserProfileDto(User user) {

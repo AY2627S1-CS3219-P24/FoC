@@ -2,6 +2,7 @@ package com.cs3219.foc.supplier.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.cs3219.foc.supplier.integration.AbstractIntegrationTest;
 import com.cs3219.foc.supplier.model.entity.Supplier;
 import com.cs3219.foc.supplier.model.entity.SupplierCategory;
 import com.cs3219.foc.supplier.model.entity.SupplierOpeningHours;
@@ -15,21 +16,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@Testcontainers
-@DataJpaTest(properties = "spring.jpa.properties.hibernate.default_schema=suppliers")
+@DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class SupplierSpecificationsTests {
-    @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
-
+class SupplierSpecificationsTests extends AbstractIntegrationTest {
     private static final List<DayOfWeek> EVERY_DAY = Arrays.asList(DayOfWeek.values());
     private static final List<DayOfWeek> WEEKDAYS = EVERY_DAY.subList(0, 5);
 

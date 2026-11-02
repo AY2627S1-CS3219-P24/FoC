@@ -6,5 +6,4 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties("events.publication")
 public record EventPublicationProperties(
-        @DefaultValue("5s") Duration confirmTimeout,
         @DefaultValue("30s") Duration retryDelay) {}

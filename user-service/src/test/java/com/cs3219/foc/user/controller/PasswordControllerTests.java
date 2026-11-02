@@ -144,6 +144,7 @@ class PasswordControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.fieldErrors.currentPassword").value("Current password is incorrect"))
                 .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
     }
@@ -164,6 +165,8 @@ class PasswordControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
                 .andExpect(jsonPath("$.fieldErrors." + field).exists())
                 .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
         verifyNoInteractions(service);

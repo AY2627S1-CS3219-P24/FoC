@@ -1,0 +1,16 @@
+.panel {
+  background: var(--color-surface);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+  h2 {
+    font-size: 17px;
+    margin: 0 0 24px;
+    overflow-wrap: anywhere;
+  }
+}
+@media (min-width: 700px) {
+  .panel {
+    padding: 28px;
+  }
+}

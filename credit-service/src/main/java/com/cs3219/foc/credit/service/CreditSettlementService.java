@@ -123,7 +123,6 @@ public class CreditSettlementService {
     private void publish(Settlement p, String outcome, String settlementType) {
         events.publishEvent(new CreditSettlementResultEvent(
                 UUID.randomUUID(),
-                "CreditSettlementResultEvent",
                 1,
                 p.occurredAt(),
                 new CreditSettlementResultEvent.Payload(

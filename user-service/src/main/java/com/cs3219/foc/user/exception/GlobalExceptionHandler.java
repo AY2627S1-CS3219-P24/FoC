@@ -1,14 +1,20 @@
 package com.cs3219.foc.user.exception;
 
 import com.cs3219.foc.user.model.dto.ErrorResponse;
-import com.cs3219.foc.user.model.dto.ValidationErrorResponse;
+import com.cs3219.foc.user.model.dto.ErrorResponseWithFieldErrors;
 import java.util.Map;
 import java.util.TreeMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.Errors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
@@ -43,20 +49,55 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(InvalidPasswordException.class)
-    ResponseEntity<ValidationErrorResponse> handleInvalidPassword(InvalidPasswordException exception) {
-        return ResponseEntity.badRequest()
-                .body(new ValidationErrorResponse(
-                        "Validation failed", Map.of(exception.getField(), exception.getMessage())));
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleInvalidPassword(InvalidPasswordException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "VALIDATION_FAILED", "Validation failed", Map.of(exception.getField(), exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ValidationErrorResponse> handleValidationException(MethodArgumentNotValidException exception) {
-        var errors = new TreeMap<String, String>();
-        exception
-                .getBindingResult()
-                .getFieldErrors()
-                .forEach(error -> errors.putIfAbsent(error.getField(), error.getDefaultMessage()));
-        return ResponseEntity.badRequest().body(new ValidationErrorResponse("Validation failed", errors));
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleRequestValidation(MethodArgumentNotValidException exception) {
+        var fieldErrors = extractFieldErrors(exception.getBindingResult());
+
+        return new ErrorResponseWithFieldErrors("VALIDATION_FAILED", "Validation failed", fieldErrors);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    ResponseEntity<ErrorResponseWithFieldErrors> handleParameterValidation(HandlerMethodValidationException exception) {
+        var fieldErrors = new TreeMap<String, String>();
+        exception.getValueResults().forEach(result -> {
+            var field = result.getMethodParameter().getParameterName();
+            if (field != null) {
+                result.getResolvableErrors()
+                        .forEach(error -> fieldErrors.putIfAbsent(field, error.getDefaultMessage()));
+            }
+        });
+        exception.getBeanResults().forEach(errors -> fieldErrors.putAll(extractFieldErrors(errors)));
+
+        return ResponseEntity.status(exception.getStatusCode())
+                .body(new ErrorResponseWithFieldErrors("VALIDATION_FAILED", "Validation failed", fieldErrors));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleUnreadableRequest(HttpMessageNotReadableException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST", "Request body is missing or contains invalid fields", Map.of());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST", "Invalid request fields", Map.of(exception.getName(), "Invalid value"));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleMissingParameter(MissingServletRequestParameterException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST", "Invalid request fields", Map.of(exception.getParameterName(), "must be provided"));
     }
 
     @ExceptionHandler(AvatarException.class)
@@ -71,8 +112,12 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
-    ResponseEntity<ErrorResponse> handleMissingFile(MissingServletRequestPartException ex) {
-        return ResponseEntity.badRequest().body(new ErrorResponse("Image file is required"));
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors handleMissingFile(MissingServletRequestPartException exception) {
+        return new ErrorResponseWithFieldErrors(
+                "INVALID_REQUEST",
+                "Image file is required",
+                Map.of(exception.getRequestPartName(), "must be provided"));
     }
 
     @ExceptionHandler(UserNotFoundException.class)
@@ -98,5 +143,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidRefreshTokenException.class)
     ResponseEntity<ErrorResponse> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(ex.getMessage()));
+    }
+
+    private static Map<String, String> extractFieldErrors(Errors errors) {
+        var fieldErrors = new TreeMap<String, String>();
+        errors.getFieldErrors().forEach(error -> fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return fieldErrors;
     }
 }

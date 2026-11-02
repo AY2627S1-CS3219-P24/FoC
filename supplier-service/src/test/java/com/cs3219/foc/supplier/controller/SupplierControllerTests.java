@@ -25,9 +25,10 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -206,7 +207,11 @@ class SupplierControllerTests {
                                  "openingHours":[]}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.name").value("must not be blank"))
+                .andExpect(jsonPath("$.fieldErrors.latitude").exists())
+                .andExpect(jsonPath("$.fieldErrors.openingHours").value("must not be empty"));
         verifyNoInteractions(service);
     }
 
@@ -221,8 +226,24 @@ class SupplierControllerTests {
                                                  {"dayOfWeek":"MONDAY","opensAt":"10:00","closesAt":"12:00"}]}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(Matchers.containsString("eachDayListedOnce")))
-                .andExpect(jsonPath("$.message").value(Matchers.containsString("closingDifferentFromOpening")));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.eachDayListedOnce").value("each day can only be listed once"))
+                .andExpect(jsonPath("$.fieldErrors['openingHours[0].closingDifferentFromOpening']")
+                        .value("closing time must be different from opening time"));
+        verifyNoInteractions(service);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "null", "{", "{\"category\":\"INVALID\"}"})
+    void reportsUnreadableRequests(String body) throws Exception {
+        mvc.perform(post("/suppliers")
+                        .with(admin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request body is missing or contains invalid fields"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
         verifyNoInteractions(service);
     }
 
@@ -271,7 +292,9 @@ class SupplierControllerTests {
     void rejectsMissingImageFileBeforeCallingService() throws Exception {
         mvc.perform(multipart(HttpMethod.PUT, "/suppliers/{id}/image", supplierId)
                         .with(admin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.fieldErrors.file").value("must be provided"));
         verifyNoInteractions(imageService);
     }
 

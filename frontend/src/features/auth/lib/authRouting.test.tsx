@@ -22,8 +22,24 @@ import { refreshSession } from '../api/refreshSession.api'
 import { logoutUser } from '../api/logoutUser.api'
 import { setAccessToken, getAccessToken } from './accessTokenStore'
 import type { AccessTokenResponse } from '../types/auth.types'
+import { getCreditBalance } from '#/features/credits/api/credits.api'
 
 vi.mock('../api/logoutUser.api', () => ({ logoutUser: vi.fn() }))
+vi.mock('#/features/credits/api/credits.api', () => ({
+  getCreditBalance: vi.fn(async () => ({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })),
+}))
+vi.mock('#/features/orders/api/orders.api', () => ({
+  listMyOrders: vi.fn(async () => ({ items: [], total: 0, page: 0, size: 20 })),
+  listAvailableOrders: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 0,
+    size: 20,
+  })),
+}))
 
 vi.mock('../api/refreshSession.api', () => ({ refreshSession: vi.fn() }))
 
@@ -50,7 +66,7 @@ const refresh = vi.mocked(refreshSession)
 const clients: Array<QueryClient> = []
 
 const tokens = (): AccessTokenResponse => ({
-  accessToken: 'token',
+  accessToken: `header.${btoa(JSON.stringify({ sub: '1', roles: ['USER'] }))}.signature`,
   expiresAt: new Date(Date.now() + 300_000).toISOString(),
 })
 
@@ -59,6 +75,10 @@ beforeEach(() => {
   setAccessToken(null)
   refresh.mockReset()
   vi.mocked(logoutUser).mockReset()
+  vi.mocked(getCreditBalance).mockReset().mockResolvedValue({
+    availableBalance: 15,
+    reservedBalance: 0,
+  })
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
 })
 
@@ -89,22 +109,69 @@ const setup = (path: string) => {
   return router
 }
 
+it.each([
+  ['/home?mode=courier', 17],
+  ['/home?mode=requestor', 0],
+] as const)(
+  'shows the available credit balance on %s',
+  async (path, balance) => {
+    setAccessToken(tokens().accessToken)
+    vi.mocked(getCreditBalance).mockResolvedValue({
+      availableBalance: balance,
+      reservedBalance: 3,
+    })
+    setup(path)
+
+    expect(await screen.findByText(`${balance} credits`)).toBeInTheDocument()
+    expect(screen.queryByText('3 credits')).not.toBeInTheDocument()
+  },
+)
+
+it('keeps the header usable when the credit balance is unavailable', async () => {
+  setAccessToken(tokens().accessToken)
+  vi.mocked(getCreditBalance).mockRejectedValue(
+    new Error('Credit account pending'),
+  )
+  setup('/home?mode=courier')
+
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  await waitFor(() => expect(getCreditBalance).toHaveBeenCalled())
+  expect(screen.getByText('Balance unavailable')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+})
+
+it('opens My Errands from the header and returns to courier Home', async () => {
+  setAccessToken(tokens().accessToken)
+  const router = setup('/home?mode=courier')
+  const user = userEvent.setup()
+  await screen.findByRole('heading', { name: 'Find an errand' })
+
+  await user.click(screen.getByRole('link', { name: 'My Errands' }))
+  await screen.findByRole('heading', { name: 'My Errands' })
+  expect(router.state.location.pathname).toBe('/errands')
+  await screen.findByText('No active errands match this view.')
+
+  await user.click(screen.getByRole('link', { name: 'Home' }))
+  await screen.findByRole('heading', { name: 'Find an errand' })
+  expect(router.state.location.href).toBe('/home?mode=courier')
+})
+
 it('switches between requestor and courier modes through the menu', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   const router = setup('/home')
   const user = userEvent.setup()
   await screen.findByRole('heading', { name: 'What do you need?' })
 
-  await user.click(screen.getByRole('button', { name: 'Request' }))
-  await user.click(await screen.findByRole('menuitem', { name: 'Deliver' }))
+  await user.click(screen.getByRole('button', { name: 'Requester' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Courier' }))
   await screen.findByRole('heading', { name: 'Find an errand' })
   expect(router.state.location.href).toBe('/home?mode=courier')
   expect(
     screen.queryByRole('heading', { name: 'What do you need?' }),
   ).not.toBeInTheDocument()
 
-  await user.click(screen.getByRole('button', { name: 'Deliver' }))
-  await user.click(await screen.findByRole('menuitem', { name: 'Request' }))
+  await user.click(screen.getByRole('button', { name: 'Courier' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Requester' }))
   await screen.findByRole('heading', { name: 'What do you need?' })
   expect(router.state.location.pathname).toBe('/home')
   expect(
@@ -125,7 +192,7 @@ it.each([
 ] as const)(
   'preserves %s when clicking Home and returning from Profile',
   async (path, heading) => {
-    setAccessToken('token')
+    setAccessToken(tokens().accessToken)
     const router = setup(path)
     const user = userEvent.setup()
     await screen.findByRole('heading', { name: heading })
@@ -159,7 +226,7 @@ it.each([
 it.each(['/', '/home'])(
   'restores the remembered mode from %s in a new router',
   async (path) => {
-    setAccessToken('token')
+    setAccessToken(tokens().accessToken)
     setup('/home?mode=courier')
     await screen.findByRole('heading', { name: 'Find an errand' })
     cleanup()
@@ -171,7 +238,7 @@ it.each(['/', '/home'])(
 )
 
 it('does not change the remembered mode when preloading the other mode', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   const router = setup('/home?mode=courier')
   await screen.findByRole('heading', { name: 'Find an errand' })
   await act(async () => {
@@ -184,7 +251,7 @@ it('does not change the remembered mode when preloading the other mode', async (
 })
 
 it('sets an explicit requestor query when no mode has been selected', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   const router = setup('/home')
   await screen.findByRole('heading', { name: 'What do you need?' })
   expect(router.state.location.href).toBe('/home?mode=requestor')
@@ -193,7 +260,7 @@ it('sets an explicit requestor query when no mode has been selected', async () =
 it.each(['unknown', 'true', '123'])(
   'hydrates an invalid mode=%s from session storage',
   async (mode) => {
-    setAccessToken('token')
+    setAccessToken(tokens().accessToken)
     sessionStorage.setItem('foc.homeMode', 'courier')
     const router = setup(`/home?mode=${mode}`)
     await screen.findByRole('heading', { name: 'Find an errand' })
@@ -202,7 +269,7 @@ it.each(['unknown', 'true', '123'])(
 )
 
 it('defaults to requestor when the stored mode is invalid', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   sessionStorage.setItem('foc.homeMode', 'invalid')
   const router = setup('/home')
   await screen.findByRole('heading', { name: 'What do you need?' })
@@ -210,7 +277,7 @@ it('defaults to requestor when the stored mode is invalid', async () => {
 })
 
 it('defaults to requestor when session storage is unavailable', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
     throw new Error('Storage unavailable')
   })
@@ -225,7 +292,7 @@ it('defaults to requestor when session storage is unavailable', async () => {
 it.each(['requestor'])(
   'uses requestor for mode=%s even when courier was remembered',
   async (mode) => {
-    setAccessToken('token')
+    setAccessToken(tokens().accessToken)
     setup('/home?mode=courier')
     await screen.findByRole('heading', { name: 'Find an errand' })
     cleanup()
@@ -242,7 +309,7 @@ it.each(['requestor'])(
 )
 
 it('shares one account layout across home, courier and profile routes', async () => {
-  setAccessToken('token')
+  setAccessToken(tokens().accessToken)
   const router = setup('/home')
   const user = userEvent.setup()
   await screen.findByRole('heading', { name: 'What do you need?' })
@@ -378,7 +445,7 @@ it('shows a safe failure and reruns beforeLoad on retry', async () => {
 })
 
 it('routes a confirmed business authentication failure through Provider and the guard', async () => {
-  setAccessToken('original')
+  setAccessToken(tokens().accessToken)
   refresh.mockResolvedValue(tokens())
   const router = setup('/home')
   await screen.findByRole('heading', { name: 'What do you need?' })
@@ -410,7 +477,7 @@ it('routes a confirmed business authentication failure through Provider and the 
 it.each(['success', 'timeout'])(
   'waits for the current refresh %s before logout without restoring the token',
   async (outcome) => {
-    setAccessToken('original')
+    setAccessToken(tokens().accessToken)
     let finishRefresh!: () => void
     refresh.mockReturnValue(
       new Promise((resolve, reject) => {

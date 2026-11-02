@@ -1,5 +1,0 @@
-bucket = "YOUR-EXISTING-PRIVATE-TERRAFORM-STATE-BUCKET"
-key = "prod/images/terraform.tfstate"
-region = "ap-southeast-2"
-encrypt = true
-use_lockfile = true

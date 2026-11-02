@@ -2,18 +2,16 @@ package com.cs3219.foc.credit.infrastructure.messaging.consumer;
 
 import com.cs3219.foc.credit.model.dto.event.UserCreatedEvent;
 import com.cs3219.foc.credit.service.CreditAccountService;
-import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
-@Configuration
+@Component
 @RequiredArgsConstructor
 public class UserCreatedConsumer {
     private final CreditAccountService creditAccountService;
 
-    @Bean
-    Consumer<UserCreatedEvent> userCreated() {
-        return event -> creditAccountService.initializeAccount(event.payload().userId());
+    public void initializeAccount(UserCreatedEvent event) {
+        var userId = event.payload().userId();
+        creditAccountService.initializeAccount(userId);
     }
 }

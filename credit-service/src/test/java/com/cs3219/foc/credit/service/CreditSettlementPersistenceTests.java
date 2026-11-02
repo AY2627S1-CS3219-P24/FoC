@@ -4,42 +4,37 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.cs3219.foc.credit.config.CreditProperties;
 import com.cs3219.foc.credit.exception.*;
+import com.cs3219.foc.credit.integration.AbstractIntegrationTest;
 import com.cs3219.foc.credit.model.dto.*;
 import com.cs3219.foc.credit.model.dto.event.*;
 import com.cs3219.foc.credit.repository.CreditAccountRepository;
 import com.cs3219.foc.credit.security.AuthenticatedUserResolver;
 import com.cs3219.foc.credit.security.AuthenticationContextService;
 import com.cs3219.foc.credit.security.CurrentUserService;
-import jakarta.persistence.EntityManagerFactory;
-import java.sql.DriverManager;
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.*;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-@SpringJUnitConfig(CreditSettlementPersistenceTests.TestConfig.class)
-@TestPropertySource(properties = "credits.initial-allocation=15")
-@EnabledIfEnvironmentVariable(named = "FOC_TEST_DATABASE_URL", matches = ".+")
-class CreditSettlementPersistenceTests {
-    private static final String SCHEMA =
-            "credit_rewards_test_" + UUID.randomUUID().toString().replace("-", "");
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Import(CreditSettlementPersistenceTests.TestConfig.class)
+class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
     private CreditReservationService reserve;
@@ -59,17 +54,6 @@ class CreditSettlementPersistenceTests {
     void clean() {
         jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("TRUNCATE credit_accounts CASCADE");
-    }
-
-    @AfterAll
-    static void dropSchema() throws Exception {
-        try (var c = DriverManager.getConnection(
-                        System.getenv("FOC_TEST_DATABASE_URL"),
-                        System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                        System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-                var s = c.createStatement()) {
-            s.execute("DROP SCHEMA IF EXISTS " + SCHEMA + " CASCADE");
-        }
     }
 
     private UUID fund(long amount) {
@@ -125,7 +109,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCancelledEvent cancelled(UUID user, ReserveCreditRequest r) {
         return new ErrandCancelledEvent(
                 UUID.randomUUID(),
-                "ErrandCancelledEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, r.amount()));
@@ -134,7 +117,6 @@ class CreditSettlementPersistenceTests {
     private ErrandExpiredEvent expired(UUID user, ReserveCreditRequest r) {
         return new ErrandExpiredEvent(
                 UUID.randomUUID(),
-                "ErrandExpiredEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandExpiredEvent.Payload(r.errandId(), user, r.amount()));
@@ -143,7 +125,6 @@ class CreditSettlementPersistenceTests {
     private ErrandCompletedEvent completed(UUID user, ReserveCreditRequest r, UUID courier) {
         return new ErrandCompletedEvent(
                 UUID.randomUUID(),
-                "ErrandCompletedEvent",
                 1,
                 OffsetDateTime.now(),
                 new ErrandCompletedEvent.Payload(r.errandId(), user, r.amount(), courier));
@@ -255,7 +236,6 @@ class CreditSettlementPersistenceTests {
         var corrected = cancelled(user, r);
         var rejected = new ErrandCancelledEvent(
                 corrected.eventId(),
-                corrected.eventType(),
                 1,
                 corrected.occurredAt(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, 70));
@@ -285,18 +265,13 @@ class CreditSettlementPersistenceTests {
         settlement.releaseReservedCredits(cancel);
         var changed = new ErrandCancelledEvent(
                 cancel.eventId(),
-                cancel.eventType(),
                 1,
                 cancel.occurredAt(),
                 new ErrandCancelledEvent.Payload(second.errandId(), user, 40));
         assertThatThrownBy(() -> settlement.releaseReservedCredits(changed))
                 .isInstanceOf(IllegalArgumentException.class);
         var changedAmount = new ErrandCancelledEvent(
-                cancel.eventId(),
-                cancel.eventType(),
-                1,
-                cancel.occurredAt(),
-                new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
+                cancel.eventId(), 1, cancel.occurredAt(), new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
         assertThatThrownBy(() -> settlement.releaseReservedCredits(changedAmount))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));
@@ -385,39 +360,6 @@ class CreditSettlementPersistenceTests {
         @Bean
         Results results() {
             return new Results();
-        }
-
-        @Bean
-        DataSource dataSource() {
-            var url = System.getenv("FOC_TEST_DATABASE_URL");
-            var source = new DriverManagerDataSource(
-                    url + (url.contains("?") ? "&" : "?") + "currentSchema=" + SCHEMA,
-                    System.getenv("FOC_TEST_DATABASE_USERNAME"),
-                    System.getenv("FOC_TEST_DATABASE_PASSWORD"));
-            Flyway.configure()
-                    .dataSource(source)
-                    .schemas(SCHEMA)
-                    .defaultSchema(SCHEMA)
-                    .locations("filesystem:" + System.getProperty("foc.root")
-                            + "/credit-service/src/main/resources/db/migration")
-                    .load()
-                    .migrate();
-            return source;
-        }
-
-        @Bean
-        LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {
-            var factory = new LocalContainerEntityManagerFactoryBean();
-            factory.setDataSource(source);
-            factory.setPackagesToScan("com.cs3219.foc.credit.model.entity");
-            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate"));
-            return factory;
-        }
-
-        @Bean
-        JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-            return new JpaTransactionManager(factory);
         }
     }
 }

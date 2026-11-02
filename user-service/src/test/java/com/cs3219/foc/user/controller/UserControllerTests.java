@@ -29,6 +29,7 @@ import com.cs3219.foc.user.service.EmailVerificationService;
 import com.cs3219.foc.user.service.PasswordService;
 import com.cs3219.foc.user.service.UserService;
 import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,6 +118,39 @@ class UserControllerTests {
                         """))
                 .andExpect(status().isNoContent());
         verify(passwordService).resetPassword("reset-token", " NewPassword2 ");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "null", "{", "{\"email\":[]}"})
+    void reportsUnreadableRequests(String body) throws Exception {
+        mvc.perform(post("/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Request body is missing or contains invalid fields"))
+                .andExpect(jsonPath("$.fieldErrors").isEmpty());
+        verifyNoInteractions(passwordService);
+    }
+
+    @Test
+    void reportsQueryParameterValidationErrors() throws Exception {
+        var ids = Collections.nCopies(201, userId.toString()).toArray(String[]::new);
+        mvc.perform(get("/users/brief").param("ids", ids).with(jwt()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.fieldErrors.ids").exists());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void reportsMissingQueryParameters() throws Exception {
+        mvc.perform(get("/users/brief").with(jwt()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.fieldErrors.ids").value("must be provided"));
+        verifyNoInteractions(service);
     }
 
     @Test

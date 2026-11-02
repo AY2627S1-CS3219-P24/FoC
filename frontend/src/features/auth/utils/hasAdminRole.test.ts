@@ -19,3 +19,8 @@ it('derives the admin role from the current token', () => {
   setAccessToken(null)
   expect(hasAdminRole()).toBe(false)
 })
+
+it('if a token cannnot be decoded, then say is not admin user', () => {
+  setAccessToken('not-a-jwt')
+  expect(hasAdminRole()).toBe(false)
+})
