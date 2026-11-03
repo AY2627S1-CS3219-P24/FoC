@@ -23,6 +23,14 @@ export const MyErrandsPage = () => {
       : search.participation
   const delivering = side === 'delivering'
   const [text, setText] = useState(search.q ?? '')
+  // keep the filter update with user entered text & previous filter
+  const [written, setWritten] = useState(search.q)
+  const [seen, setSeen] = useState(search.q)
+
+  if (search.q !== seen) {
+    setSeen(search.q)
+    if (search.q !== written) setText(search.q ?? '')
+  }
 
   // A link that names a side also moves Home to that side.
   useEffect(() => {
@@ -37,6 +45,7 @@ export const MyErrandsPage = () => {
     const q = text.trim() || undefined
     if (q === search.q) return
     const timer = setTimeout(() => {
+      setWritten(q)
       void navigate({
         to: '/errands',
         search: { ...search, q, page: 0 },

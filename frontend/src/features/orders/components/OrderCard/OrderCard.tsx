@@ -50,6 +50,8 @@ export const OrderCard = ({
         tab: listSearch?.tab ?? 'active',
         participation: listSearch?.participation ?? 'all',
         page: listSearch?.page ?? 0,
+        // to keep the search, so when user click "Back to My Errands" will return to same results
+        q: listSearch?.q,
         posted: false,
       }}
     >

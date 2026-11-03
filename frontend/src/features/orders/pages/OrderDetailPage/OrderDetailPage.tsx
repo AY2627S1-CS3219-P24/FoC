@@ -60,6 +60,7 @@ export const OrderDetailPage = () => {
           tab: search.tab,
           participation: search.participation,
           page: search.page,
+          q: search.q,
         }}
         className={styles.back}
       >
