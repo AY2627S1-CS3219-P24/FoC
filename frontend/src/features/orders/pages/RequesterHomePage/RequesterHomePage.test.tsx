@@ -12,9 +12,12 @@ import { useMyErrands } from '../../hooks/useOrders'
 import { orderFixture } from '../../test/orderFixtures'
 import { RequesterHomePage } from './RequesterHomePage'
 
+vi.mock('#/hooks/useNow', () => ({
+  useNow: () => Date.parse('2030-01-01T00:10:00Z'),
+}))
+
 vi.mock('../../hooks/useOrders', () => ({
   useMyErrands: vi.fn(),
-  useOrderClock: () => Date.parse('2030-01-01T00:10:00Z'),
 }))
 
 const queryMock = vi.mocked(useMyErrands, { partial: true })

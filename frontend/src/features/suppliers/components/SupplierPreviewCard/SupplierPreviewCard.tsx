@@ -1,3 +1,4 @@
+import { useNow } from '#/hooks/useNow'
 import { useState } from 'react'
 import { categoryLabels } from '../../utils/supplierFormat'
 import {
@@ -53,7 +54,8 @@ export const SupplierPreviewCard = ({
     ),
   )
   const hasHours = openingHours.length > 0
-  const open = hasHours && isOpenAt(openingHours, new Date())
+  const now = useNow(60_000)
+  const open = hasHours && isOpenAt(openingHours, now)
   const overnight = openingHours.some(closesAfterMidnight)
   const hasCoordinates =
     isCoordinate(latitude, 90) && isCoordinate(longitude, 180)

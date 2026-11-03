@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   search: { q: '', page: 0 },
 }))
+vi.mock('#/hooks/useNow', () => ({
+  useNow: () => Date.parse('2030-01-01T00:10:00Z'),
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useSearch: () => mocks.search,
@@ -30,7 +34,6 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 vi.mock('../../hooks/useOrders', () => ({
   useAvailableOrders: (...args: Array<unknown>) => mocks.query(...args),
-  useOrderClock: () => Date.parse('2030-01-01T00:10:00Z'),
 }))
 beforeEach(() => {
   mocks.navigate.mockReset()

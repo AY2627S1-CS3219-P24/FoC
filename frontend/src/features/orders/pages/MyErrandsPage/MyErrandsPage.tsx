@@ -4,7 +4,7 @@ import { Search } from 'lucide-react'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { OrderPagination } from '../../components/OrderPagination/OrderPagination'
-import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+import { useMyErrands } from '../../hooks/useOrders'
 import type { OrderListSearch } from '../../utils/orderFilters'
 import styles from '../../styles/order.module.scss'
 import pageStyles from './MyErrandsPage.module.scss'
@@ -41,7 +41,6 @@ export const MyErrandsPage = () => {
     size: 20,
     q: search.q,
   })
-  const now = useOrderClock()
   return (
     <div className={styles.page}>
       <h1 className={styles.pageTitle}>My Errands</h1>
@@ -107,7 +106,6 @@ export const MyErrandsPage = () => {
                   <OrderCard
                     order={order}
                     userId={query.userId!}
-                    now={now}
                     listSearch={search}
                   />
                 </li>

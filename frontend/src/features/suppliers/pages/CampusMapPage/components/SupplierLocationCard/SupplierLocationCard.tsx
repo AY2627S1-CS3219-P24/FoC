@@ -1,12 +1,12 @@
+import { getOpenStatus } from '../../../../utils/openingHours'
 import { ChevronRight } from 'lucide-react'
 import type { Supplier } from '../../../../types/supplier.types'
 import { categoryLabels } from '../../../../utils/supplierFormat'
-import { getOpenStatus } from '../../../../utils/openingHours'
 import styles from './SupplierLocationCard.module.scss'
 
 type SupplierLocationCardProps = {
   supplier: Supplier
-  currentTime: Date
+  currentTime: number
   isSelected: boolean
   onSelect: (id: string) => void
 }

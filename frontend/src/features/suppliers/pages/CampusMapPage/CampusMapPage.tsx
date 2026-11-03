@@ -12,7 +12,7 @@ import type {
   SortMode,
 } from './components/LocationControls/LocationControls'
 import styles from './CampusMapPage.module.scss'
-import { useNow } from '#/features/suppliers/hooks/useNow'
+import { useNow } from '#/hooks/useNow'
 
 const CampusMap = lazy(() =>
   import('./CampusMap').then((module) => ({ default: module.CampusMap })),
@@ -43,7 +43,7 @@ export const CampusMapPage = () => {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortMode>('name')
   const [filter, setFilter] = useState<FilterMode>('all')
-  const currentTime = useNow()
+  const currentTime = useNow(60_000)
   const locations = (suppliers.data ?? []).filter((supplier) => supplier.active)
   const visible = locations
     .filter((supplier) => {

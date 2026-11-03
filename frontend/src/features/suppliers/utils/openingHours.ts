@@ -24,19 +24,31 @@ const isFullDay = ({ opensAt, closesAt }: OpeningHours) =>
 export const closesAfterMidnight = ({ opensAt, closesAt }: OpeningHours) =>
   toHourMinute(closesAt) < toHourMinute(opensAt)
 
-// count monday as the first day
-const dayIndexOf = (date: Date) => (date.getDay() + 6) % 7
+const campusClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Singapore',
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 
-const timeOf = (date: Date) =>
-  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+const campusTime = (timestamp: number) => {
+  const parts = campusClock.formatToParts(timestamp)
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)!.value
+  const dayIndex = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(
+    part('weekday'),
+  )
+  return { dayIndex, time: `${part('hour')}:${part('minute')}` }
+}
 
 export const getOpenStatus = (
   hours: Array<OpeningHours>,
-  now: Date,
+  now: number,
 ): OpenStatus => {
-  const today = DAYS_OF_WEEK[dayIndexOf(now)]
-  const yesterday = DAYS_OF_WEEK[(dayIndexOf(now) + 6) % 7]
-  const time = timeOf(now)
+  const { dayIndex, time } = campusTime(now)
+  const today = DAYS_OF_WEEK[dayIndex]
+  const yesterday = DAYS_OF_WEEK[(dayIndex + 6) % 7]
 
   const activeEntry = hours.find((entry) => {
     const opensAt = toHourMinute(entry.opensAt)
@@ -59,7 +71,7 @@ export const getOpenStatus = (
 }
 
 /** Whether a supplier is open at the given time. */
-export const isOpenAt = (hours: Array<OpeningHours>, now: Date) =>
+export const isOpenAt = (hours: Array<OpeningHours>, now: number) =>
   getOpenStatus(hours, now).isOpen
 
 const formatRange = (entry: OpeningHours) => {
@@ -104,9 +116,10 @@ export const formatWeeklyHours = (hours: Array<OpeningHours>) => {
   return lines
 }
 
-export const formatTodayHours = (hours: Array<OpeningHours>, now: Date) => {
+export const formatTodayHours = (hours: Array<OpeningHours>, now: number) => {
+  const { dayIndex } = campusTime(now)
   const entry = hours.find(
-    ({ dayOfWeek }) => dayOfWeek === DAYS_OF_WEEK[dayIndexOf(now)],
+    ({ dayOfWeek }) => dayOfWeek === DAYS_OF_WEEK[dayIndex],
   )
   return entry ? formatRange(entry) : 'Closed today'
 }

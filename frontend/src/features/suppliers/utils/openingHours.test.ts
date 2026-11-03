@@ -11,7 +11,7 @@ import type { DayOfWeek, OpeningHours } from '../types/supplier.types'
 
 // say test, 2026-01-05 is Monday
 const at = (dayOffset: number, hours: number, minutes = 0) =>
-  new Date(2026, 0, 5 + dayOffset, hours, minutes)
+  Date.UTC(2026, 0, 5 + dayOffset, hours - 8, minutes)
 const MONDAY = 0
 const TUESDAY = 1
 const SATURDAY = 5

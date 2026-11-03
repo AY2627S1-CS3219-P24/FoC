@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { OrderActions } from '../../components/OrderActions/OrderActions'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { OrderPagination } from '../../components/OrderPagination/OrderPagination'
-import { useAvailableOrders, useOrderClock } from '../../hooks/useOrders'
+import { useAvailableOrders } from '../../hooks/useOrders'
 import { orderErrorMessage } from '../../utils/orderErrors'
 import type { Errand } from '../../types/errand.types'
 import styles from '../../styles/order.module.scss'
@@ -30,7 +30,6 @@ export const CourierHomePage = () => {
     return () => clearTimeout(timer)
   }, [input, search.q, navigate])
   const orders = useAvailableOrders(search.q ?? '', search.page ?? 0)
-  const now = useOrderClock()
   const items = orders.data?.items ?? []
   const selected = items.find((order) => order.id === selectedId) ?? items.at(0)
   const choose = (orderId: string) => {
@@ -61,7 +60,6 @@ export const CourierHomePage = () => {
                 order={selected}
                 pageNumber={search.page ?? 0}
                 userId={orders.userId}
-                now={now}
                 actionError={actionError}
                 onError={setActionError}
               />
@@ -153,14 +151,12 @@ const TripDetail = ({
   order,
   pageNumber,
   userId,
-  now,
   actionError,
   onError,
 }: {
   order: Errand
   pageNumber: number
   userId: string
-  now: number
   actionError: Error | null
   onError: (error: Error | null) => void
 }) => (
@@ -192,7 +188,6 @@ const TripDetail = ({
       key={`${userId}:${order.id}`}
       order={order}
       userId={userId}
-      now={now}
       onError={onError}
     />
   </aside>

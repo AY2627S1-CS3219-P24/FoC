@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
-import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+import { useMyErrands } from '../../hooks/useOrders'
 import type { Errand } from '../../types/errand.types'
 import common from '../../styles/order.module.scss'
 import styles from './RequesterHomePage.module.scss'
@@ -16,7 +16,6 @@ const activeDelivery = (orders: Array<Errand>, userId?: string) =>
 
 export const RequesterHomePage = () => {
   const orders = useMyErrands({ as: 'all', view: 'all', page: 0, size: 3 })
-  const now = useOrderClock()
   const recent = orders.data?.items ?? []
   const delivery = activeDelivery(recent, orders.userId)
 
@@ -78,7 +77,7 @@ export const RequesterHomePage = () => {
           <ul className={common.list}>
             {recent.map((order) => (
               <li key={order.id}>
-                <OrderCard order={order} userId={orders.userId!} now={now} />
+                <OrderCard order={order} userId={orders.userId!} />
               </li>
             ))}
           </ul>

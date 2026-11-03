@@ -34,7 +34,7 @@ export type SupplierSummary = {
 // the dashboard stats for admin to view
 export const summarizeSuppliers = (
   suppliers: Array<Supplier>,
-  now: Date,
+  now: number,
 ): SupplierSummary => {
   const active = suppliers.filter((supplier) => supplier.active)
   return {

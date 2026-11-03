@@ -1,3 +1,4 @@
+import { useNow } from '#/hooks/useNow'
 import { Link } from '@tanstack/react-router'
 import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
@@ -19,10 +20,9 @@ export const SupplierSlideOver = ({
   from?: 'map' | 'request' | 'locations'
   category?: SupplierCategory
 }) => {
+  const now = useNow(60_000)
   const hours = supplier ? formatWeeklyHours(supplier.openingHours) : []
-  const openStatus = supplier
-    ? getOpenStatus(supplier.openingHours, new Date())
-    : null
+  const openStatus = supplier ? getOpenStatus(supplier.openingHours, now) : null
   let statusLabel = 'Closed'
   if (openStatus?.isOpen && openStatus.is24Hours) statusLabel = 'Open 24 hours'
   if (openStatus?.isOpen && !openStatus.is24Hours)

@@ -1,3 +1,4 @@
+import { useNow } from '#/hooks/useNow'
 import { Link } from '@tanstack/react-router'
 import { Clock, MapPin, Store } from 'lucide-react'
 import { OrderStatusBadge } from '../OrderStatusBadge/OrderStatusBadge'
@@ -31,12 +32,10 @@ const participants = (order: Errand, userId: string) => {
 export const OrderCard = ({
   order,
   userId,
-  now,
   listSearch,
 }: {
   order: Errand
   userId: string
-  now: number
   listSearch?: OrderListSearch
 }) => {
   const courier = order.courier?.id === userId
@@ -57,7 +56,7 @@ export const OrderCard = ({
         {order.status === 'OPEN' && (
           <span className={styles.expiry}>
             <Clock size={13} aria-hidden="true" />
-            {remainingTime(order.expiresAt, now)}
+            <OrderExpiry expiresAt={order.expiresAt} />
           </span>
         )}
         <strong className={styles.item}>{order.description}</strong>
@@ -89,4 +88,9 @@ export const OrderCard = ({
       </span>
     </Link>
   )
+}
+
+const OrderExpiry = ({ expiresAt }: { expiresAt: string }) => {
+  const now = useNow(1_000)
+  return remainingTime(expiresAt, now)
 }

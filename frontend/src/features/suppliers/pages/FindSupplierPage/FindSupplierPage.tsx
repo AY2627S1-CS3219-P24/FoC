@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { Button } from '@base-ui/react/button'
 import { CategoryTiles } from '../../components/CategoryTiles/CategoryTiles'
 import { SupplierSlideOver } from '../../components/SupplierSlideOver/SupplierSlideOver'
 import { useSuppliers } from '../../hooks/useSuppliers'
 import type { Supplier } from '../../types/supplier.types'
-import { formatLocation } from '../../utils/supplierFormat'
 import { getOpenStatus } from '../../utils/openingHours'
 import styles from './FindSupplierPage.module.scss'
+import { useNow } from '#/hooks/useNow'
+import { SupplierCard } from './components/SupplierCard/SupplierCard'
 
 export const FindSupplierPage = () => {
   const suppliers = useSuppliers()
   const [selected, setSelected] = useState<Supplier | null>(null)
+  const now = useNow(60_000)
 
   return (
     <section className={styles.page}>
@@ -36,30 +37,14 @@ export const FindSupplierPage = () => {
         ) : null}
         {suppliers.isSuccess && suppliers.data.length > 0 ? (
           <ul className={styles.grid}>
-            {suppliers.data.map((supplier) => {
-              const status = getOpenStatus(supplier.openingHours, new Date())
-              return (
-                <li key={supplier.id}>
-                  <Button
-                    className={styles.card}
-                    onClick={() => setSelected(supplier)}
-                  >
-                    <span className={styles.image} aria-hidden="true">
-                      {supplier.imageUrl ? (
-                        <img src={supplier.imageUrl} alt="" />
-                      ) : (
-                        supplier.name.slice(0, 1).toUpperCase()
-                      )}
-                    </span>
-                    <span className={styles.name}>{supplier.name}</span>
-                    <span className={styles.meta}>
-                      {formatLocation(supplier)} ·{' '}
-                      {status.isOpen ? 'Open now' : 'Closed'}
-                    </span>
-                  </Button>
-                </li>
-              )
-            })}
+            {suppliers.data.map((supplier) => (
+              <SupplierCard
+                key={supplier.id}
+                supplier={supplier}
+                isOpen={getOpenStatus(supplier.openingHours, now).isOpen}
+                onSelect={setSelected}
+              />
+            ))}
           </ul>
         ) : null}
       </div>
