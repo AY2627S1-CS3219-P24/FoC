@@ -61,6 +61,13 @@ services:
       floci:
         condition: service_healthy
 
+  supplier-seed:
+    environment:
+      <<: *floci-client
+    depends_on:
+      floci:
+        condition: service_healthy
+
   order-service:
     environment:
       <<: *floci-client

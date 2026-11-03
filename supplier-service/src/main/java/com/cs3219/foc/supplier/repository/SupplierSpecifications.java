@@ -40,6 +40,7 @@ public final class SupplierSpecifications {
 
     /**
      * Suppliers open on {@code day} at {@code time}. Opening time is inclusive and closing time is exclusive.
+     * The catalog convention {@code 00:00–23:59} represents the full day, including its final minute.
      */
     public static Specification<Supplier> openAt(DayOfWeek day, LocalTime time) {
         return (root, query, cb) -> {
@@ -49,10 +50,11 @@ public final class SupplierSpecifications {
             var closesAt = hours.<LocalTime>get("closesAt");
             var dayOfWeek = hours.<DayOfWeek>get("dayOfWeek");
 
+            var fullDay = cb.and(cb.equal(opensAt, LocalTime.MIDNIGHT), cb.equal(closesAt, LocalTime.of(23, 59)));
             var openToday = cb.and(
                     cb.equal(dayOfWeek, day),
                     cb.lessThanOrEqualTo(opensAt, time),
-                    cb.or(cb.greaterThan(closesAt, time), cb.lessThan(closesAt, opensAt)));
+                    cb.or(fullDay, cb.greaterThan(closesAt, time), cb.lessThan(closesAt, opensAt)));
             var openSinceYesterday = cb.and(
                     cb.equal(dayOfWeek, day.minus(1)), cb.lessThan(closesAt, opensAt), cb.greaterThan(closesAt, time));
 

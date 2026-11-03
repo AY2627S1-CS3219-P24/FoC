@@ -119,6 +119,22 @@ class SupplierSpecificationsTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void fullDayShopsStayOpenDuringTheFinalMinute() {
+        assertThat(openAt(DayOfWeek.MONDAY, "00:00")).contains("Octobox");
+        assertThat(openAt(DayOfWeek.MONDAY, "23:59")).contains("Octobox");
+        assertThat(openAt(DayOfWeek.SUNDAY, "23:59:59")).contains("Octobox");
+    }
+
+    @Test
+    void lateClosingShopsStillCloseAtTheirScheduledTime() {
+        repository.save(supplier(
+                "Late Cafe", SupplierCategory.FOOD, "COM2", null, List.of(DayOfWeek.MONDAY), "09:00", "23:59", true));
+        assertThat(openAt(DayOfWeek.MONDAY, "23:58")).contains("Late Cafe");
+        assertThat(openAt(DayOfWeek.MONDAY, "23:59")).doesNotContain("Late Cafe");
+        assertThat(openAt(DayOfWeek.TUESDAY, "00:00")).doesNotContain("Late Cafe");
+    }
+
+    @Test
     void openAtIncludesHoursRunningPastMidnightFromThePreviousDay() {
         assertThat(openAt(DayOfWeek.TUESDAY, "01:30")).containsExactly("Octobox", "Supersnacks");
         assertThat(openAt(DayOfWeek.TUESDAY, "02:00")).containsExactly("Octobox");

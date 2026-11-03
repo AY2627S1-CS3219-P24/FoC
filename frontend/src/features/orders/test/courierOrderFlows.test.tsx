@@ -89,9 +89,15 @@ const setup = (path: string) => {
 }
 const openDetails = async (path = '/home?mode=courier') => {
   const result = setup(path)
-  await result.user.click(
-    await screen.findByRole('link', { name: /Campus Cafe.*Library/ }),
-  )
+  const onDeliver = path.startsWith('/home')
+  if (onDeliver) {
+    await screen.findByRole('button', { name: /Campus Cafe.*Library/ })
+    await result.user.click(screen.getByRole('link', { name: 'View route' }))
+  } else {
+    await result.user.click(
+      await screen.findByRole('link', { name: /Campus Cafe.*Library/ }),
+    )
+  }
   await screen.findByText('COM1, Lobby')
   expect(result.router.state.location.pathname).toBe(`/errands/${order.id}`)
   return result
@@ -227,7 +233,9 @@ it.each(['/home?mode=courier', assignedPath])(
       }
     vi.mocked(axiosClient.get).mockResolvedValue(list([order], 0, 21))
     const { user, router } = setup(path)
-    await screen.findByRole('link', { name: /Campus Cafe.*Library/ })
+    await screen.findByRole(assigned ? 'link' : 'button', {
+      name: /Campus Cafe.*Library/,
+    })
     vi.mocked(axiosClient.get).mockResolvedValue(list([order], 1, 21))
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() =>
@@ -259,7 +267,7 @@ it.each(['/home?mode=courier', assignedPath])(
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByText(
       path === assignedPath
-        ? 'No active errands match this view.'
+        ? /No active errands match this view/
         : 'No open errands right now. Check back soon.',
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

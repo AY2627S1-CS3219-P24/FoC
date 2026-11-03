@@ -1,15 +1,34 @@
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
 import { OrderCard } from '../../components/OrderCard/OrderCard'
 import { OrderFeedback } from '../../components/OrderFeedback/OrderFeedback'
 import { OrderPagination } from '../../components/OrderPagination/OrderPagination'
-import { useMyErrands, useOrderClock } from '../../hooks/useOrders'
+import { useMyErrands } from '../../hooks/useOrders'
 import type { OrderListSearch } from '../../utils/orderFilters'
 import styles from '../../styles/order.module.scss'
 import pageStyles from './MyErrandsPage.module.scss'
 
+const SEARCH_DELAY_MS = 300
+
 export const MyErrandsPage = () => {
   const search = useSearch({ from: '/authenticated/user/errands' })
   const navigate = useNavigate()
+  const [text, setText] = useState(search.q ?? '')
+
+  useEffect(() => {
+    const q = text.trim() || undefined
+    if (q === search.q) return
+    const timer = setTimeout(() => {
+      void navigate({
+        to: '/errands',
+        search: { ...search, q, page: 0 },
+        replace: true,
+      })
+    }, SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [text, search, navigate])
+
   const query = useMyErrands({
     as:
       search.participation === 'requested'
@@ -20,8 +39,8 @@ export const MyErrandsPage = () => {
     view: search.tab,
     page: search.page,
     size: 20,
+    q: search.q,
   })
-  const now = useOrderClock()
   return (
     <div className={styles.page}>
       <h1 className={styles.pageTitle}>My Errands</h1>
@@ -39,10 +58,21 @@ export const MyErrandsPage = () => {
             </Link>
           ))}
         </nav>
+        <label className={pageStyles.search}>
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Search item, shop or place"
+            aria-label="Search errands"
+          />
+        </label>
         <label className={pageStyles.filter}>
           Type
           <select
             className={styles.select}
+            aria-label="Type"
             value={search.participation}
             onChange={(event) =>
               void navigate({
@@ -70,13 +100,12 @@ export const MyErrandsPage = () => {
       {query.data && query.userId && !query.error && (
         <>
           {query.data.items.length ? (
-            <ul className={styles.list}>
+            <ul className={`${styles.list} ${pageStyles.cards}`}>
               {query.data.items.map((order) => (
                 <li key={order.id}>
                   <OrderCard
                     order={order}
                     userId={query.userId!}
-                    now={now}
                     listSearch={search}
                   />
                 </li>
@@ -84,26 +113,22 @@ export const MyErrandsPage = () => {
             </ul>
           ) : (
             <div className={styles.panel}>
-              <p>
-                No {search.tab === 'history' ? 'past' : 'active'} errands match
-                this view.
-              </p>
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'requestor' }}
-              >
-                Request a pickup
-              </Link>{' '}
-              or{' '}
-              <Link
-                className={styles.link}
-                to="/home"
-                search={{ mode: 'courier' }}
-              >
-                find an errand
-              </Link>
-              .
+              {search.q ? (
+                <p>No errands match “{search.q}”.</p>
+              ) : (
+                <p>
+                  No {search.tab === 'history' ? 'past' : 'active'} errands
+                  match this view.{' '}
+                  <Link className={styles.link} to="/request">
+                    Request a pickup
+                  </Link>{' '}
+                  or{' '}
+                  <Link className={styles.link} to="/deliver">
+                    find an errand
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
           )}
           <OrderPagination
