@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useNow } from '#/hooks/useNow'
 import { Link } from '@tanstack/react-router'
 import { useOrderStats } from '#/features/orders/hooks/useOrderOverview'
 import { LiveOrdersPanel } from './components/LiveOrdersPanel/LiveOrdersPanel'
@@ -18,11 +18,10 @@ export const AdminOverviewPage = () => {
   // include deactivated suppliers to summary
   const suppliers = useSuppliers({ inactive: true })
   const { data: orderStats } = useOrderStats()
-  const summary = useMemo(
-    () =>
-      suppliers.data ? summarizeSuppliers(suppliers.data, new Date()) : null,
-    [suppliers.data],
-  )
+  const now = useNow(60_000)
+  const summary = suppliers.data
+    ? summarizeSuppliers(suppliers.data, now)
+    : null
 
   return (
     <section className={styles.page}>

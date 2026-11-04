@@ -1,7 +1,9 @@
 export type OrderListSearch = {
   tab: 'active' | 'history'
+  // 'all' follows the Request / Deliver role switch at home
   participation: 'all' | 'requested' | 'delivering'
   page: number
+  q?: string
 }
 export const parsePage = (value: unknown) =>
   Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : 0
@@ -15,6 +17,7 @@ export const parseOrderListSearch = (
       ? search.participation
       : 'all',
   page: parsePage(search.page),
+  q: typeof search.q === 'string' && search.q.trim() ? search.q : undefined,
 })
 export const parseAdminOrderSearch = (search: Record<string, unknown>) => ({
   requesterId: typeof search.requesterId === 'string' ? search.requesterId : '',

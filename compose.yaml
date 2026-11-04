@@ -33,7 +33,66 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql
       - ./infra/docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d foc_supplier"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  admin-init:
+    profiles: ["setup"]
+    restart: "no"
+    build:
+      context: .
+      target: user-service
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,admin-init
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_user
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SPRING_CLOUD_AWS_SNS_ENDPOINT: http://floci:4566
+      SPRING_CLOUD_AWS_S3_ENDPOINT: http://floci:4566
+      FOC_S3_ENDPOINT: http://floci:4566
+      FOC_USER_BUCKET: ${FOC_USER_BUCKET:-foc-dev-user}
+      AUTH_PRIVATE_KEY_LOCATION: file:/run/secrets/jwt_private_key
+      AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-System Administrator}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      floci:
+        condition: service_healthy
+
+  supplier-seed:
+    profiles: ["setup"]
+    restart: "no"
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: foc_supplier
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./infra/docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
+      - ./data/csv:/seed:ro
+    command: ["/bin/sh", "/scripts/seed-suppliers.sh", "/seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   floci_data:
   pg_data:
+
+secrets:
+  jwt_private_key:
+    file: ${JWT_PRIVATE_KEY_FILE:-./secrets/jwt-private.pem}
+  jwt_public_key:
+    file: ${JWT_PUBLIC_KEY_FILE:-./secrets/jwt-public.pem}

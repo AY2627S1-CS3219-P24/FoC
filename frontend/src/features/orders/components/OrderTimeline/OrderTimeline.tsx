@@ -49,7 +49,7 @@ export const OrderTimeline = ({ order }: { order: Errand }) => {
             </span>
             <div>
               {step.label}
-              <small>{step.at ? formatOrderTime(step.at) : 'Pending'}</small>
+              {step.at && <small>{formatOrderTime(step.at)}</small>}
             </div>
           </li>
         ))}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { creditQueryKeys } from '#/features/credits/constants/creditQueryKeys'
@@ -87,12 +87,4 @@ export const useOrder = (id: string) => {
     ...query,
     userId,
   }
-}
-export const useOrderClock = () => {
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1_000)
-    return () => clearInterval(timer)
-  }, [])
-  return now
 }

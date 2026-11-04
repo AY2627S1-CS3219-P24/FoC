@@ -23,12 +23,18 @@ export type DayOfWeek = (typeof DAYS_OF_WEEK)[number]
 /**
  * Hours for one day "HH:MM". A closing time earlier
  * than the opening time means the supplier closes after midnight.
+ * 00:00–23:59 represents a full 24-hour day.
  */
 export type OpeningHours = {
   dayOfWeek: DayOfWeek
   opensAt: string
   closesAt: string
 }
+
+export type OpenStatus =
+  | { isOpen: false }
+  | { isOpen: true; is24Hours: true }
+  | { isOpen: true; is24Hours: false; closesAt: string }
 
 export type Supplier = {
   id: string

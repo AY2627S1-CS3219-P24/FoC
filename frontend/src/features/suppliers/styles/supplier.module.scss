@@ -2,7 +2,9 @@
 
 .page {
   display: flex;
-  max-width: 1400px;
+  width: 100%;
+  min-width: 0;
+  max-width: min(1400px, 100%);
   flex-direction: column;
   gap: 20px;
 }
