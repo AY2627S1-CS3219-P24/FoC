@@ -7,6 +7,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
+ARG VITE_CARTO_API_KEY
 RUN npm run build
 
 FROM nginx:1.28-alpine AS runtime

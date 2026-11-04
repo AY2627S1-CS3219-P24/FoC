@@ -161,8 +161,6 @@ resource "aws_launch_template" "host" {
     http_put_response_hop_limit = 1
   }
 
-  credit_specification { cpu_credits = "standard" }
-
   block_device_mappings {
     device_name = "/dev/xvda"
 

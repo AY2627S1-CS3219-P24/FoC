@@ -310,8 +310,12 @@ The deployment and setup workflows share the production lock. Set up a new envir
 
 **Deploy Production** is manual and has no inputs. Run it from `main`; runs from
 other branches are skipped. Every job uses the same `github.sha` captured for that
-run, even if `main` advances while tests are running. Backend and frontend checks
-always run before publication. Images use that commit SHA as their immutable tag.
+run, even if `main` advances during the release. Lint, tests, and validation run
+in pull-request CI rather than deployment.
+Require pull requests and passing CI checks on `main` in GitHub branch protection;
+direct pushes otherwise bypass those checks. Docker builds still compile the
+applications, including TypeScript checking for the frontend. Images use that
+commit SHA as their immutable tag.
 
 Publication reuses existing commit tags and builds only missing images. Re-run a
 failed workflow to retry its original commit; start a new run to deploy the latest
@@ -324,6 +328,33 @@ Disabled releases explicitly set zero desired tasks and skip the runtime wait.
 Each service records its registered task-definition ARN in the run summary.
 Inspect service events before retrying a failed or partial release; services roll
 back individually, so a failed release can leave a mix of versions.
+
+### Frontend releases and CARTO configuration
+
+**Deploy Frontend** is a separate manual action restricted to `main`. It
+publishes only the `gateway` image and deploys only the
+ECS `gateway` service. Use it for UI or gateway changes; use **Deploy Production**
+for releases that also update backend services. Both actions share the production
+lock, approval environment, image reuse, and ECS rollout behavior. Frontend-only
+releases leave backend task definitions and desired counts unchanged.
+
+Before either deployment, add `VITE_CARTO_API_KEY` under GitHub repository
+**Settings → Secrets and variables → Actions → Variables**. Use a repository
+variable, not an environment-only variable, because image publication runs before
+the production approval job.
+The gateway Docker build accepts this key as a build argument and embeds it in
+the compiled frontend. Use a browser-appropriate CARTO key: it is visible in the
+JavaScript bundle and map tile requests. Local `.env` files remain excluded.
+
+Images retain immutable commit-only tags. After changing the CARTO variable,
+create a new commit and start a new deployment run; rerunning an existing commit
+reuses its existing image and does not pick up the new key. Setting an ECS runtime
+environment variable or restarting the gateway does not rebuild browser assets.
+For a local Docker build, pass `--build-arg VITE_CARTO_API_KEY=...` explicitly.
+
+After a frontend release, verify gateway health and that campus map tiles load.
+Use the gateway task-definition ARN in a previous successful release summary for
+an emergency rollback, following the procedure below.
 
 ### Rollback
 
