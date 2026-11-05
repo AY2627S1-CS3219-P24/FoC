@@ -1,6 +1,8 @@
 output "public_subnet_id" {
   description = "Public subnet for ECS hosts."
   value       = aws_subnet.public.id
+
+  depends_on = [aws_route.internet, aws_route_table_association.public]
 }
 
 output "database_subnet_ids" {
@@ -11,6 +13,12 @@ output "database_subnet_ids" {
 output "compute_security_group_id" {
   description = "Security group for ECS hosts and the public gateway."
   value       = aws_security_group.compute.id
+
+  depends_on = [
+    aws_vpc_security_group_egress_rule.compute,
+    aws_vpc_security_group_ingress_rule.web,
+    aws_vpc_security_group_ingress_rule.ecs_ports
+  ]
 }
 
 output "database_security_group_id" {
