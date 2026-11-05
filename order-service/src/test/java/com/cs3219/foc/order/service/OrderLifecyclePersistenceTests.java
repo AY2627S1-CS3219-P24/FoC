@@ -161,6 +161,26 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     }
 
     @Test
+    void mineSearchesTheItemAndBothLocations() {
+        var latte = service.create(new CreateErrandRequest(
+                        UUID.randomUUID(), UUID.randomUUID(), "UTown", "Iced latte", null, 5, 30))
+                .errandId();
+        var lunch = open();
+        var page = PageRequest.of(0, 20);
+
+        assertThat(service.mine("requester", "active", "LATTE", page).items())
+                .extracting(ErrandDto::id)
+                .containsExactly(latte);
+        assertThat(service.mine("requester", "active", "utown", page).items())
+                .extracting(ErrandDto::id)
+                .containsExactly(latte);
+        assertThat(service.mine("requester", "active", "cafe", page).items())
+                .extracting(ErrandDto::id)
+                .containsExactlyInAnyOrder(latte, lunch);
+        assertThat(service.mine("requester", "active", "100%", page).items()).isEmpty();
+    }
+
+    @Test
     void mineFiltersBothRolesBeforePagingAndIncludesInternalStates() {
         UUID own = open();
         UUID other = UUID.randomUUID();

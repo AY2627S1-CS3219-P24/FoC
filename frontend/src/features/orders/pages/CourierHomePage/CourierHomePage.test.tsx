@@ -9,8 +9,12 @@ import { orderFixture } from '../../test/orderFixtures'
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   query: vi.fn(),
-  search: { mode: 'courier', q: '', page: 0 },
+  search: { q: '', page: 0 },
 }))
+vi.mock('#/hooks/useNow', () => ({
+  useNow: () => Date.parse('2030-01-01T00:10:00Z'),
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
   useSearch: () => mocks.search,
@@ -30,11 +34,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 vi.mock('../../hooks/useOrders', () => ({
   useAvailableOrders: (...args: Array<unknown>) => mocks.query(...args),
-  useOrderClock: () => Date.parse('2030-01-01T00:10:00Z'),
 }))
 beforeEach(() => {
   mocks.navigate.mockReset()
-  mocks.search = { mode: 'courier', q: '', page: 0 }
+  mocks.search = { q: '', page: 0 }
   mocks.query.mockReturnValue({
     data: {
       items: [orderFixture({ requester: { id: 'other', name: 'Sam' } })],
@@ -55,12 +58,18 @@ describe('CourierHomePage', () => {
       </QueryClientProvider>,
     )
     expect(mocks.query).toHaveBeenCalledWith('', 0)
-    expect(screen.getByRole('button', { name: 'Courier' })).toBeEnabled()
+    expect(
+      screen.getByRole('heading', { name: 'Could this fit your trip?' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Accept errand' }),
+    ).toBeInTheDocument()
     await userEvent.setup().type(screen.getByRole('searchbox'), 'printed')
     await waitFor(() =>
       expect(mocks.navigate).toHaveBeenCalledWith(
         expect.objectContaining({
-          search: { mode: 'courier', q: 'printed', page: 0 },
+          to: '/deliver',
+          search: { q: 'printed', page: 0 },
         }),
       ),
     )

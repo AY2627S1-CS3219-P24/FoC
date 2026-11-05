@@ -51,7 +51,7 @@ const result: AiChatResponse = {
   supplierChoices: [],
 }
 const clients: Array<QueryClient> = []
-function setup(values = initial) {
+function setup(values = initial, availableCredits?: number) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   })
@@ -59,7 +59,11 @@ function setup(values = initial) {
   const onReview = vi.fn()
   const view = render(
     <QueryClientProvider client={client}>
-      <ErrandForm values={values} onReview={onReview} />
+      <ErrandForm
+        values={values}
+        availableCredits={availableCredits}
+        onReview={onReview}
+      />
     </QueryClientProvider>,
   )
   return { ...view, onReview, user: userEvent.setup() }
@@ -110,6 +114,25 @@ it('only fills on request and passes values to the existing review flow', async 
     expect(onReview).toHaveBeenCalledWith(result.draft, expect.anything()),
   )
 })
+it('requires an AI-filled reward to fit the available balance before review', async () => {
+  const { user, onReview } = setup(initial, 5)
+  await chat(user)
+  await user.click(screen.getByRole('button', { name: 'Fill into form' }))
+  const reward = screen.getByLabelText('Courier reward *')
+  expect(reward).toHaveValue(10)
+  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  await waitFor(() => expect(reward).toHaveAttribute('aria-invalid', 'true'))
+  expect(onReview).not.toHaveBeenCalled()
+  await user.clear(reward)
+  await user.type(reward, '5')
+  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  await waitFor(() =>
+    expect(onReview).toHaveBeenCalledWith(
+      { ...result.draft, creditReward: 5 },
+      expect.anything(),
+    ),
+  )
+})
 it('starts with hand-entered values and preserves nulls while applying explicit clears', async () => {
   vi.mocked(api.chatWithErrandAi).mockResolvedValue({
     ...result,
@@ -137,10 +160,8 @@ it('starts with hand-entered values and preserves nulls while applying explicit 
   ).toBe('Lunch')
   await user.click(screen.getByRole('button', { name: 'Fill into form' }))
   expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
-  expect(screen.getByLabelText('Notes (optional)')).toHaveValue('')
-  expect(screen.getByLabelText('What should be collected? *')).toHaveValue(
-    'Lunch',
-  )
+  expect(screen.getByLabelText('Notes')).toHaveValue('')
+  expect(screen.getByLabelText('Item *')).toHaveValue('Lunch')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await screen.findByText('Enter a delivery location.')
   expect(onReview).not.toHaveBeenCalled()

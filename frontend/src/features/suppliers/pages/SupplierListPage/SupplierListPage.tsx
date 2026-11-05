@@ -8,6 +8,7 @@ import { Toast } from '@base-ui/react/toast'
 import { Toggle } from '@base-ui/react/toggle'
 import { ToggleGroup } from '@base-ui/react/toggle-group'
 import { useSetSupplierActive, useSuppliers } from '../../hooks/useSuppliers'
+import { useSupplierRealtimeUpdates } from '../../hooks/useSupplierRealtimeUpdates'
 import {
   categoryLabels,
   formatLocation,
@@ -27,6 +28,8 @@ import styles from './SupplierListPage.module.scss'
 const SEARCH_DEBOUNCE_MS = 300
 
 export const SupplierListPage = () => {
+  useSupplierRealtimeUpdates()
+
   // filters live in the URL, back or forward or shared links will keepp the filters
   const filters = useSearch({ from: '/admin/suppliers' })
   const selectedCategories = toSupplierFilters(filters).category ?? []
@@ -180,9 +183,6 @@ export const SupplierListPage = () => {
                 <th>Category</th>
                 <th>Location</th>
                 <th>Hours</th>
-                <th>
-                  <span className={styles.visuallyHidden}>Actions</span>
-                </th>
               </tr>
             </thead>
             <tbody>

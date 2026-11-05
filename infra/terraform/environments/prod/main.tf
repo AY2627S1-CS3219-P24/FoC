@@ -54,14 +54,15 @@ resource "aws_budgets_budget" "monthly" {
 module "network" {
   source        = "../../modules/network"
   name_prefix   = var.name_prefix
-  service_names = local.messaging_services
+  service_names = toset(keys(local.services))
 }
 
 module "messaging" {
   source              = "../../modules/messaging"
   region              = local.region
   name_prefix         = var.name_prefix
-  service_names       = local.messaging_services
+  publisher_names     = local.event_publishers
+  consumer_names      = local.event_consumers
   event_subscriptions = var.event_subscriptions
 }
 
@@ -75,9 +76,6 @@ module "rds" {
 
 module "ecs" {
   source = "../../modules/ecs"
-  # The host subnet id does not depend on the public route. Wait for the
-  # network module so instances boot only after that route exists.
-  depends_on = [module.network]
 
   region                           = local.region
   name_prefix                      = var.name_prefix
@@ -96,6 +94,7 @@ module "ecs" {
   service_discovery_service_arns   = module.network.service_discovery_service_arns
   topic_arns                       = module.messaging.topic_arns
   queue_arns                       = module.messaging.queue_arns
+  queue_urls                       = module.messaging.queue_urls
   messaging_kms_key_arn            = module.messaging.kms_key_arn
   database_host                    = module.rds.address
   database_master_secret_arn       = module.rds.master_user_secret_arn

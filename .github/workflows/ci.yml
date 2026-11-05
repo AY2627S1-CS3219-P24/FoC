@@ -32,7 +32,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Backend check
+      - name: Check backend
         run: ./gradlew check -x :e2e-tests:test --no-daemon
         env:
           CI: true
@@ -47,6 +47,9 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -55,17 +58,29 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        working-directory: frontend
         run: npm ci
       - name: Lint frontend
-        working-directory: frontend
         run: npm run lint
       - name: Check frontend formatting
-        working-directory: frontend
-        run: npm run check
+        run: npm run format:check
       - name: Test frontend
-        working-directory: frontend
         run: npm run test:run
       - name: Build frontend
-        working-directory: frontend
         run: npm run build
+
+  realtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: realtime-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: realtime-service/package-lock.json
+      - name: Install realtime dependencies
+        run: npm ci
+      - name: Check realtime service
+        run: npm run check

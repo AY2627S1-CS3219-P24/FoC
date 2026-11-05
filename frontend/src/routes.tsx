@@ -4,6 +4,7 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
+import type { ReactElement } from 'react'
 
 import { LoginPage } from '#/features/auth/pages/LoginPage/LoginPage'
 import { RegisterPage } from '#/features/auth/pages/RegisterPage/RegisterPage'
@@ -14,9 +15,16 @@ import { AdminOverviewPage } from '#/pages/AdminOverviewPage/AdminOverviewPage'
 import { SupplierListPage } from '#/features/suppliers/pages/SupplierListPage/SupplierListPage'
 import { SupplierCreatePage } from '#/features/suppliers/pages/SupplierCreatePage/SupplierCreatePage'
 import { SupplierEditPage } from '#/features/suppliers/pages/SupplierEditPage/SupplierEditPage'
-import { parseSupplierListSearch } from '#/features/suppliers/utils/supplierFilters'
-import { UserLayoutPreview } from '#/features/auth/pages/UserLayoutPreview/UserLayoutPreview'
-import { AccountLayout } from '#/features/auth/layouts/AccountLayout'
+import { SupplierCategoryPage } from '#/features/suppliers/pages/SupplierCategoryPage/SupplierCategoryPage'
+import { FindSupplierPage } from '#/features/suppliers/pages/FindSupplierPage/FindSupplierPage'
+import { CampusMapPage } from '#/features/suppliers/pages/CampusMapPage/CampusMapPage'
+import type { SupplierCategory } from '#/features/suppliers/types/supplier.types'
+import {
+  parseSupplierListSearch,
+  toSupplierFilters,
+} from '#/features/suppliers/utils/supplierFilters'
+import { AccountLayout } from '#/features/auth/layouts/AccountLayout/AccountLayout'
+import { MapAccountLayout } from '#/features/auth/layouts/AccountLayout/MapAccountLayout'
 import { EditProfilePage } from '#/features/auth/pages/EditProfilePage/EditProfilePage'
 import { ProfilePage } from '#/features/auth/pages/ProfilePage/ProfilePage'
 import { ErrorPage } from '#/pages/ErrorPage'
@@ -27,9 +35,8 @@ import { UserEditPage } from '#/features/users/pages/UserEditPage/UserEditPage'
 import { UserViewPage } from '#/features/users/pages/UserViewPage/UserViewPage'
 import { validateUserListSearch } from '#/features/users/pages/UserListPage/utils/userListSearch'
 import { AuthLayout } from '#/features/auth/layouts/AuthLayout/AuthLayout'
-import { HomePage } from '#/features/orders/pages/HomePage/HomePage'
-import { getHomeMode } from '#/features/orders/utils/homeMode'
-import type { HomeMode } from '#/features/orders/utils/homeMode'
+import { RequesterHomePage } from '#/features/orders/pages/RequesterHomePage/RequesterHomePage'
+import { CourierHomePage } from '#/features/orders/pages/CourierHomePage/CourierHomePage'
 import type { AuthOperations } from '#/features/auth/providers/AuthProvider'
 import { hasAdminRole } from '#/features/auth/utils/hasAdminRole'
 import { CreateErrandPage } from '#/features/orders/pages/CreateErrandPage/CreateErrandPage'
@@ -129,6 +136,12 @@ const userRoute = createRoute({
   component: AccountLayout,
 })
 
+const mapAccountRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  id: 'map-account',
+  component: MapAccountLayout,
+})
+
 const profileRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/profile',
@@ -146,29 +159,102 @@ const homeRoute = createRoute({
   path: '/home',
   validateSearch: (
     search: Record<string, unknown>,
-  ): { mode?: HomeMode; q?: string; page?: number } => ({
+  ): { mode?: 'courier'; q?: string; page?: number } => ({
     q: typeof search.q === 'string' ? search.q : undefined,
     page: search.page == null ? undefined : parsePage(search.page),
-    mode:
-      search.mode === 'requestor' || search.mode === 'courier'
-        ? search.mode
-        : undefined,
+    mode: search.mode === 'courier' ? 'courier' : undefined,
   }),
   beforeLoad: ({ search }) => {
-    if (!search.mode) {
+    if (search.mode === 'courier') {
       throw redirect({
-        to: '/home',
-        search: { mode: getHomeMode() },
+        to: '/deliver',
+        search: { q: search.q, page: search.page },
         replace: true,
       })
     }
   },
-  component: HomePage,
+  component: RequesterHomePage,
+})
+
+const requestRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/request',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { category?: SupplierCategory } => {
+    const categories = toSupplierFilters(
+      parseSupplierListSearch(search),
+    ).category
+    return {
+      category: categories?.length === 1 ? categories[0] : undefined,
+    }
+  },
+  component: FindSupplierPage,
+})
+
+const deliverRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/deliver',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { q?: string; page?: number } => ({
+    q: typeof search.q === 'string' ? search.q : undefined,
+    page: search.page == null ? undefined : parsePage(search.page),
+  }),
+  component: CourierHomePage,
+})
+
+const campusMapRoute = createRoute({
+  getParentRoute: () => mapAccountRoute,
+  path: '/map',
+  component: CampusMapPage,
+})
+
+const supplierCategoryRoute = createRoute({
+  getParentRoute: () => userRoute,
+  path: '/locations',
+  component: (): ReactElement => {
+    const { category } = supplierCategoryRoute.useRouteContext()
+    return <SupplierCategoryPage category={category} />
+  },
+  validateSearch: parseSupplierListSearch,
+  beforeLoad: ({ search }) => {
+    const categories = toSupplierFilters(search).category
+    const category = categories?.[0]
+    if (categories?.length !== 1 || !category) {
+      throw redirect({
+        to: '/home',
+        replace: true,
+      })
+    }
+    return { category }
+  },
 })
 
 const createErrandRoute = createRoute({
   getParentRoute: () => userRoute,
   path: '/errands/new',
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    supplier?: string
+    from?: string
+    category?: SupplierCategory
+  } => {
+    const category = toSupplierFilters(parseSupplierListSearch(search))
+      .category?.[0]
+    return {
+      supplier:
+        typeof search.supplier === 'string' && search.supplier
+          ? search.supplier
+          : undefined,
+      from:
+        typeof search.from === 'string' && search.from
+          ? search.from
+          : undefined,
+      category,
+    }
+  },
   component: CreateErrandPage,
 })
 const myErrandsRoute = createRoute({
@@ -266,26 +352,20 @@ const userViewRoute = createRoute({
 })
 
 export const routeTree = rootRoute.addChildren([
-  ...(import.meta.env.DEV
-    ? [
-        createRoute({
-          getParentRoute: () => rootRoute,
-          path: '/preview/user-layout',
-          component: UserLayoutPreview,
-        }),
-      ]
-    : []),
   indexRoute,
   authenticatedRoute.addChildren([
-    // Student pages share the top-header account layout.
     userRoute.addChildren([
       homeRoute,
+      requestRoute,
+      deliverRoute,
+      supplierCategoryRoute,
       createErrandRoute,
       myErrandsRoute,
       orderDetailRoute,
       profileRoute,
       editProfileRoute,
     ]),
+    mapAccountRoute.addChildren([campusMapRoute]),
     // Admin pages have their own sidebar layout.
     adminLayoutRoute.addChildren([
       adminIndexRoute,

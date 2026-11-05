@@ -273,7 +273,12 @@ class UserServiceTests {
 
     @Test
     void createsVerifiedAdminUsingNormalizedAccountDetails() {
-        when(repository.save(any(User.class))).thenAnswer(call -> call.getArgument(0));
+        var adminId = UUID.randomUUID();
+        when(repository.save(any(User.class))).thenAnswer(call -> {
+            User saved = call.getArgument(0);
+            saved.setId(adminId);
+            return saved;
+        });
 
         assertThat(service.initializeAdmin(new RegisterUserRequest(" ADMIN@U.NUS.EDU ", " Admin ", " password123 ")))
                 .isTrue();
@@ -284,6 +289,10 @@ class UserServiceTests {
                         && user.isEmailVerified()
                         && user.getRoles().equals(List.of(UserRole.USER, UserRole.ADMIN))
                         && encoder.matches(" password123 ", user.getPasswordHash())));
+        verify(provisioning)
+                .publishEvent(ArgumentMatchers.<Object>argThat(event -> event instanceof UserCreatedEvent created
+                        && created.payload().userId().equals(adminId)
+                        && created.schemaVersion() == 1));
         verifyNoInteractions(verification);
     }
 
@@ -305,6 +314,7 @@ class UserServiceTests {
         assertThat(existing.getPasswordHash()).isEqualTo("original-hash");
         assertThat(existing.isEmailVerified()).isFalse();
         verify(repository, never()).save(any());
+        verifyNoInteractions(provisioning);
     }
 
     @Test
@@ -318,6 +328,7 @@ class UserServiceTests {
 
         assertThat(existing.getRoles()).containsExactly(UserRole.USER);
         verify(repository, never()).save(any());
+        verifyNoInteractions(provisioning);
     }
 
     @ParameterizedTest
@@ -325,7 +336,7 @@ class UserServiceTests {
     void rejectsNonNusAdmins(String email) {
         assertThatThrownBy(() -> service.initializeAdmin(new RegisterUserRequest(email, "Admin", "password123")))
                 .isInstanceOf(UnsupportedEmailDomainException.class);
-        verifyNoInteractions(repository);
+        verifyNoInteractions(repository, provisioning);
     }
 
     @Test

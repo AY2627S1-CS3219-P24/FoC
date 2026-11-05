@@ -70,4 +70,6 @@ export type MineParams = {
   view: 'all' | 'active' | 'history'
   page: number
   size: number
+  // used to match searched item, pickup, delivery location
+  q?: string
 }

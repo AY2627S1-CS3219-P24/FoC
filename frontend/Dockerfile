@@ -7,6 +7,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
+ARG VITE_CARTO_API_KEY
 RUN npm run build
 
 FROM nginx:1.28-alpine AS runtime
@@ -17,7 +18,8 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     FOC_USER_UPSTREAM=user-service:8080 \
     FOC_SUPPLIER_UPSTREAM=supplier-service:8081 \
     FOC_ORDER_UPSTREAM=order-service:8082 \
-    FOC_CREDIT_UPSTREAM=credit-service:8083
+    FOC_CREDIT_UPSTREAM=credit-service:8083 \
+    FOC_REALTIME_UPSTREAM=realtime-service:8084
 
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 COPY infra/docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template

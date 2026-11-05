@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useNow } from '#/hooks/useNow'
 import { Link } from '@tanstack/react-router'
 import { useOrderStats } from '#/features/orders/hooks/useOrderOverview'
 import { LiveOrdersPanel } from './components/LiveOrdersPanel/LiveOrdersPanel'
 import { StatCard } from './components/StatCard/StatCard'
 import { SupplierSummaryPanel } from './components/SupplierSummaryPanel/SupplierSummaryPanel'
 import { useSuppliers } from '#/features/suppliers/hooks/useSuppliers'
+import { useSupplierRealtimeUpdates } from '#/features/suppliers/hooks/useSupplierRealtimeUpdates'
 import { summarizeSuppliers } from '#/features/suppliers/utils/supplierFormat'
 import styles from './AdminOverviewPage.module.scss'
 
@@ -12,14 +13,15 @@ import styles from './AdminOverviewPage.module.scss'
 const sampleStudentStats = { registered: 7201, joinedThisWeek: 52 }
 
 export const AdminOverviewPage = () => {
+  useSupplierRealtimeUpdates()
+
   // include deactivated suppliers to summary
   const suppliers = useSuppliers({ inactive: true })
   const { data: orderStats } = useOrderStats()
-  const summary = useMemo(
-    () =>
-      suppliers.data ? summarizeSuppliers(suppliers.data, new Date()) : null,
-    [suppliers.data],
-  )
+  const now = useNow(60_000)
+  const summary = suppliers.data
+    ? summarizeSuppliers(suppliers.data, now)
+    : null
 
   return (
     <section className={styles.page}>

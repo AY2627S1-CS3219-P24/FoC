@@ -27,3 +27,7 @@ logging:
 storage:
   s3:
     bucket: foc-supplier-integration
+
+events:
+  messaging:
+    topic-arn: arn:aws:sns:ap-southeast-1:000000000000:foc-test-supplier-events

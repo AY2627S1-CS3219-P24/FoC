@@ -4,7 +4,10 @@
 }
 
 .tableWrap {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   background: var(--color-surface);
   border-radius: 12px;
 }

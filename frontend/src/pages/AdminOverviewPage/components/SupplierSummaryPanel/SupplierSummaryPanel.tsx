@@ -50,9 +50,6 @@ export const SupplierSummaryPanel = ({
                 <th>Category</th>
                 <th>Location</th>
                 <th>Hours</th>
-                <th>
-                  <span className={styles.visuallyHidden}>Actions</span>
-                </th>
               </tr>
             </thead>
             <tbody>
