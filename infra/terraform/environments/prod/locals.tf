@@ -21,6 +21,7 @@ locals {
     }
 
     order = {
+      ai_enabled = false
       port       = 8082
       cpu        = 512
       memory     = 640

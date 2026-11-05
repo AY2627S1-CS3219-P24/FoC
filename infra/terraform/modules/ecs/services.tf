@@ -60,7 +60,13 @@ module "app" {
         { name = each.value.bucket_env, value = var.image_bucket_names[each.key] }
         ], each.value.mail ? [
         { name = "MAIL_FROM", value = var.mail_from }
-      ] : [])
+        ] : [], each.key == "order" ? [
+        { name = "FOC_ORDER_AI_ENABLED", value = tostring(each.value.ai_enabled) }
+        ] : [], [for name, value in {
+          FOC_ORDER_AI_MODEL               = each.value.ai_model
+          FOC_ORDER_AI_TRANSCRIPTION_MODEL = each.value.ai_transcription_model
+        } : { name = name, value = value } if each.key == "order" && value != null]
+      )
       secrets = concat(
         [
           { name = "FOC_DATABASE_PASSWORD", valueFrom = "${local.parameter_arn}-database-${each.key}" },
@@ -70,6 +76,8 @@ module "app" {
         each.value.mail ? [
           { name = "MAIL_USERNAME", valueFrom = "${local.parameter_arn}-mail-username" },
           { name = "MAIL_PASSWORD", valueFrom = "${local.parameter_arn}-mail-password" }
+          ] : [], each.key == "order" && each.value.ai_enabled ? [
+          { name = "OPENAI_API_KEY", valueFrom = "${local.parameter_arn}-openai-api-key" }
         ] : []
       )
       healthCheck = {

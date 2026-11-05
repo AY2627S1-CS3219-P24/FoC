@@ -25,6 +25,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'com.openai:openai-java:4.96.0'
     implementation 'org.springframework.modulith:spring-modulith-events-api'
     runtimeOnly 'org.springframework.modulith:spring-modulith-events-jdbc'
     runtimeOnly 'org.springframework.modulith:spring-modulith-events-jackson'

@@ -1,4 +1,8 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 10MB
   jackson:
     deserialization:
       accept-float-as-int: false
@@ -41,6 +45,13 @@ server:
     context-path: /api
   port: 8082
 orders:
+  ai:
+    enabled: ${FOC_ORDER_AI_ENABLED:false}
+    api-key: ${OPENAI_API_KEY:}
+    model: ${FOC_ORDER_AI_MODEL:gpt-6.1-terra}
+    transcription-model: ${FOC_ORDER_AI_TRANSCRIPTION_MODEL:gpt-transcribe}
+    timeout: 30s
+    max-audio-bytes: 8388608
   expiry-scan-delay: 10s
   expiry-batch-size: 100
 management:
