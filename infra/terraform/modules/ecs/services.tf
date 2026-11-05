@@ -132,6 +132,8 @@ resource "aws_ecs_task_definition" "app" {
     cpu                    = each.value.cpu
     memory                 = each.value.memory
     readonlyRootFilesystem = false
+    restartPolicy          = { enabled = true }
+    versionConsistency     = "disabled"
     startTimeout           = 30
     stopTimeout            = 30
     portMappings           = [{ containerPort = each.value.port, hostPort = 0, protocol = "tcp" }]
