@@ -75,8 +75,9 @@ docker compose --env-file .env.prod -f compose.prod-local.yaml --profile setup r
 ## Operate
 
 Open [https://localhost](https://localhost). The `api-gateway` serves the
-frontend and routes `/api` requests to the backend services. Its default
-self-signed certificate causes a browser warning.
+frontend, routes `/api` requests to the backend services, and proxies Socket.IO
+connections to the realtime service. Its default self-signed certificate causes
+a browser warning.
 
 To check container status or inspect logs:
 

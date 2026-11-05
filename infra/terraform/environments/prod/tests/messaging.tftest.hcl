@@ -30,10 +30,16 @@ run "messaging_topology_and_permissions" {
   }
 
   variables {
-    region        = "ap-southeast-1"
-    name_prefix   = "foc-test"
-    service_names = ["user", "supplier", "order", "credit"]
+    region          = "ap-southeast-1"
+    name_prefix     = "foc-test"
+    publisher_names = ["user", "supplier", "order", "credit"]
+    consumer_names  = ["user", "supplier", "order", "credit", "realtime"]
     event_subscriptions = {
+      supplier_changed = {
+        publisher   = "supplier"
+        consumer    = "realtime"
+        event_types = ["SupplierChangedEvent"]
+      }
       user_created = {
         publisher   = "user"
         consumer    = "credit"
@@ -55,9 +61,9 @@ run "messaging_topology_and_permissions" {
   assert {
     condition = (
       toset(keys(aws_sns_topic.events)) == toset(["user", "supplier", "order", "credit"])
-      && toset(keys(aws_sqs_queue.events)) == toset(["user", "supplier", "order", "credit"])
+      && toset(keys(aws_sqs_queue.events)) == toset(["user", "supplier", "order", "credit", "realtime"])
     )
-    error_message = "Provision a topic, queue, and DLQ for every service."
+    error_message = "Provision topics for publishers and queues and DLQs for consumers."
   }
 
   assert {
@@ -86,28 +92,29 @@ run "messaging_topology_and_permissions" {
   }
 
   assert {
-    condition = (
-      length(aws_sns_topic_subscription.events) == 3
-      && alltrue([
-        for name, subscription in aws_sns_topic_subscription.events : (
-          subscription.raw_message_delivery
-          && subscription.protocol == "sqs"
-          && subscription.filter_policy_scope == "MessageAttributes"
-          && toset(jsondecode(subscription.filter_policy).eventType) == toset(
-            name == "user_created" ? ["UserCreatedEvent"] :
-            name == "credit_settlement_result" ? ["CreditSettlementResultEvent"] :
-            ["ErrandCompletedEvent", "ErrandCancelledEvent", "ErrandExpiredEvent"]
-          )
-        )
-      ])
-    )
-    error_message = "Subscriptions must deliver only the required event types as raw JSON."
+    condition = {
+      for name, subscription in aws_sns_topic_subscription.events :
+      name => toset(jsondecode(subscription.filter_policy).eventType)
+      } == {
+      for name, route in var.event_subscriptions : name => route.event_types
+    }
+    error_message = "Create exactly the configured subscriptions with their requested event filters."
+  }
+
+  assert {
+    condition = alltrue([
+      for subscription in values(aws_sns_topic_subscription.events) :
+      subscription.raw_message_delivery
+      && subscription.protocol == "sqs"
+      && subscription.filter_policy_scope == "MessageAttributes"
+    ])
+    error_message = "Subscriptions must use raw SQS delivery and filter on message attributes."
   }
 
   assert {
     condition = alltrue([
       for service, policy in aws_sqs_queue_policy.sns : (
-        length(jsondecode(policy.policy).Statement) == (contains(["order", "credit"], service) ? 2 : 1)
+        length(jsondecode(policy.policy).Statement) == (contains(["order", "credit", "realtime"], service) ? 2 : 1)
         && alltrue([
           for statement in jsondecode(policy.policy).Statement : (
             statement.Condition.StringEquals["aws:SourceAccount"] == "123456789012"

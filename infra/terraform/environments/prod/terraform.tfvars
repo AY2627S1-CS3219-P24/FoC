@@ -12,6 +12,11 @@ start_services     = true
 core_instance_type = "t3a.medium"
 db_instance_class  = "db.t4g.micro"
 event_subscriptions = {
+  supplier_changed = {
+    publisher   = "supplier"
+    consumer    = "realtime"
+    event_types = ["SupplierChangedEvent"]
+  }
   user_created = {
     publisher   = "user"
     consumer    = "credit"

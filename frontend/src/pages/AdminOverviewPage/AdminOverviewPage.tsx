@@ -5,6 +5,7 @@ import { LiveOrdersPanel } from './components/LiveOrdersPanel/LiveOrdersPanel'
 import { StatCard } from './components/StatCard/StatCard'
 import { SupplierSummaryPanel } from './components/SupplierSummaryPanel/SupplierSummaryPanel'
 import { useSuppliers } from '#/features/suppliers/hooks/useSuppliers'
+import { useSupplierChanges } from '#/features/suppliers/hooks/useSupplierChanges'
 import { summarizeSuppliers } from '#/features/suppliers/utils/supplierFormat'
 import styles from './AdminOverviewPage.module.scss'
 
@@ -12,6 +13,8 @@ import styles from './AdminOverviewPage.module.scss'
 const sampleStudentStats = { registered: 7201, joinedThisWeek: 52 }
 
 export const AdminOverviewPage = () => {
+  useSupplierChanges()
+
   // include deactivated suppliers to summary
   const suppliers = useSuppliers({ inactive: true })
   const { data: orderStats } = useOrderStats()

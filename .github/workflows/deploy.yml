@@ -37,6 +37,9 @@ jobs:
           - service: credit
             dockerfile: Dockerfile
             target: credit-service
+          - service: realtime
+            dockerfile: Dockerfile
+            target: realtime-service
           - service: gateway
             dockerfile: frontend/Dockerfile
             target: runtime
@@ -104,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [user, supplier, order, credit, gateway]
+        service: [user, supplier, order, credit, realtime, gateway]
     steps:
       - uses: actions/checkout@v7
         with:

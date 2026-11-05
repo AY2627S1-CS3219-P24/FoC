@@ -72,6 +72,7 @@ services:
       AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET}
+      EVENTS_MESSAGING_TOPIC_ARN: ${SUPPLIER_EVENTS_TOPIC_ARN}
       FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_supplier
       FOC_DATABASE_USERNAME: ${POSTGRES_USER}
       FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -149,6 +150,26 @@ services:
       retries: 12
       start_period: 40s
 
+  realtime-service:
+    restart: unless-stopped
+    build:
+      context: .
+      target: realtime-service
+    environment:
+      NODE_ENV: production
+      JWKS_URL: http://user-service:8080/api/.well-known/jwks.json
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SQS_QUEUE_URL: ${REALTIME_EVENTS_QUEUE_URL}
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8084/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
   api-gateway:
     restart: unless-stopped
     build:
@@ -175,6 +196,8 @@ services:
       order-service:
         condition: service_healthy
       credit-service:
+        condition: service_healthy
+      realtime-service:
         condition: service_healthy
 
 volumes:

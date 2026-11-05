@@ -12,7 +12,7 @@ repository_root=$(cd "$(dirname "$0")/../.." && pwd)
 cluster=$(sed -n 's/^name_prefix[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$repository_root/infra/terraform/environments/prod/terraform.tfvars")
 : "${cluster:?Missing name_prefix in terraform.tfvars}"
 
-services=(user supplier order credit gateway)
+services=(user supplier order credit realtime gateway)
 for service in "${services[@]}"; do
   aws ecs update-service --cluster "$cluster" --service "$service" \
     --desired-count "$count" --output json > /dev/null
@@ -24,5 +24,5 @@ aws ecs describe-services --cluster "$cluster" --services "${services[@]}" \
   --output table
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  echo "Requested **$action** for all five services in **$cluster**; services are stable." >> "$GITHUB_STEP_SUMMARY"
+  echo "Requested **$action** for all six services in **$cluster**; services are stable." >> "$GITHUB_STEP_SUMMARY"
 fi

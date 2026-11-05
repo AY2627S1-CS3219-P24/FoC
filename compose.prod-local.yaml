@@ -57,6 +57,18 @@ services:
   supplier-service:
     environment:
       <<: *floci-client
+      EVENTS_MESSAGING_TOPIC_ARN: arn:aws:sns:${AWS_REGION:-ap-southeast-1}:000000000000:foc-prod-supplier-events
+    depends_on:
+      floci:
+        condition: service_healthy
+
+  realtime-service:
+    environment:
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://floci:4566
+      SQS_QUEUE_URL: http://floci:4566/000000000000/foc-prod-realtime-events
     depends_on:
       floci:
         condition: service_healthy

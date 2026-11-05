@@ -1,11 +1,12 @@
 mock_provider "aws" {
-  mock_data "aws_iam_policy_document" {
-    defaults = { json = jsonencode({ Version = "2012-10-17", Statement = [] }) }
+  mock_resource "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/foc-test" }
   }
-  mock_data "aws_availability_zones" {
-    defaults = {
-      names = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
-    }
+  mock_resource "aws_launch_template" {
+    defaults = { id = "lt-0123456789abcdef0" }
+  }
+  mock_resource "aws_autoscaling_group" {
+    defaults = { arn = "arn:aws:autoscaling:ap-southeast-1:123456789012:autoScalingGroup:00000000-0000-0000-0000-000000000001:autoScalingGroupName/foc-test-core" }
   }
   mock_data "aws_caller_identity" {
     defaults = {
@@ -30,8 +31,8 @@ variable "start_services" {
   default = false
 }
 
-run "admin_credentials_stay_on_the_admin_task" {
-  command = plan
+run "service_credentials_and_messaging_permissions" {
+  command = apply
 
   module {
     source = "../../modules/ecs"
@@ -61,6 +62,7 @@ run "admin_credentials_stay_on_the_admin_task" {
       supplier = "arn:aws:iam::123456789012:policy/foc-test-supplier-images"
     }
     service_discovery_service_arns = {
+      realtime = "arn:aws:servicediscovery:ap-southeast-1:123456789012:service/srv-realtime"
       user     = "arn:aws:servicediscovery:ap-southeast-1:123456789012:service/srv-user"
       supplier = "arn:aws:servicediscovery:ap-southeast-1:123456789012:service/srv-supplier"
       order    = "arn:aws:servicediscovery:ap-southeast-1:123456789012:service/srv-order"
@@ -73,28 +75,38 @@ run "admin_credentials_stay_on_the_admin_task" {
       credit   = "arn:aws:sns:ap-southeast-1:123456789012:foc-test-credit-events"
     }
     queue_arns = {
+      realtime = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-realtime-events"
       user     = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-user-events"
       supplier = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-supplier-events"
       order    = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-order-events"
       credit   = "arn:aws:sqs:ap-southeast-1:123456789012:foc-test-credit-events"
     }
+    queue_urls = {
+      for name in ["user", "supplier", "order", "credit", "realtime"] :
+      name => "https://sqs.ap-southeast-1.amazonaws.com/123456789012/foc-test-${name}-events"
+    }
     messaging_kms_key_arn = "arn:aws:kms:ap-southeast-1:123456789012:key/00000000-0000-0000-0000-000000000001"
     services = {
+      realtime = { port = 8084, cpu = 128, memory = 256, runtime = "node" }
       user = {
-        port = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
-        jwt  = true, mail = true, bucket_env = "FOC_USER_BUCKET"
+        runtime = "java"
+        port    = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
+        jwt     = true, mail = true, bucket_env = "FOC_USER_BUCKET"
       }
       supplier = {
-        port = 8081, cpu = 256, memory = 640, database = "foc_supplier", username = "foc_supplier"
-        jwt  = false, mail = false, bucket_env = "FOC_SUPPLIER_BUCKET"
+        runtime = "java"
+        port    = 8081, cpu = 256, memory = 640, database = "foc_supplier", username = "foc_supplier"
+        jwt     = false, mail = false, bucket_env = "FOC_SUPPLIER_BUCKET"
       }
       order = {
-        port = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
-        jwt  = false, mail = false
+        runtime = "java"
+        port    = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
+        jwt     = false, mail = false
       }
       credit = {
-        port = 8083, cpu = 256, memory = 512, database = "foc_credit", username = "foc_credit"
-        jwt  = false, mail = false
+        runtime = "java"
+        port    = 8083, cpu = 256, memory = 512, database = "foc_credit", username = "foc_credit"
+        jwt     = false, mail = false
       }
     }
   }
@@ -142,16 +154,39 @@ run "admin_credentials_stay_on_the_admin_task" {
   }
 
   assert {
-    condition = alltrue([
-      for service, policy in aws_iam_role_policy.messaging : (
-        length([
-          for statement in jsondecode(policy.policy).Statement : statement
-          if can(statement.Condition.StringEquals["kms:ViaService"])
-          && contains(["sns.ap-southeast-1.amazonaws.com", "sqs.ap-southeast-1.amazonaws.com"], statement.Condition.StringEquals["kms:ViaService"])
-          && statement.Resource == "arn:aws:kms:ap-southeast-1:123456789012:key/00000000-0000-0000-0000-000000000001"
-        ]) == 2
-      )
-    ])
-    error_message = "Task roles must use the messaging key only through SNS and SQS."
+    condition = alltrue(flatten([
+      for policy in aws_iam_role_policy.messaging : [
+        for statement in jsondecode(policy.policy).Statement : (
+          statement.Resource == var.messaging_kms_key_arn
+          && contains([
+            "sns.ap-southeast-1.amazonaws.com",
+            "sqs.ap-southeast-1.amazonaws.com"
+          ], statement.Condition.StringEquals["kms:ViaService"])
+        ) if anytrue([for action in statement.Action : startswith(action, "kms:")])
+      ]
+    ]))
+    error_message = "Every KMS grant must use the messaging key through SNS or SQS."
   }
+
+  assert {
+    condition = (
+      !contains(keys(aws_ecs_task_definition.database_bootstrap), "realtime")
+      && length([
+        for statement in jsondecode(aws_iam_role_policy.messaging["realtime"].policy).Statement : statement
+        if contains(statement.Action, "sns:Publish")
+      ]) == 0
+    )
+    error_message = "Realtime must not get database setup or SNS publishing permissions."
+  }
+
+  assert {
+    condition = (
+      length(jsondecode(aws_ecs_task_definition.app["realtime"].container_definitions)[0].secrets) == 0
+      && toset([
+        for entry in jsondecode(aws_ecs_task_definition.app["realtime"].container_definitions)[0].environment : entry.name
+      ]) == toset(["AWS_REGION", "NODE_ENV", "JWKS_URL", "SQS_QUEUE_URL"])
+    )
+    error_message = "Realtime must receive its Node and SQS configuration without Java settings or application secrets."
+  }
+
 }

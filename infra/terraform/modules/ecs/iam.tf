@@ -3,6 +3,51 @@ locals {
     for service, role in aws_iam_role.task : service => "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${role.name}"
   }
 
+  publisher_permissions = {
+    for name, arn in var.topic_arns : name => [
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = arn
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sns.${var.region}.${data.aws_partition.current.dns_suffix}" } }
+      }
+    ]
+  }
+
+  consumer_permissions = {
+    for name, arn in var.queue_arns : name => [
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:ChangeMessageVisibility",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = arn
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = var.messaging_kms_key_arn
+        Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.region}.${data.aws_partition.current.dns_suffix}" } }
+      }
+    ]
+  }
+
+  messaging_permissions = {
+    for name in setunion(toset(keys(var.topic_arns)), toset(keys(var.queue_arns))) : name => flatten([
+      for permissions in [local.publisher_permissions, local.consumer_permissions] :
+      permissions[name] if contains(keys(permissions), name)
+    ])
+  }
+
   ecs_trust = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -53,41 +98,12 @@ resource "aws_iam_role_policy_attachment" "images" {
 }
 
 resource "aws_iam_role_policy" "messaging" {
-  for_each = var.services
+  for_each = local.messaging_permissions
   role     = aws_iam_role.task[each.key].id
 
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["sns:Publish"]
-        Resource = var.topic_arns[each.key]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "sqs:ReceiveMessage",
-          "sqs:DeleteMessage",
-          "sqs:ChangeMessageVisibility",
-          "sqs:GetQueueAttributes",
-          "sqs:GetQueueUrl"
-        ]
-        Resource = var.queue_arns[each.key]
-      },
-      {
-        Effect    = "Allow"
-        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
-        Resource  = var.messaging_kms_key_arn
-        Condition = { StringEquals = { "kms:ViaService" = "sns.${var.region}.${data.aws_partition.current.dns_suffix}" } }
-      },
-      {
-        Effect    = "Allow"
-        Action    = ["kms:Decrypt"]
-        Resource  = var.messaging_kms_key_arn
-        Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.region}.${data.aws_partition.current.dns_suffix}" } }
-      }
-    ]
+    Version   = "2012-10-17"
+    Statement = each.value
   })
 }
 
@@ -178,7 +194,7 @@ resource "aws_iam_role_policy" "bootstrap_secrets" {
         Effect = "Allow"
         Action = ["ssm:GetParameters"]
         Resource = concat(
-          [for service in keys(var.services) : "${local.parameter_arn}-database-${service}"],
+          [for service in keys(local.database_services) : "${local.parameter_arn}-database-${service}"],
           ["${local.parameter_arn}-initial-admin-email", "${local.parameter_arn}-initial-admin-password"]
         )
       }

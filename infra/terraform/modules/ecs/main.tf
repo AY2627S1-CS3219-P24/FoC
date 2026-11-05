@@ -1,9 +1,9 @@
 locals {
-  repositories     = setunion(toset(keys(var.services)), toset(["gateway"]))
-  parameter_prefix = var.name_prefix
-  parameter_arn    = "arn:${data.aws_partition.current.partition}:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${local.parameter_prefix}"
-  eip_arn          = "arn:${data.aws_partition.current.partition}:ec2:${var.region}:${data.aws_caller_identity.current.account_id}:elastic-ip/${var.eip_allocation_id}"
-  tags             = { Project = "FoC", Environment = var.name_prefix }
+  database_services = { for name, service in var.services : name => service if service.database != null }
+  repositories      = setunion(toset(keys(var.services)), toset(["gateway"]))
+  parameter_arn     = "arn:${data.aws_partition.current.partition}:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.name_prefix}"
+  eip_arn           = "arn:${data.aws_partition.current.partition}:ec2:${var.region}:${data.aws_caller_identity.current.account_id}:elastic-ip/${var.eip_allocation_id}"
+  tags              = { Project = "FoC", Environment = var.name_prefix }
 }
 
 data "aws_caller_identity" "current" {}
@@ -55,7 +55,7 @@ resource "aws_cloudwatch_log_group" "database_bootstrap" {
 }
 
 resource "aws_ecs_task_definition" "database_bootstrap" {
-  for_each                 = var.services
+  for_each                 = local.database_services
   family                   = "${var.name_prefix}-database-bootstrap-${each.key}"
   requires_compatibilities = ["EC2"]
   network_mode             = "bridge"
@@ -179,7 +179,7 @@ resource "aws_launch_template" "host" {
 
     prepare_core = templatefile("${path.module}/templates/prepare_core.sh.tftpl", {
       region               = var.region
-      parameter_prefix     = local.parameter_prefix
+      parameter_prefix     = var.name_prefix
       eip_allocation       = var.eip_allocation_id
       configuration_bucket = aws_s3_bucket.configuration.id
     })

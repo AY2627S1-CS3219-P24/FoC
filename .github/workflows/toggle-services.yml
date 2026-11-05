@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Start or stop all five ECS services
+        description: Start or stop all ECS services
         required: true
         type: choice
         options:
