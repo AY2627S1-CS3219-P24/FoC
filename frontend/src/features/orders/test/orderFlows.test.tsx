@@ -46,6 +46,13 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
 }))
+vi.mock('#/features/credits/hooks/useCreditBalance', () => ({
+  useCreditBalance: () => ({
+    isPending: false,
+    isSuccess: true,
+    data: { availableBalance: 15, reservedBalance: 0 },
+  }),
+}))
 vi.mock('#/features/suppliers/hooks/usePickupLocations', () => ({
   usePickupLocations: () => ({
     data: [
@@ -134,7 +141,7 @@ const fillCreation = async () => {
     '8e1f0000-0000-4000-8000-000000000002',
   )
   await user.type(screen.getByLabelText('Delivery location *'), 'Library')
-  await user.type(screen.getByLabelText('What should be collected? *'), 'Lunch')
+  await user.type(screen.getByLabelText('Item *'), 'Lunch')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   return user
 }
@@ -532,7 +539,7 @@ it('does not navigate or clear account A submission when its result arrives afte
   })
   await waitFor(() => expect(clients[0].isMutating()).toBe(0))
   expect(
-    screen.getByRole('heading', { name: 'Create an Errand' }),
+    screen.getByRole('heading', { name: 'Create an errand' }),
   ).toBeInTheDocument()
   expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
   expect(state.navigate).not.toHaveBeenCalled()

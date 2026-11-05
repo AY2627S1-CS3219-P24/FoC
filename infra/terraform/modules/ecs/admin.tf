@@ -5,6 +5,7 @@ locals {
     requiresCompatibilities = ["EC2"]
     networkMode             = "bridge"
     executionRoleArn        = aws_iam_role.bootstrap_execution.arn
+    taskRoleArn             = local.task_role_arns["user"]
     volumes                 = [{ name = "jwt", host = { sourcePath = "/var/lib/runtime/jwt" } }]
 
     containerDefinitions = [{

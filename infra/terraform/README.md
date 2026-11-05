@@ -81,10 +81,14 @@ On the first deployment, run **Initialize Admin** from `main` after **Deploy
 Production** has staged the release and before enabling services. It invokes
 User Service with the `prod,admin-init` profiles as a one-time ECS task. After
 Flyway migrations, an `ApplicationRunner` calls `UserService` to create a verified
-account with `USER` and `ADMIN` roles, then closes the application context and
-exits. Setup uses normal application configuration and JWT keys. Its container
-publishes no ports and is not registered for service discovery. Admin creation
-does not send verification mail or create a verification token.
+account with `USER` and `ADMIN` roles, publishes `UserCreatedEvent`, then closes
+the application context and exits. Credit-service opens the credit account when
+it consumes the event. The task uses the user task role so it can publish to the
+KMS-encrypted topic. Setup uses normal application configuration and JWT keys.
+Its container publishes no ports and is not registered for service discovery.
+Admin creation does not send verification mail or create a verification token.
+An admin created before this publication has no event; delete that user and its
+refresh tokens, then run Initialize Admin again.
 
 The email must use `u.nus.edu` or `nus.edu.sg`. Email and password come from the
 two `initial-admin-*` SSM parameters; the name is `System Administrator`.
@@ -106,6 +110,19 @@ registers it, and waits for its exit status. ECS injects secret values into the
 setup container; the launcher does not read them. Logs use
 `/ecs/<name_prefix>/database-bootstrap`, under `admin-init/admin-init/<task-id>`.
 The launcher prints the task ARN, log location, and final container status.
+
+**Seed Suppliers** runs from `main` after Deploy Production has staged the
+Supplier Service image. It starts that image with the `prod,supplier-seed`
+profiles. After Flyway migrations, the service inserts suppliers from the CSV
+files packaged in the image and exits. Rows whose ids are already present are
+skipped, and their opening hours stay as they are. Apply infrastructure once
+after adding this task template so the deployment output includes it. Logs use
+the same group, under `supplier-seed/supplier-seed/<task-id>`. From an
+initialized backend:
+
+```sh
+bash .github/scripts/seed-suppliers.sh
+```
 
 Leave `start_services` false until three things exist: images in ECR, the
 Grafana and application secrets in SSM, and the service databases created by
@@ -150,7 +167,7 @@ setup owns both the provider and the role's permissions and trust.
 
 Configure the `production` GitHub environment with required reviewers and a
 deployment restriction to `main`. Application deployment, infrastructure apply,
-database setup, and admin initialization use that environment. Image publication
+database setup, admin initialization, and supplier seeding use that environment. Image publication
 and infrastructure planning use the main-branch identity. The external role must
 allow both OIDC subjects, with audience `sts.amazonaws.com`. For this repository's immutable
 subject format, the default subjects are:
@@ -169,8 +186,11 @@ or restrict what the externally managed role can do.
 Admin initialization uses the existing role's Terraform state access plus
 `ecs:DescribeServices`, `ecs:DescribeTaskDefinition`, `ecs:RegisterTaskDefinition`,
 `ecs:RunTask`, and `ecs:DescribeTasks`. It also needs `iam:PassRole` for the
-bootstrap execution role. The setup container receives only the service database
-password and initial-admin parameters, without the database master password.
+bootstrap execution role and the user task role. The setup container receives
+only the service database password and initial-admin parameters, without the
+database master password. Supplier seeding uses those same ECS permissions,
+passes the bootstrap execution role and the supplier task role, and receives
+only the supplier database password.
 
 ## Deploy
 
@@ -257,13 +277,18 @@ The deployment and setup workflows share the production lock. Set up a new envir
 1. Update infrastructure with `start_services` false in `terraform.tfvars`. It plans and applies that file.
 2. Set up databases. It creates the service databases and does not change infrastructure.
 3. Run Deploy Production from `main`. It tests, publishes missing images, and stages those images on the Terraform task definitions.
-4. Run **Initialize Admin** from `main`. It uses the staged User Service image, applies its Flyway migrations, and creates the admin through application code.
+4. Run **Initialize Admin** from `main`. It uses the staged User Service image, applies its Flyway migrations, creates the admin through application code, and publishes `UserCreatedEvent` so credit-service can open the account.
 5. Update infrastructure again with `start_services` true. That apply changes desired counts; services keep the release image. After HTTPS is ready, log in with the configured admin email and password.
+6. Run **Seed Suppliers** from `main`. It uses the staged Supplier Service image, applies that service's Flyway migrations, and inserts catalog suppliers that are not already stored. Reruns do not modify suppliers that already exist.
 
 **Deploy Production** is manual and has no inputs. Run it from `main`; runs from
 other branches are skipped. Every job uses the same `github.sha` captured for that
-run, even if `main` advances while tests are running. Backend and frontend checks
-always run before publication. Images use that commit SHA as their immutable tag.
+run, even if `main` advances during the release. Lint, tests, and validation run
+in pull-request CI rather than deployment.
+Require pull requests and passing CI checks on `main` in GitHub branch protection;
+direct pushes otherwise bypass those checks. Docker builds still compile the
+applications, including TypeScript checking for the frontend. Images use that
+commit SHA as their immutable tag.
 
 Publication reuses existing commit tags and builds only missing images. Re-run a
 failed workflow to retry its original commit; start a new run to deploy the latest
@@ -276,6 +301,33 @@ Disabled releases explicitly set zero desired tasks and skip the runtime wait.
 Each service records its registered task-definition ARN in the run summary.
 Inspect service events before retrying a failed or partial release; services roll
 back individually, so a failed release can leave a mix of versions.
+
+### Frontend releases and CARTO configuration
+
+**Deploy Frontend** is a separate manual action restricted to `main`. It
+publishes only the `gateway` image and deploys only the
+ECS `gateway` service. Use it for UI or gateway changes; use **Deploy Production**
+for releases that also update backend services. Both actions share the production
+lock, approval environment, image reuse, and ECS rollout behavior. Frontend-only
+releases leave backend task definitions and desired counts unchanged.
+
+Before either deployment, add `VITE_CARTO_API_KEY` under GitHub repository
+**Settings → Secrets and variables → Actions → Variables**. Use a repository
+variable, not an environment-only variable, because image publication runs before
+the production approval job.
+The gateway Docker build accepts this key as a build argument and embeds it in
+the compiled frontend. Use a browser-appropriate CARTO key: it is visible in the
+JavaScript bundle and map tile requests. Local `.env` files remain excluded.
+
+Images retain immutable commit-only tags. After changing the CARTO variable,
+create a new commit and start a new deployment run; rerunning an existing commit
+reuses its existing image and does not pick up the new key. Setting an ECS runtime
+environment variable or restarting the gateway does not rebuild browser assets.
+For a local Docker build, pass `--build-arg VITE_CARTO_API_KEY=...` explicitly.
+
+After a frontend release, verify gateway health and that campus map tiles load.
+Use the gateway task-definition ARN in a previous successful release summary for
+an emergency rollback, following the procedure below.
 
 ### Rollback
 

@@ -13,6 +13,11 @@ output "admin_task_definition" {
   value       = local.admin_task_definition
 }
 
+output "supplier_seed_task_definition" {
+  description = "Non-secret supplier seed task template; the launcher supplies the release image."
+  value       = local.supplier_seed_task_definition
+}
+
 output "task_definition_arns" {
   description = "Application task definition ARNs keyed by service."
   value = merge(

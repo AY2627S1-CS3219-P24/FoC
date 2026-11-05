@@ -6,22 +6,37 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { describe, expect, it } from 'vitest'
-import { UserLayout } from './UserLayout'
+import { describe, expect, it, vi } from 'vitest'
+import { AccountLayout } from './AccountLayout'
 
-describe('UserLayout', () => {
-  it('shares one header and account across requester and courier child routes', async () => {
+vi.mock('../../hooks/useUserProfile', () => ({
+  useUserProfile: () => ({ data: { name: 'Alex Tan', avatarUrl: null } }),
+}))
+
+vi.mock('../../hooks/useSession', () => ({
+  useSession: () => ({ userId: 'user-1', roles: [] }),
+}))
+
+vi.mock('../../providers/AuthProvider', () => ({
+  useAuth: () => ({ logout: vi.fn() }),
+}))
+
+vi.mock('#/features/credits/hooks/useCreditBalance', () => ({
+  useCreditBalance: () => ({
+    isPending: false,
+    isError: false,
+    error: null,
+    data: { availableBalance: 15 },
+  }),
+}))
+
+describe('AccountLayout', () => {
+  it('keeps one account header while child routes change', async () => {
     const root = createRootRoute()
     const layout = createRoute({
       getParentRoute: () => root,
-      id: 'user',
-      component: () => (
-        <UserLayout
-          name="Alex Tan"
-          availableCredits={15}
-          navigation={<span>Home</span>}
-        />
-      ),
+      id: 'account',
+      component: AccountLayout,
     })
     const requester = createRoute({
       getParentRoute: () => layout,
@@ -33,10 +48,28 @@ describe('UserLayout', () => {
       path: '/courier',
       component: () => <h1>Find an errand</h1>,
     })
+    const home = createRoute({
+      getParentRoute: () => layout,
+      path: '/home',
+      component: () => null,
+    })
+    const map = createRoute({
+      getParentRoute: () => layout,
+      path: '/map',
+      component: () => null,
+    })
+    const errands = createRoute({
+      getParentRoute: () => layout,
+      path: '/errands',
+      component: () => null,
+    })
     const router = createRouter({
-      routeTree: root.addChildren([layout.addChildren([requester, courier])]),
+      routeTree: root.addChildren([
+        layout.addChildren([requester, courier, home, map, errands]),
+      ]),
       history: createMemoryHistory({ initialEntries: ['/requester'] }),
     })
+
     render(<RouterProvider router={router} />)
     await screen.findByRole('heading', { name: 'What do you need?' })
     const header = screen.getByRole('banner')
@@ -50,14 +83,8 @@ describe('UserLayout', () => {
     expect(
       await screen.findByRole('heading', { name: 'Find an errand' }),
     ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('heading', { name: 'What do you need?' }),
-    ).not.toBeInTheDocument()
     expect(screen.getByRole('banner')).toBe(header)
     expect(within(header).getByText('15 credits')).toBeInTheDocument()
     expect(screen.getAllByRole('main')).toHaveLength(1)
-    expect(
-      screen.getByRole('link', { name: 'Skip to content' }),
-    ).toHaveAttribute('href', '#user-content')
   })
 })

@@ -4,6 +4,7 @@ import { isCancel } from 'axios'
 import { Button } from '@base-ui/react/button'
 import { getApiErrorCode } from '#/lib/httpErrors'
 import { useSession } from '#/features/auth/hooks/useSession'
+import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import { getCurrentUserId } from '#/features/auth/lib/accessTokenStore'
 import { ErrandForm } from '../../components/ErrandForm/ErrandForm'
 import { ErrandReview } from '../../components/ErrandReview/ErrandReview'
@@ -31,21 +32,29 @@ import {
 import type { PendingCreation } from '../../utils/creationRequest'
 import type { Errand } from '../../types/errand.types'
 import type { CreateErrandValues } from '../../schemas/createErrand.schema'
-import { useCreditBalance } from '#/features/credits/hooks/useCreditBalance'
 import styles from '../../styles/order.module.scss'
 import pageStyles from './CreateErrandPage.module.scss'
 
 type KnownOrder = { id: string; posted: boolean }
+type ReturnTo = 'map' | 'request' | 'locations'
 
 // repost errand info
 type CopiedErrand = { from: Errand; values: CreateErrandValues }
+
+const isReturnTo = (value: string | undefined): value is ReturnTo =>
+  value === 'map' || value === 'request' || value === 'locations'
 
 export const CreateErrandPage = () => {
   const { userId } = useSession()
   const { from } = useSearch({ from: '/authenticated/user/errands/new' })
   if (!userId) return <OrderFeedback loading />
-  return from ? (
-    <CopiedCreationForm key={`${userId}:${from}`} userId={userId} id={from} />
+  const reorderId = from && !isReturnTo(from) ? from : undefined
+  return reorderId ? (
+    <CopiedCreationForm
+      key={`${userId}:${reorderId}`}
+      userId={userId}
+      id={reorderId}
+    />
   ) : (
     <CreationForm key={userId} userId={userId} />
   )
@@ -76,9 +85,22 @@ const CreationForm = ({
   userId: string
   copied?: CopiedErrand
 }) => {
+  const {
+    supplier: supplierId,
+    from,
+    category,
+  } = useSearch({
+    from: '/authenticated/user/errands/new',
+  })
+  const returnTo = isReturnTo(from) ? from : undefined
+  const pickups = usePickupLocations(Boolean(supplierId))
   const [original, setOriginal] = useState<PendingCreation | null>(() =>
     loadCreation(userId),
   )
+  const preset =
+    supplierId && !original
+      ? (pickups.data?.find((location) => location.id === supplierId) ?? null)
+      : null
   const [values, setValues] = useState<CreateErrandValues>(
     () =>
       original?.values ??
@@ -96,6 +118,20 @@ const CreationForm = ({
   const [failed, setFailed] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [knownOrder, setKnownOrder] = useState<KnownOrder | null>(null)
+  const formValues: CreateErrandValues =
+    values.pickup || !preset ? values : { ...values, pickup: preset }
+  const waitingForPickup =
+    Boolean(supplierId) && !original && !formValues.pickup && pickups.isPending
+  const balance = useCreditBalance(userId)
+  const availableCredits = balance.isSuccess
+    ? balance.data.availableBalance
+    : null
+  const cappedValues: CreateErrandValues =
+    availableCredits != null &&
+    availableCredits >= 1 &&
+    formValues.creditReward > availableCredits
+      ? { ...formValues, creditReward: availableCredits }
+      : formValues
   const { create } = useOrderActions()
   const active = useMyErrands({
     as: 'requester',
@@ -177,9 +213,23 @@ const CreationForm = ({
   }
   return (
     <div className={styles.page}>
-      <Link to="/home" search={{ mode: 'requestor' }} className={styles.back}>
-        ← Back to home
-      </Link>
+      {returnTo === 'map' ? (
+        <Link to="/map" className={styles.back}>
+          ← Back to map
+        </Link>
+      ) : returnTo === 'request' ? (
+        <Link to="/request" search={{ category }} className={styles.back}>
+          ← Back to Find a supplier
+        </Link>
+      ) : returnTo === 'locations' && category ? (
+        <Link to="/locations" search={{ category }} className={styles.back}>
+          ← Back to locations
+        </Link>
+      ) : (
+        <Link to="/home" className={styles.back}>
+          ← Back to home
+        </Link>
+      )}
       {localError ? (
         <OrderNotice tone="error" title={localError} />
       ) : failed ? (
@@ -232,7 +282,7 @@ const CreationForm = ({
           ? 'View your errand'
           : review
             ? 'Review request'
-            : 'Create an Errand'}
+            : 'Create an errand'}
       </h1>
       <div className={pageStyles.layout}>
         <div className={pageStyles.main}>
@@ -276,9 +326,16 @@ const CreationForm = ({
                       : undefined
               }
             />
+          ) : waitingForPickup || balance.isPending ? (
+            <p className={styles.muted} role="status">
+              {waitingForPickup
+                ? 'Loading pickup location…'
+                : 'Loading your credits…'}
+            </p>
           ) : (
             <ErrandForm
-              values={values}
+              values={cappedValues}
+              availableCredits={availableCredits}
               onReview={(data) => {
                 setValues(data)
                 setReview(true)
@@ -286,7 +343,27 @@ const CreationForm = ({
             />
           )}
         </div>
-        <CreationGuide userId={userId} />
+        {!knownOrder && (
+          <aside className={pageStyles.guide} aria-label="What you get">
+            <section className={styles.panel}>
+              <h2>What you get</h2>
+              <ol className={pageStyles.steps}>
+                <li>
+                  <strong>Brought to you</strong>
+                  <span>They meet you where you asked.</span>
+                </li>
+                <li>
+                  <strong>You see who is coming</strong>
+                  <span>Their name shows once someone takes it.</span>
+                </li>
+                <li>
+                  <strong>You pay after it arrives</strong>
+                  <span>If nobody takes it, your credits come back.</span>
+                </li>
+              </ol>
+            </section>
+          </aside>
+        )}
       </div>
       {failed && (
         <Link
@@ -298,49 +375,5 @@ const CreationForm = ({
         </Link>
       )}
     </div>
-  )
-}
-
-/** Beside the form: the balance to spend from, and what happens after posting. */
-const CreationGuide = ({ userId }: { userId: string }) => {
-  const balance = useCreditBalance(userId)
-  return (
-    <aside className={pageStyles.guide} aria-label="About posting an errand">
-      <section className={styles.panel}>
-        <h2>Your credits</h2>
-        <p className={pageStyles.balance}>
-          {balance.data ? balance.data.availableBalance : '–'}
-          <span> available</span>
-        </p>
-        <p className={styles.muted}>
-          The reward you set is reserved when you post, and paid to your courier
-          only after you confirm you received the item.
-        </p>
-      </section>
-      <section className={styles.panel}>
-        <h2>How it works</h2>
-        <ol className={pageStyles.steps}>
-          <li>
-            <strong>Post your request</strong>
-            <span>Couriers nearby can see it until it expires.</span>
-          </li>
-          <li>
-            <strong>A courier accepts</strong>
-            <span>You will see who is collecting it.</span>
-          </li>
-          <li>
-            <strong>Courier pick it up</strong>
-            <span>The errand moves to “Picked up”.</span>
-          </li>
-          <li>
-            <strong>Confirm received</strong>
-            <span>
-              The credits transferred to courier. Cancelling before acceptance
-              will return your credits.
-            </span>
-          </li>
-        </ol>
-      </section>
-    </aside>
   )
 }

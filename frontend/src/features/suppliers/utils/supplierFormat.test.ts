@@ -3,7 +3,8 @@ import { summarizeSuppliers } from './supplierFormat'
 import { DAYS_OF_WEEK } from '../types/supplier.types'
 import type { Supplier } from '../types/supplier.types'
 
-const at = (hours: number, minutes = 0) => new Date(2026, 0, 1, hours, minutes)
+const at = (hours: number, minutes = 0) =>
+  Date.UTC(2026, 0, 1, hours - 8, minutes)
 
 describe('summarizeSuppliers', () => {
   const supplier = (

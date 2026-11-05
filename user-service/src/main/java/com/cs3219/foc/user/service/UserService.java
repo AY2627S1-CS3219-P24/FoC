@@ -232,7 +232,9 @@ public class UserService {
             return false;
         }
 
-        createUser(request, List.of(UserRole.USER, UserRole.ADMIN), true);
+        var savedUser = createUser(request, List.of(UserRole.USER, UserRole.ADMIN), true);
+        events.publishEvent(new UserCreatedEvent(
+                UUID.randomUUID(), 1, OffsetDateTime.now(), new UserCreatedEvent.Payload(savedUser.getId())));
         return true;
     }
 

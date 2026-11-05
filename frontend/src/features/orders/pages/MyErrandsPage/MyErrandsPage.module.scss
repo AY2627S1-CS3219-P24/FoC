@@ -26,6 +26,15 @@
   font-size: 14px;
 }
 
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
 .search {
   display: flex;
   align-items: center;

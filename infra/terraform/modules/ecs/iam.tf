@@ -1,4 +1,8 @@
 locals {
+  task_role_arns = {
+    for service, role in aws_iam_role.task : service => "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${role.name}"
+  }
+
   ecs_trust = jsonencode({
     Version = "2012-10-17"
     Statement = [{

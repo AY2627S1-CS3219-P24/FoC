@@ -24,6 +24,13 @@ const state = vi.hoisted(() => ({
   locations: [] as Array<{ id: string; name: string; address: string }>,
   search: {},
 }))
+vi.mock('#/features/credits/hooks/useCreditBalance', () => ({
+  useCreditBalance: () => ({
+    isPending: false,
+    isSuccess: true,
+    data: { availableBalance: 15, reservedBalance: 0 },
+  }),
+}))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => state.navigate,
   useParams: () => ({ orderId: '8e1f0000-0000-4000-8000-000000000001' }),
@@ -192,10 +199,8 @@ it('fills the form from a past errand and warns before posting the same request 
     await screen.findByText(/Copied from your request on/),
   ).toBeInTheDocument()
   expect(screen.getByLabelText('Pickup location *')).toHaveValue(CAFE_ID)
-  expect(screen.getByLabelText('What should be collected? *')).toHaveValue(
-    'Iced latte, less sugar',
-  )
-  expect(screen.getByLabelText('Notes (optional)')).toHaveValue('Order #1042')
+  expect(screen.getByLabelText('Item *')).toHaveValue('Iced latte, less sugar')
+  expect(screen.getByLabelText('Notes')).toHaveValue('Order #1042')
   expect(screen.getByLabelText('Courier reward *')).toHaveValue(7)
 
   await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -244,21 +249,19 @@ it('offers Request again on the detail page of your own ended errand', async () 
   ).toHaveAttribute('href', `/errands/new?from=${PAST_ID}`)
 })
 
-it('follows the Deliver choice on Home instead of mixing both sides', async () => {
-  sessionStorage.setItem('foc.homeMode', 'courier')
+it('lists deliveries separately from requests', async () => {
+  state.search = { tab: 'active', participation: 'delivering', page: 0 }
   setup(<MyErrandsPage />)
 
-  expect(
-    await screen.findByText(/Errands you deliver for others/),
-  ).toBeInTheDocument()
   await waitFor(() =>
     expect(api.listMyOrders).toHaveBeenCalledWith(
-      expect.objectContaining({ as: 'courier', view: 'history' }),
+      expect.objectContaining({ as: 'courier', view: 'active' }),
       expect.any(AbortSignal),
     ),
   )
-  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-  sessionStorage.clear()
+  expect(screen.getByRole('combobox', { name: 'Type' })).toHaveValue(
+    'delivering',
+  )
 })
 
 it('searches my errands once typing pauses', async () => {

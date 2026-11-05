@@ -1,3 +1,4 @@
+import { useNow } from '#/hooks/useNow'
 import { useRef, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
@@ -18,18 +19,17 @@ const labels: Record<OrderAction, string> = {
 export const OrderActions = ({
   order,
   userId,
-  now,
   onError,
 }: {
   order: Errand
   userId: string
-  now: number
   onError: (error: Error | null) => void
 }) => {
   const { action } = useOrderActions()
   const [confirm, setConfirm] = useState<OrderAction | null>(null)
   const [message, setMessage] = useState('')
   const lock = useRef(false)
+  const now = useNow(1_000)
   const allowed = availableOrderActions(order, userId, now)
   const submit = async (operation: OrderAction) => {
     if (lock.current) return

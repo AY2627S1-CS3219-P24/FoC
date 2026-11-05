@@ -5,6 +5,7 @@ WORKDIR /workspace
 
 COPY gradlew settings.gradle build.gradle ./
 COPY gradle ./gradle
+COPY data/csv/supplier-seed-data.csv data/csv/supplier-opening-hours.csv ./data/csv/
 COPY user-service ./user-service
 COPY supplier-service ./supplier-service
 COPY order-service ./order-service

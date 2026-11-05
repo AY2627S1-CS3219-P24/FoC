@@ -10,7 +10,7 @@ import {
   OrderFeedback,
   OrderNotice,
 } from '../../components/OrderFeedback/OrderFeedback'
-import { useOrder, useOrderClock } from '../../hooks/useOrders'
+import { useOrder } from '../../hooks/useOrders'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { clearCreation } from '../../utils/creationRequest'
 import { orderErrorMessage } from '../../utils/orderErrors'
@@ -26,7 +26,6 @@ export const OrderDetailPage = () => {
   const { retry: creationRetry } = useOrderActions()
   const [actionError, setActionError] = useState<Error | null>(null)
   const lock = useRef(false)
-  const now = useOrderClock()
   const order = query.data
   useEffect(() => {
     if (order && query.userId === order.requester.id && order.createRequestId)
@@ -155,14 +154,9 @@ export const OrderDetailPage = () => {
                 key={`${query.userId}:${order.id}`}
                 order={order}
                 userId={query.userId}
-                now={now}
                 onError={setActionError}
               />
-              <Link
-                to="/home"
-                search={{ mode: 'courier' }}
-                className={styles.back}
-              >
+              <Link to="/deliver" className={styles.back}>
                 Browse other errands →
               </Link>
             </div>
