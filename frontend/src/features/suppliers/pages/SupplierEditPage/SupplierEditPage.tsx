@@ -1,6 +1,6 @@
 import { Link, useParams } from '@tanstack/react-router'
 import { SupplierForm } from '../../components/SupplierForm/SupplierForm'
-import { useSupplierChanges } from '../../hooks/useSupplierChanges'
+import { useSupplierRealtimeUpdates } from '../../hooks/useSupplierRealtimeUpdates'
 import { useSupplier, useUpdateSupplier } from '../../hooks/useSuppliers'
 import { useSaveSupplier } from '../../hooks/useSaveSupplier'
 import { useBackToSupplierList } from '../../hooks/useBackToSupplierList'
@@ -12,7 +12,7 @@ import { getErrorMessage } from '../../utils/supplierFormat'
 import ui from '../../styles/supplier.module.scss'
 
 export const SupplierEditPage = () => {
-  useSupplierChanges()
+  useSupplierRealtimeUpdates()
 
   const { supplierId } = useParams({
     from: '/admin/suppliers/$supplierId/edit',

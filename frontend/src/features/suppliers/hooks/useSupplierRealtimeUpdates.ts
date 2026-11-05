@@ -36,7 +36,7 @@ export const applySupplierChanged = (
   void queryClient.invalidateQueries({ queryKey: supplierKeys.all })
 }
 
-export const useSupplierChanges = () => {
+export const useSupplierRealtimeUpdates = () => {
   const queryClient = useQueryClient()
   useEffect(() => {
     const controller = new AbortController()

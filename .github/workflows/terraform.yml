@@ -60,7 +60,7 @@ jobs:
           mkdir -p review
           terraform plan -input=false -lock-timeout=5m -out=review/plan.tfplan
           terraform show -no-color review/plan.tfplan > review/plan.txt
-          printf 'Review the infrastructure plan artifact before approving the production job.\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Review the infrastructure plan below or download the environment-plan artifact, then use Review deployments to approve terraform-approval.\n\n```text\n' >> "$GITHUB_STEP_SUMMARY"
           cat review/plan.txt >> "$GITHUB_STEP_SUMMARY"
           printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
@@ -69,8 +69,20 @@ jobs:
           path: infra/terraform/environments/prod/review/
           retention-days: 3
 
-  apply:
+  approval:
+    name: Review infrastructure plan
     needs: plan
+    runs-on: ubuntu-latest
+    permissions: {}
+    environment:
+      name: terraform-approval
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Confirm plan approval
+        run: echo "The saved infrastructure plan was approved."
+
+  apply:
+    needs: [plan, approval]
     runs-on: ubuntu-latest
     # Configure required reviewers on this GitHub environment.
     environment: production
