@@ -45,12 +45,18 @@ vi.mock('@tanstack/react-router', () => ({
   }: {
     children: ReactNode
     to: string
-    search?: { from?: string }
+    search?: { from?: string; q?: string }
     className?: string
     'aria-label'?: string
   }) => (
     <a
-      href={search?.from ? `${to}?from=${search.from}` : to}
+      href={
+        search?.from
+          ? `${to}?from=${search.from}`
+          : search?.q
+            ? `${to}?q=${search.q}`
+            : to
+      }
       className={className}
       aria-label={label}
     >
@@ -83,9 +89,18 @@ const setup = (element: ReactNode) => {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   clients.push(client)
-  render(<QueryClientProvider client={client}>{element}</QueryClientProvider>)
+  const view = render(
+    <QueryClientProvider client={client}>{element}</QueryClientProvider>,
+  )
+  rerender = () =>
+    view.rerender(
+      <QueryClientProvider client={client}>{element}</QueryClientProvider>,
+    )
   return userEvent.setup()
 }
+
+// render again the last page if the test change the mock url search
+let rerender = () => {}
 const page = (items = [orderFixture()]) => ({
   items,
   total: items.length,
@@ -284,4 +299,50 @@ it('passes the search to the server so every page is searched', async () => {
   expect(
     await screen.findByText('No errands match “latte”.'),
   ).toBeInTheDocument()
+})
+
+it('keeps the search when opening an errand and going back to the list', async () => {
+  state.search = {
+    tab: 'history',
+    participation: 'requested',
+    page: 2,
+    q: 'latte',
+  }
+  vi.mocked(api.listMyOrders).mockResolvedValue(page([completed]))
+  setup(<MyErrandsPage />)
+
+  expect(
+    (await screen.findByText('Iced latte, less sugar')).closest('a'),
+  ).toHaveAttribute('href', expect.stringContaining('q=latte'))
+
+  cleanup()
+  state.search = { ...state.search, posted: false }
+  setup(<OrderDetailPage />)
+  expect(
+    await screen.findByRole('link', { name: /Back to My Errands/ }),
+  ).toHaveAttribute('href', '/errands?q=latte')
+})
+
+it('clears the search box when navigation clears the search', async () => {
+  state.search = {
+    tab: 'active',
+    participation: 'requested',
+    page: 0,
+    q: 'latte',
+  }
+  setup(<MyErrandsPage />)
+  const box = await screen.findByRole('searchbox', { name: 'Search errands' })
+  expect(box).toHaveValue('latte')
+
+  // The My Errands link in the header opens the list without a search.
+  state.search = { tab: 'active', participation: 'all', page: 0 }
+  rerender()
+
+  await waitFor(() => expect(box).toHaveValue(''))
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  expect(state.navigate).not.toHaveBeenCalledWith(
+    expect.objectContaining({
+      search: expect.objectContaining({ q: 'latte' }),
+    }),
+  )
 })

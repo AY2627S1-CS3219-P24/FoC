@@ -112,16 +112,17 @@ not confirm that the email was delivered.
 
 ### Load supplier data
 
-At beginning, the supplier data is empty. After the supplier service has started once
-(Flyway created supplier table), then will load the suppliers' data from `data/csv`:
+The supplier list starts empty. After the supplier service has started once
+(so Flyway has created its tables), load the NUS outlets from `data/csv`:
 
 ```bash
-docker cp docker/postgres/seed-suppliers.sh foc-postgres-1:/tmp/seed-suppliers.sh
-docker cp data/csv/. foc-postgres-1:/tmp/seed
-docker exec -e PGUSER=foc -e PGDATABASE=foc foc-postgres-1 sh /tmp/seed-suppliers.sh /tmp/seed
+docker cp infra/docker/postgres/seed-suppliers.sh foc-dev-postgres-1:/tmp/seed-suppliers.sh
+docker cp data/csv/. foc-dev-postgres-1:/tmp/seed
+docker exec -e PGUSER=foc -e PGDATABASE=foc_supplier foc-dev-postgres-1 sh /tmp/seed-suppliers.sh /tmp/seed
 ```
 
-The script will only add suppliers that are not in database, so run it again is safe.
+The script only adds suppliers that are not in the database yet, so running it
+again is safe.
 
 ## Stop
 
