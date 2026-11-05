@@ -76,9 +76,6 @@ module "rds" {
 
 module "ecs" {
   source = "../../modules/ecs"
-  # The host subnet id does not depend on the public route. Wait for the
-  # network module so instances boot only after that route exists.
-  depends_on = [module.network]
 
   region                           = local.region
   name_prefix                      = var.name_prefix
