@@ -18,6 +18,11 @@ event_subscriptions = {
     consumer    = "realtime"
     event_types = ["SupplierChangedEvent"]
   }
+  errand_message_posted = {
+    publisher   = "order"
+    consumer    = "realtime"
+    event_types = ["ErrandMessagePostedEvent"]
+  }
   user_created = {
     publisher   = "user"
     consumer    = "credit"
