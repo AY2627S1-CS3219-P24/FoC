@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useErrandAi } from '../../hooks/useErrandAi'
 import { useErrandAiCapabilities } from '../../hooks/useErrandAiCapabilities'
+import { useErrandAiFormSync } from '../../hooks/useErrandAiFormSync'
 import { useAudioRecorder } from '../../hooks/useAudioRecorder'
 import { draftFromForm } from '../../schemas/errandAi.schema'
 import { expiryLabel } from '../../utils/orderFormat'
@@ -113,11 +114,7 @@ function ChatPanel({
 }) {
   const ai = useErrandAi(draftFromForm(initial))
   const [input, setInput] = useState('')
-  const [confirm, setConfirm] = useState(false)
   const [voiceText, setVoiceText] = useState('')
-  const baseline = useRef(initial)
-  const acknowledgedForm = useRef(initial)
-  const [formChanged, setFormChanged] = useState(false)
   const end = useRef<HTMLDivElement>(null)
   const audio = useAudioRecorder((file) => {
     void ai.transcribe(file).then((text) => {
@@ -129,63 +126,40 @@ function ChatPanel({
       setVoiceText('Transcription added. Check the text, then send.')
     })
   })
+  const locked = ai.busy || audio.recording || audio.requesting
+  const closePanel = () => {
+    audio.cancel()
+    close()
+  }
+  const formSync = useErrandAiFormSync({
+    initial,
+    open,
+    locked,
+    draft: ai.draft,
+    getValues,
+    restart: ai.restart,
+    onApply,
+    onApplied: closePanel,
+  })
   useEffect(() => {
     if (!open) audio.cancel()
   }, [open])
   useEffect(() => {
-    if (open)
-      setFormChanged(
-        JSON.stringify(getValues()) !==
-          JSON.stringify(acknowledgedForm.current),
-      )
-  }, [open, getValues])
-  useEffect(() => {
     end.current?.scrollIntoView({ block: 'nearest' })
   }, [ai.messages, ai.busy, open])
   const collapse = () => {
-    audio.cancel()
-    setConfirm(false)
-    close()
-  }
-  const apply = () => {
-    onApply(ai.draft)
-    baseline.current = structuredClone(getValues())
-    acknowledgedForm.current = baseline.current
-    setFormChanged(false)
-    collapse()
-  }
-  const fill = () => {
-    if (JSON.stringify(getValues()) !== JSON.stringify(baseline.current))
-      setConfirm(true)
-    else apply()
-  }
-  const checkFormChange = () => {
-    const changed =
-      JSON.stringify(getValues()) !== JSON.stringify(acknowledgedForm.current)
-    setFormChanged(changed)
-    return changed
-  }
-  const locked = ai.busy || audio.recording || audio.requesting
-  const continueDraft = () => {
-    acknowledgedForm.current = structuredClone(getValues())
-    setFormChanged(false)
+    formSync.setConfirm(false)
+    closePanel()
   }
   const restartFromForm = () => {
-    if (locked) return
-    const values = structuredClone(getValues())
-    if (!ai.restart(draftFromForm(values))) return
-    baseline.current = values
-    acknowledgedForm.current = values
-    setFormChanged(false)
-    setConfirm(false)
-    setVoiceText('')
+    if (formSync.restartFromForm()) setVoiceText('')
   }
   const sendMessage = async (
     text: string,
     selectedSupplierId?: string,
     retry = false,
   ) => {
-    if (locked || checkFormChange()) return false
+    if (!formSync.checkBeforeSend()) return false
     return ai.send(text, selectedSupplierId, retry)
   }
   const send = async () => {
@@ -310,7 +284,7 @@ function ChatPanel({
                 <button
                   type="button"
                   className={styles.primary}
-                  onClick={fill}
+                  onClick={formSync.fill}
                   disabled={locked}
                 >
                   Fill into form
@@ -340,7 +314,7 @@ function ChatPanel({
             <div ref={end} />
           </div>
           <div className={styles.composer}>
-            {formChanged && (
+            {formSync.formChanged && (
               <div className={styles.formChanged} role="status">
                 <p>
                   You edited the form. This conversation still uses the previous
@@ -350,7 +324,7 @@ function ChatPanel({
                   Restarting clears the conversation. Your unsent text stays.
                 </small>
                 <div>
-                  <button type="button" onClick={continueDraft}>
+                  <button type="button" onClick={formSync.continueDraft}>
                     Continue current draft
                   </button>
                   <button
@@ -434,7 +408,10 @@ function ChatPanel({
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
-      <AlertDialog.Root open={confirm} onOpenChange={setConfirm}>
+      <AlertDialog.Root
+        open={formSync.confirm}
+        onOpenChange={formSync.setConfirm}
+      >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className={styles.backdrop} />
           <AlertDialog.Popup className={styles.confirm}>
@@ -445,7 +422,11 @@ function ChatPanel({
             </AlertDialog.Description>
             <div>
               <AlertDialog.Close type="button">Keep my edits</AlertDialog.Close>
-              <button type="button" className={styles.primary} onClick={apply}>
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={formSync.apply}
+              >
                 Apply draft
               </button>
             </div>

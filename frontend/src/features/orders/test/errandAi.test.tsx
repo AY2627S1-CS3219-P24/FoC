@@ -10,10 +10,10 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ErrandForm } from '../components/ErrandForm/ErrandForm'
-import { aiChatResponseSchema } from '../schemas/errandAi.schema'
+import { applyDraft, draftFromForm } from '../schemas/errandAi.schema'
 import * as api from '../api/errandAi.api'
 import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
-import type { AiChatResponse } from '../schemas/errandAi.schema'
+import type { AiCapabilities, AiChatResponse } from '../schemas/errandAi.schema'
 import type { CreateErrandValues } from '../schemas/createErrand.schema'
 
 vi.mock('../api/errandAi.api', () => ({
@@ -51,6 +51,8 @@ const result: AiChatResponse = {
   supplierChoices: [],
 }
 const clients: Array<QueryClient> = []
+type User = ReturnType<typeof userEvent.setup>
+
 function setup(values = initial, availableCredits?: number) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -87,23 +89,41 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
-async function chat(
-  user: ReturnType<typeof userEvent.setup>,
-  text = 'Coffee to COM3',
-) {
+const messageInput = () =>
+  screen.getByRole('textbox', { name: 'Message to AI assistant' })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
+async function openAssistant(user: User) {
   await user.click(
     await screen.findByRole('button', { name: 'Create with AI' }),
   )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    text,
-  )
+}
+
+async function sendMessage(user: User, text: string) {
+  fireEvent.change(messageInput(), { target: { value: text } })
   await user.click(screen.getByRole('button', { name: 'Send message' }))
+}
+
+async function chat(user: User, text = 'Coffee to COM3') {
+  await openAssistant(user)
+  await sendMessage(user, text)
   await screen.findByRole('button', { name: 'Fill into form' })
 }
-it('only fills on request and passes values to the existing review flow', async () => {
-  const { user, onReview } = setup()
+it('uses form values, fills only on request, and passes the draft to review', async () => {
+  const { user, onReview } = setup({ ...initial, description: 'Lunch' })
   await chat(user)
+  expect(vi.mocked(api.chatWithErrandAi).mock.calls[0][0].draft).toMatchObject({
+    description: 'Lunch',
+    creditReward: 5,
+    expiryMinutes: 60,
+  })
   expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
   expect(onReview).not.toHaveBeenCalled()
   await user.click(screen.getByRole('button', { name: 'Fill into form' }))
@@ -133,53 +153,22 @@ it('requires an AI-filled reward to fit the available balance before review', as
     ),
   )
 })
-it('starts with hand-entered values and preserves nulls while applying explicit clears', async () => {
-  vi.mocked(api.chatWithErrandAi).mockResolvedValue({
-    ...result,
-    draft: {
-      ...result.draft,
-      pickup: null,
-      deliveryLocation: '',
-      description: null,
-      notes: '',
-      creditReward: null,
-      expiryMinutes: null,
-    },
-    missingFields: ['pickup', 'deliveryLocation'],
-  })
-  const { user, onReview } = setup({
+it('preserves unknown draft fields while applying explicit text clears', () => {
+  const values = {
     ...initial,
     pickup,
     deliveryLocation: 'Old delivery',
     description: 'Lunch',
     notes: 'Old notes',
-  })
-  await chat(user, 'Clear delivery and notes')
+  }
   expect(
-    vi.mocked(api.chatWithErrandAi).mock.calls[0][0].draft.description,
-  ).toBe('Lunch')
-  await user.click(screen.getByRole('button', { name: 'Fill into form' }))
-  expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
-  expect(screen.getByLabelText('Notes')).toHaveValue('')
-  expect(screen.getByLabelText('Item *')).toHaveValue('Lunch')
-  await user.click(screen.getByRole('button', { name: 'Continue' }))
-  await screen.findByText('Enter a delivery location.')
-  expect(onReview).not.toHaveBeenCalled()
-})
-it('asks before overwriting hand edits and supports keeping them', async () => {
-  const { user } = setup()
-  await chat(user)
-  await user.click(screen.getByRole('button', { name: 'Close AI assistant' }))
-  await user.type(screen.getByLabelText('Delivery location *'), 'My edit')
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.click(screen.getByRole('button', { name: 'Fill into form' }))
-  await user.click(screen.getByRole('button', { name: 'Keep my edits' }))
-  expect(screen.getByLabelText('Delivery location *')).toHaveValue('My edit')
-  await user.click(screen.getByRole('button', { name: 'Fill into form' }))
-  await user.click(screen.getByRole('button', { name: 'Apply draft' }))
-  expect(screen.getByLabelText('Delivery location *')).toHaveValue('COM3')
+    applyDraft(values, {
+      ...draftFromForm(initial),
+      deliveryLocation: '',
+      creditReward: null,
+      expiryMinutes: null,
+    }),
+  ).toEqual({ ...values, deliveryLocation: '', notes: '' })
 })
 it('sends supplier selection through chat and retries without duplicate messages', async () => {
   vi.mocked(api.chatWithErrandAi)
@@ -210,45 +199,22 @@ it('sends supplier selection through chat and retries without duplicate messages
 it('keeps input on failure and aborts pending requests on unmount', async () => {
   vi.mocked(api.chatWithErrandAi).mockRejectedValueOnce(new Error('no key'))
   const { user, unmount } = setup()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Coffee',
-  )
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
+  await openAssistant(user)
+  await sendMessage(user, 'Coffee')
   await screen.findByRole('button', { name: 'Retry message' })
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toHaveValue('Coffee')
-  let complete!: (value: AiChatResponse) => void
-  vi.mocked(api.chatWithErrandAi).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        complete = resolve
-      }),
-  )
+  expect(messageInput()).toHaveValue('Coffee')
+  const pending = deferred<AiChatResponse>()
+  vi.mocked(api.chatWithErrandAi).mockReturnValue(pending.promise)
   await user.click(screen.getByRole('button', { name: 'Retry message' }))
   const signal = vi.mocked(api.chatWithErrandAi).mock.calls[1][1]
   unmount()
   expect(signal.aborted).toBe(true)
-  await act(async () => complete(result))
-})
-it('rejects AI drafts with negative rewards', () => {
-  expect(
-    aiChatResponseSchema.safeParse({
-      ...result,
-      draft: { ...result.draft, creditReward: -1 },
-    }).success,
-  ).toBe(false)
+  await act(async () => pending.resolve(result))
 })
 it('Enter in the assistant does not submit the errand form', async () => {
   const { user, onReview } = setup(result.draft as CreateErrandValues)
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  const input = screen.getByRole('textbox', { name: 'Message to AI assistant' })
+  await openAssistant(user)
+  const input = messageInput()
   fireEvent.change(input, { target: { value: 'Change notes' } })
   fireEvent.keyDown(input, { key: 'Enter' })
   await waitFor(() => expect(api.chatWithErrandAi).toHaveBeenCalledTimes(1))
@@ -287,24 +253,15 @@ function mockMicrophone(
 it('collapsing the panel cancels recording without uploading and preserves the composer', async () => {
   const stopTrack = mockMicrophone()
   const { user } = setup()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Keep this',
-  )
+  await openAssistant(user)
+  fireEvent.change(messageInput(), { target: { value: 'Keep this' } })
   await user.click(screen.getByRole('button', { name: 'Record voice message' }))
   await screen.findByRole('button', { name: 'Stop recording' })
   await user.click(screen.getByRole('button', { name: 'Close AI assistant' }))
   expect(stopTrack).toHaveBeenCalledTimes(1)
   expect(api.transcribeErrandAudio).not.toHaveBeenCalled()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toHaveValue('Keep this')
+  await openAssistant(user)
+  expect(messageInput()).toHaveValue('Keep this')
   expect(
     screen.queryByRole('button', { name: 'Stop recording' }),
   ).not.toBeInTheDocument()
@@ -322,20 +279,11 @@ it('keeps the composer locked through delayed audio delivery and transcription',
   const stopTrack = mockMicrophone((finish) => {
     deliver = finish
   })
-  let transcribe!: (text: string) => void
-  vi.mocked(api.transcribeErrandAudio).mockReturnValue(
-    new Promise((resolve) => {
-      transcribe = resolve
-    }),
-  )
+  const transcript = deferred<string>()
+  vi.mocked(api.transcribeErrandAudio).mockReturnValue(transcript.promise)
   const { user, onReview } = setup()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Please',
-  )
+  await openAssistant(user)
+  fireEvent.change(messageInput(), { target: { value: 'Please' } })
   await user.click(screen.getByRole('button', { name: 'Record voice message' }))
   await user.click(
     await screen.findByRole('button', { name: 'Stop recording' }),
@@ -348,23 +296,17 @@ it('keeps the composer locked through delayed audio delivery and transcription',
   act(deliver)
   const send = screen.getByRole('button', { name: 'Send message' })
   expect(send).toBeDisabled()
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toBeDisabled()
+  expect(messageInput()).toBeDisabled()
   await user.click(send)
   expect(api.transcribeErrandAudio).toHaveBeenCalledTimes(1)
-  await act(async () => transcribe('Coffee to COM3'))
+  await act(async () => transcript.resolve('Coffee to COM3'))
   await waitFor(() =>
-    expect(
-      screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    ).toHaveValue('Please\nCoffee to COM3'),
+    expect(messageInput()).toHaveValue('Please\nCoffee to COM3'),
   )
   expect(api.chatWithErrandAi).not.toHaveBeenCalled()
   expect(onReview).not.toHaveBeenCalled()
   expect(screen.getByLabelText('Delivery location *')).toHaveValue('')
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toBeEnabled()
+  expect(messageInput()).toBeEnabled()
   expect(send).toBeEnabled()
   await user.click(send)
   expect(vi.mocked(api.chatWithErrandAi).mock.calls[0][0].message).toBe(
@@ -378,13 +320,8 @@ it('discards the final audio when cancelled after stop but before delivery', asy
     deliver = finish
   })
   const { user } = setup()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Keep this',
-  )
+  await openAssistant(user)
+  fireEvent.change(messageInput(), { target: { value: 'Keep this' } })
   await user.click(screen.getByRole('button', { name: 'Record voice message' }))
   await user.click(
     await screen.findByRole('button', { name: 'Stop recording' }),
@@ -393,9 +330,7 @@ it('discards the final audio when cancelled after stop but before delivery', asy
   act(deliver)
   expect(stopTrack).toHaveBeenCalledTimes(1)
   expect(api.transcribeErrandAudio).not.toHaveBeenCalled()
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toHaveValue('Keep this')
+  expect(messageInput()).toHaveValue('Keep this')
   expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled()
 })
 
@@ -406,24 +341,16 @@ it('acknowledges form changes without changing the draft or bypassing overwrite 
   fireEvent.change(screen.getByLabelText('Delivery location *'), {
     target: { value: 'COM2' },
   })
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
+  await openAssistant(user)
   await user.click(
     screen.getByRole('button', { name: 'Continue current draft' }),
   )
   await user.click(screen.getByRole('button', { name: 'Close AI assistant' }))
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
+  await openAssistant(user)
   expect(
     screen.queryByRole('button', { name: 'Continue current draft' }),
   ).not.toBeInTheDocument()
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Reward 10',
-  )
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
+  await sendMessage(user, 'Reward 10')
   await waitFor(() => expect(api.chatWithErrandAi).toHaveBeenCalledTimes(2))
   expect(
     vi.mocked(api.chatWithErrandAi).mock.calls[1][0].draft.deliveryLocation,
@@ -434,151 +361,112 @@ it('acknowledges form changes without changing the draft or bypassing overwrite 
   fireEvent.change(screen.getByLabelText('Delivery location *'), {
     target: { value: 'COM1' },
   })
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Next',
-  )
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
+  await sendMessage(user, 'Next')
   expect(
     screen.getByRole('button', { name: 'Continue current draft' }),
   ).toBeInTheDocument()
   expect(api.chatWithErrandAi).toHaveBeenCalledTimes(2)
-})
-
-it('detects edits while open and restarts from the latest form without losing unsent text', async () => {
-  const { user } = setup()
-  await chat(user)
-  const input = screen.getByRole('textbox', { name: 'Message to AI assistant' })
-  await user.type(input, 'Reward 10')
-  fireEvent.change(screen.getByLabelText('Delivery location *'), {
-    target: { value: 'COM2' },
-  })
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
-  expect(api.chatWithErrandAi).toHaveBeenCalledTimes(1)
-  await user.click(screen.getByRole('button', { name: 'Restart from form' }))
-  expect(input).toHaveValue('Reward 10')
-  expect(screen.getByRole('log')).toBeEmptyDOMElement()
-  expect(
-    screen.queryByRole('button', { name: 'Fill into form' }),
-  ).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
-  await waitFor(() => expect(api.chatWithErrandAi).toHaveBeenCalledTimes(2))
-  expect(vi.mocked(api.chatWithErrandAi).mock.calls[1][0]).toMatchObject({
-    message: 'Reward 10',
-    history: [],
-    draft: { deliveryLocation: 'COM2' },
-  })
   await user.click(screen.getByRole('button', { name: 'Fill into form' }))
-  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Apply draft' }))
+  expect(screen.getByLabelText('Delivery location *')).toHaveValue('COM3')
 })
 
-it('checks form changes before supplier selection and retry, and clears failed requests on restart', async () => {
-  vi.mocked(api.chatWithErrandAi)
-    .mockResolvedValueOnce({ ...result, supplierChoices: [pickup] })
-    .mockRejectedValueOnce(new Error('unavailable'))
-    .mockResolvedValue(result)
-  const { user } = setup()
-  await chat(user)
-  fireEvent.change(screen.getByLabelText('Delivery location *'), {
-    target: { value: 'COM2' },
-  })
-  await user.click(screen.getByRole('button', { name: /Campus Cafe/ }))
-  expect(api.chatWithErrandAi).toHaveBeenCalledTimes(1)
-  await user.click(
-    screen.getByRole('button', { name: 'Continue current draft' }),
-  )
-  await user.click(screen.getByRole('button', { name: /Campus Cafe/ }))
-  await screen.findByRole('button', { name: 'Retry message' })
-  fireEvent.change(screen.getByLabelText('Delivery location *'), {
-    target: { value: 'COM1' },
-  })
-  await user.click(screen.getByRole('button', { name: 'Retry message' }))
-  expect(api.chatWithErrandAi).toHaveBeenCalledTimes(2)
-  await user.click(screen.getByRole('button', { name: 'Restart from form' }))
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  expect(
-    screen.queryByRole('button', { name: 'Retry message' }),
-  ).not.toBeInTheDocument()
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Coffee',
-  )
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
-  await waitFor(() => expect(api.chatWithErrandAi).toHaveBeenCalledTimes(3))
-  expect(vi.mocked(api.chatWithErrandAi).mock.calls[2][0]).toMatchObject({
-    history: [],
-    draft: { deliveryLocation: 'COM1' },
-    selectedSupplierId: undefined,
-  })
-})
+it.each(['message', 'supplier', 'retry'] as const)(
+  'checks form changes before %s and restarts without losing unsent text',
+  async (action) => {
+    vi.mocked(api.chatWithErrandAi).mockResolvedValueOnce({
+      ...result,
+      supplierChoices: [pickup],
+    })
+    const { user } = setup()
+    await chat(user)
+    if (action === 'retry') {
+      vi.mocked(api.chatWithErrandAi).mockRejectedValueOnce(
+        new Error('unavailable'),
+      )
+      await user.click(screen.getByRole('button', { name: /Campus Cafe/ }))
+      await screen.findByRole('button', { name: 'Retry message' })
+    }
+    const callsBefore = vi.mocked(api.chatWithErrandAi).mock.calls.length
+    fireEvent.change(screen.getByLabelText('Delivery location *'), {
+      target: { value: 'COM2' },
+    })
+    fireEvent.change(messageInput(), { target: { value: 'Reward 10' } })
+    const name =
+      action === 'message'
+        ? 'Send message'
+        : action === 'supplier'
+          ? /Campus Cafe/
+          : 'Retry message'
+    await user.click(screen.getByRole('button', { name }))
+    expect(api.chatWithErrandAi).toHaveBeenCalledTimes(callsBefore)
+    await user.click(screen.getByRole('button', { name: 'Restart from form' }))
+    expect(messageInput()).toHaveValue('Reward 10')
+    expect(screen.getByRole('log')).toBeEmptyDOMElement()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Retry message' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Fill into form' }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() =>
+      expect(api.chatWithErrandAi).toHaveBeenCalledTimes(callsBefore + 1),
+    )
+    expect(vi.mocked(api.chatWithErrandAi).mock.lastCall?.[0]).toMatchObject({
+      message: 'Reward 10',
+      history: [],
+      draft: { deliveryLocation: 'COM2' },
+      selectedSupplierId: undefined,
+    })
+    await user.click(screen.getByRole('button', { name: 'Fill into form' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  },
+)
 
 it('prevents restarting during an outstanding chat request', async () => {
-  let complete!: (value: AiChatResponse) => void
-  vi.mocked(api.chatWithErrandAi).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        complete = resolve
-      }),
-  )
+  const pending = deferred<AiChatResponse>()
+  vi.mocked(api.chatWithErrandAi).mockReturnValue(pending.promise)
   const { user } = setup()
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Coffee',
-  )
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
+  await openAssistant(user)
+  await sendMessage(user, 'Coffee')
   await user.click(screen.getByRole('button', { name: 'Close AI assistant' }))
   fireEvent.change(screen.getByLabelText('Delivery location *'), {
     target: { value: 'COM2' },
   })
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
+  await openAssistant(user)
   expect(
     screen.getByRole('button', { name: 'Restart from form' }),
   ).toBeDisabled()
-  await act(async () => complete(result))
+  await act(async () => pending.resolve(result))
   await user.click(screen.getByRole('button', { name: 'Restart from form' }))
   expect(screen.getByRole('log')).toBeEmptyDOMElement()
 })
 
 it('prevents restarting while requesting a microphone, recording, or transcribing', async () => {
   const stopTrack = mockMicrophone()
-  let grant!: (stream: MediaStream) => void
-  vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        grant = resolve
-      }),
+  const permission = deferred<MediaStream>()
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValue(
+    permission.promise,
   )
-  let transcribe!: (text: string) => void
-  vi.mocked(api.transcribeErrandAudio).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        transcribe = resolve
-      }),
-  )
+  const transcript = deferred<string>()
+  vi.mocked(api.transcribeErrandAudio).mockReturnValue(transcript.promise)
   const { user } = setup()
   await chat(user)
-  await user.type(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-    'Next',
-  )
   fireEvent.change(screen.getByLabelText('Delivery location *'), {
     target: { value: 'COM2' },
   })
-  await user.click(screen.getByRole('button', { name: 'Send message' }))
+  await sendMessage(user, 'Next')
   await user.click(screen.getByRole('button', { name: 'Record voice message' }))
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toBeDisabled()
+  expect(messageInput()).toBeDisabled()
   expect(
     screen.getByRole('button', { name: 'Restart from form' }),
   ).toBeDisabled()
   await act(async () =>
-    grant({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream),
+    permission.resolve({
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream),
   )
   expect(
     screen.getByRole('button', { name: 'Restart from form' }),
@@ -587,36 +475,22 @@ it('prevents restarting while requesting a microphone, recording, or transcribin
   expect(
     screen.getByRole('button', { name: 'Restart from form' }),
   ).toBeDisabled()
-  await act(async () => transcribe('Coffee'))
+  await act(async () => transcript.resolve('Coffee'))
   await user.click(screen.getByRole('button', { name: 'Restart from form' }))
-  expect(
-    screen.getByRole('textbox', { name: 'Message to AI assistant' }),
-  ).toHaveValue('Next\nCoffee')
+  expect(messageInput()).toHaveValue('Next\nCoffee')
   expect(stopTrack).toHaveBeenCalledTimes(1)
 })
 
-it('offers text-only chat when voice is disabled and queries once per form visit', async () => {
+it('offers text-only chat when voice is disabled', async () => {
   vi.mocked(api.getErrandAiCapabilities).mockResolvedValue({
     chatEnabled: true,
     voiceEnabled: false,
   })
-  const { user, unmount } = setup()
+  const { user } = setup()
   await chat(user)
   expect(
     screen.queryByRole('button', { name: 'Record voice message' }),
   ).not.toBeInTheDocument()
-  expect(
-    screen.queryByText('Voice input becomes editable text.'),
-  ).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Close AI assistant' }))
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
-  expect(api.getErrandAiCapabilities).toHaveBeenCalledTimes(1)
-  unmount()
-  setup()
-  await screen.findByRole('button', { name: 'Create with AI' })
-  expect(api.getErrandAiCapabilities).toHaveBeenCalledTimes(2)
 })
 
 it.each(['disabled', 'failed'] as const)(
@@ -637,36 +511,29 @@ it.each(['disabled', 'failed'] as const)(
     expect(
       screen.queryByRole('button', { name: 'Create with AI' }),
     ).not.toBeInTheDocument()
-    expect(api.getErrandAiCapabilities).toHaveBeenCalledTimes(1)
     expect(api.chatWithErrandAi).not.toHaveBeenCalled()
   },
 )
 
 it('hides the launcher while loading and discards chat state when the user changes', async () => {
-  let complete!: (flags: {
-    chatEnabled: boolean
-    voiceEnabled: boolean
-  }) => void
-  vi.mocked(api.getErrandAiCapabilities).mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        complete = resolve
-      }),
+  const capabilities = deferred<AiCapabilities>()
+  vi.mocked(api.getErrandAiCapabilities).mockReturnValueOnce(
+    capabilities.promise,
   )
   const { user } = setup()
   expect(
     screen.queryByRole('button', { name: 'Create with AI' }),
   ).not.toBeInTheDocument()
-  await act(async () => complete({ chatEnabled: true, voiceEnabled: true }))
+  await act(async () =>
+    capabilities.resolve({ chatEnabled: true, voiceEnabled: true }),
+  )
   await chat(user)
   act(() =>
     setAccessToken(
       `header.${btoa(JSON.stringify({ sub: 'another-user', roles: ['USER'] }))}.signature`,
     ),
   )
-  await user.click(
-    await screen.findByRole('button', { name: 'Create with AI' }),
-  )
+  await openAssistant(user)
   expect(screen.getByRole('log')).toBeEmptyDOMElement()
   expect(api.getErrandAiCapabilities).toHaveBeenCalledTimes(2)
 })

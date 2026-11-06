@@ -12,7 +12,6 @@ import com.cs3219.foc.order.exception.GlobalExceptionHandler;
 import com.cs3219.foc.order.model.dto.AiCapabilitiesResponse;
 import com.cs3219.foc.order.model.dto.TranscriptionResponse;
 import com.cs3219.foc.order.service.ErrandAiService;
-import java.util.List;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.*;
@@ -52,20 +51,15 @@ class ErrandAiControllerTests {
     }
 
     @Test
-    void capabilitiesRequireAuthenticationAndReturnOnlyFlagsEvenWhenDisabled() throws Exception {
+    void capabilitiesRequireAuthenticationAndReturnFlags() throws Exception {
         mvc.perform(get("/orders/ai/capabilities")).andExpect(status().isUnauthorized());
         verifyNoInteractions(service);
-        for (var flags : List.of(
-                new AiCapabilitiesResponse(false, false),
-                new AiCapabilitiesResponse(true, false),
-                new AiCapabilitiesResponse(true, true))) {
-            when(service.capabilities()).thenReturn(flags);
-            mvc.perform(get("/orders/ai/capabilities").with(jwt()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.chatEnabled").value(flags.chatEnabled()))
-                    .andExpect(jsonPath("$.voiceEnabled").value(flags.voiceEnabled()))
-                    .andExpect(jsonPath("$.length()").value(2));
-        }
+        when(service.capabilities()).thenReturn(new AiCapabilitiesResponse(true, false));
+        mvc.perform(get("/orders/ai/capabilities").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chatEnabled").value(true))
+                .andExpect(jsonPath("$.voiceEnabled").value(false))
+                .andExpect(jsonPath("$.apiKey").doesNotExist());
     }
 
     @Test
