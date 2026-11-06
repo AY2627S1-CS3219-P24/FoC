@@ -4,6 +4,7 @@ import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { getApiErrorCode } from '#/lib/httpErrors'
 import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
+import { DeliveryPhotos } from '../../components/DeliveryPhotos/DeliveryPhotos'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
 import { OrderActions } from '../../components/OrderActions/OrderActions'
 import {
@@ -117,6 +118,7 @@ export const OrderDetailPage = () => {
             {/* the errand order progress */}
             <div className={styles.side}>
               <OrderTimeline order={order} />
+              <DeliveryPhotos order={order} />
               {order.status === 'CREATING' &&
                 order.requester.id === query.userId && (
                   <div className={styles.actions}>

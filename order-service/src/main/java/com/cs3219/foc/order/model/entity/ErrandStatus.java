@@ -6,6 +6,7 @@ public enum ErrandStatus {
     OPEN,
     ACCEPTED,
     PICKED_UP,
+    DELIVERED,
     COMPLETED,
     CANCELLED,
     EXPIRED

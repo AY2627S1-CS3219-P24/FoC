@@ -78,4 +78,7 @@ public class Errand {
 
     @Column(name = "ended_at")
     private OffsetDateTime endedAt;
+
+    @Column(name = "delivered_at")
+    private OffsetDateTime deliveredAt;
 }

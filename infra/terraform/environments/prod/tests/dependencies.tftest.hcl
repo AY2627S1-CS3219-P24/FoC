@@ -29,6 +29,7 @@ variables {
   image_bucket_names = {
     user     = "foc-test-user"
     supplier = "foc-test-supplier"
+    order    = "foc-test-order"
   }
   name_prefix = "foc-test"
   domain_name = "foc.example.edu"

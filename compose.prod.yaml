@@ -107,6 +107,7 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
+      FOC_ORDER_BUCKET: ${FOC_ORDER_BUCKET}
       FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_order
       FOC_DATABASE_USERNAME: ${POSTGRES_USER}
       FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}

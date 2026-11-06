@@ -4,18 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.cs3219.foc.order.infrastructure.client.CreditClient;
 import com.cs3219.foc.order.infrastructure.client.SupplierClient;
 import com.cs3219.foc.order.infrastructure.client.UserClient;
+import com.cs3219.foc.order.infrastructure.storage.DeliveryPhotoStorage;
 import com.cs3219.foc.order.model.dto.CreditReservationResponse;
 import com.cs3219.foc.order.model.dto.SupplierPickupDto;
 import com.cs3219.foc.order.model.dto.UserBriefDto;
 import com.cs3219.foc.order.model.dto.event.CreditSettlementResultEvent;
 import com.cs3219.foc.order.service.OrderService;
 import io.awspring.cloud.sns.core.SnsOperations;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Set;
@@ -23,6 +27,7 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import javax.imageio.ImageIO;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,6 +37,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -67,13 +73,16 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
     @MockitoBean
     private JwtDecoder decoder;
 
+    @MockitoBean
+    private DeliveryPhotoStorage photos;
+
     private final JsonMapper json = JsonMapper.builder().build();
     private JdbcTemplate jdbc;
 
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, event_publication");
+        jdbc.execute("TRUNCATE errands, delivery_photos, event_publication");
         when(suppliers.get(any()))
                 .thenAnswer(call -> new SupplierPickupDto(call.getArgument(0), "Cafe", "COM1", "01", "Lobby", true));
         when(users.find(any())).thenAnswer(call -> ((Set<UUID>) call.getArgument(0))
@@ -114,6 +123,7 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
                     act(id, "accept", courier);
                     if (targetStatus.equals("COMPLETED")) {
                         act(id, "pick-up", courier);
+                        deliver(id, courier);
                         act(id, "complete", requester);
                     }
                 } else if (targetStatus.equals("CANCELLED")) {
@@ -171,6 +181,17 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
+    }
+
+    // test upload a real PNG, so the multipart endpoint and photo processing run end to end
+    private void deliver(UUID id, UUID courier) throws Exception {
+        var png = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "png", png);
+        mvc.perform(multipart("/orders/" + id + "/deliver")
+                        .file(new MockMultipartFile("photos", "handover.png", "image/png", png.toByteArray()))
+                        .with(jwt().jwt(token -> token.subject(courier.toString()))))
+                .andExpect(status().isOk());
+        verify(photos).putJpeg(any(), any());
     }
 
     private void act(UUID id, String action, UUID actor) throws Exception {

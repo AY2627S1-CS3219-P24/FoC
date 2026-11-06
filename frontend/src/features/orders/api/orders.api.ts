@@ -2,6 +2,7 @@ import { axiosClient } from '#/lib/axiosClient'
 import type {
   CreateOrderRequest,
   CreateOrderResponse,
+  DeliveryPhoto,
   Errand,
   MineParams,
   OrderAction,
@@ -55,5 +56,22 @@ export const actOnOrder = async (id: string, action: OrderAction) =>
       `/orders/${id}/${action === 'pickup' ? 'pick-up' : action}`,
       undefined,
       { timeout },
+    )
+  ).data
+// The courier submits all delivery photos tgt (1 to 5, JPEG & PNG, up to 5 MB each)
+export const deliverOrder = async (id: string, photos: Array<File>) => {
+  const body = new FormData()
+  photos.forEach((photo) => body.append('photos', photo))
+  return (
+    await axiosClient.post<OrderActionResponse>(`/orders/${id}/deliver`, body, {
+      timeout: 120_000,
+    })
+  ).data
+}
+export const getDeliveryPhotos = async (id: string, signal?: AbortSignal) =>
+  (
+    await axiosClient.get<Array<DeliveryPhoto>>(
+      `/orders/${id}/delivery-photos`,
+      { signal, timeout },
     )
   ).data

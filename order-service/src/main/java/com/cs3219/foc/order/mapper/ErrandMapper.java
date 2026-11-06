@@ -16,6 +16,7 @@ public interface ErrandMapper {
     @Mapping(target = "pickup.name", source = "errand.pickupName")
     @Mapping(target = "pickup.address", source = "errand.pickupAddress")
     @Mapping(target = "createRequestId", source = "createRequestId")
+    @Mapping(target = "hasDeliveryPhoto", expression = "java(errand.getDeliveredAt() != null)")
     ErrandDto toDto(Errand errand, UserBriefDto requester, UserBriefDto courier, UUID createRequestId);
 
     @Mapping(target = "errandId", source = "id")

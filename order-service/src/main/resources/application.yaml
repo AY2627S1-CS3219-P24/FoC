@@ -6,6 +6,10 @@ spring:
     name: order-service
   cloud:
     aws:
+      s3:
+        region: ${AWS_REGION:ap-southeast-1}
+        endpoint: ${FOC_S3_ENDPOINT:}
+        path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
       sqs:
         queue-not-found-strategy: fail
         listener:
@@ -30,6 +34,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      # Up to 5 delivery photos of 5 MB each in one submission
+      max-file-size: 5MB
+      max-request-size: 26MB
   security:
     oauth2:
       resourceserver:
@@ -40,6 +49,10 @@ server:
   servlet:
     context-path: /api
   port: 8082
+storage:
+  delivery-photos:
+    bucket: ${FOC_ORDER_BUCKET:foc-dev-order}
+    read-url-ttl: 10m
 orders:
   expiry-scan-delay: 10s
   expiry-batch-size: 100

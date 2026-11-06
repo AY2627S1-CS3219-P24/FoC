@@ -21,6 +21,7 @@ export const statusLabels: Record<ErrandStatus, string> = {
   OPEN: 'Open',
   ACCEPTED: 'Accepted',
   PICKED_UP: 'Picked up',
+  DELIVERED: 'Delivered',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
   EXPIRED: 'Expired',

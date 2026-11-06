@@ -1,22 +1,27 @@
 package com.cs3219.foc.order.controller;
 
 import com.cs3219.foc.order.model.dto.*;
+import com.cs3219.foc.order.service.DeliveryService;
 import com.cs3219.foc.order.service.OrderService;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/orders")
 @RequiredArgsConstructor
 public class OrderController {
     private final OrderService orderService;
+    private final DeliveryService deliveryService;
 
     @PostMapping
     public ResponseEntity<CreateErrandResponse> create(@Valid @RequestBody CreateErrandRequest request) {
@@ -68,6 +73,17 @@ public class OrderController {
     @PostMapping("/{id}/pick-up")
     public ErrandActionResponse pickUp(@PathVariable UUID id) {
         return orderService.pickUp(id);
+    }
+
+    // The courier can submit 1-5 photos as proof of delivery
+    @PostMapping(path = "/{id}/deliver", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ErrandActionResponse deliver(@PathVariable UUID id, @RequestPart("photos") List<MultipartFile> photos) {
+        return deliveryService.deliver(id, photos);
+    }
+
+    @GetMapping("/{id}/delivery-photos")
+    public List<DeliveryPhotoDto> deliveryPhotos(@PathVariable UUID id) {
+        return deliveryService.photos(id);
     }
 
     @PostMapping("/{id}/complete")

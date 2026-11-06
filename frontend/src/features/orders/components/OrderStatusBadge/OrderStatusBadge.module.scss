@@ -30,6 +30,10 @@
     background: #fff2dc;
     color: #ad680e;
   }
+  &[data-status='DELIVERED'] {
+    background: #e0f4f4;
+    color: #136b6b;
+  }
   &[data-status='COMPLETED'] {
     background: #23734d;
     color: white;

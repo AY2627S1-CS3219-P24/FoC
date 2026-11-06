@@ -1,5 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { actOnOrder, createOrder, retryCreation } from '../api/orders.api'
+import {
+  actOnOrder,
+  createOrder,
+  deliverOrder,
+  retryCreation,
+} from '../api/orders.api'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { creditQueryKeys } from '#/features/credits/constants/creditQueryKeys'
@@ -55,5 +60,13 @@ export const useOrderActions = () => {
     retry: false,
     onSettled: (_result, _error, { id }) => refreshDetail(id),
   })
-  return { create, retry, action }
+  const deliver = useMutation({
+    networkMode: 'always',
+    gcTime: 0,
+    mutationFn: ({ id, photos }: { id: string; photos: Array<File> }) =>
+      deliverOrder(id, photos),
+    retry: false,
+    onSettled: (_result, _error, { id }) => refreshDetail(id),
+  })
+  return { create, retry, action, deliver }
 }

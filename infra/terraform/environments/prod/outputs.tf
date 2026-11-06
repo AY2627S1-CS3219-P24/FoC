@@ -1,5 +1,5 @@
 output "image_bucket_names" {
-  description = "FOC_USER_BUCKET and FOC_SUPPLIER_BUCKET runtime values."
+  description = "FOC_USER_BUCKET, FOC_SUPPLIER_BUCKET and FOC_ORDER_BUCKET runtime values."
   value       = { for service, bucket in module.images : service => bucket.s3_bucket_id }
 }
 

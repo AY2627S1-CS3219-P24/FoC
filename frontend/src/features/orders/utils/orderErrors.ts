@@ -22,6 +22,16 @@ export const orderErrorReason = (error: unknown): string | undefined => {
       return 'This errand has changed or the request conflicts with an earlier submission. Refresh to see its current status.'
     case 'FORBIDDEN':
       return 'You do not have permission to view or change this errand.'
+    case 'DELIVERY_PHOTO_INVALID': {
+      const message = isAxiosError<{ message?: unknown } | null | undefined>(
+        error,
+      )
+        ? error.response?.data?.message
+        : undefined
+      return typeof message === 'string' && message.trim()
+        ? message.trim()
+        : 'This photo could not be used. Try a different JPEG or PNG.'
+    }
     case 'ORDER_NOT_FOUND':
       return 'This errand could not be found.'
     case 'INVALID_REQUEST':

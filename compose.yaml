@@ -13,6 +13,7 @@ services:
       AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       FOC_USER_BUCKET: ${FOC_USER_BUCKET:-foc-dev-user}
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET:-foc-dev-supplier}
+      FOC_ORDER_BUCKET: ${FOC_ORDER_BUCKET:-foc-dev-order}
     volumes:
       - floci_data:/app/data
       - ./infra/docker/floci/init-resources.sh:/etc/localstack/init/ready.d/10-foc-resources.sh:ro

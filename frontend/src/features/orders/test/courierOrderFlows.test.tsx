@@ -196,6 +196,104 @@ it.each(['accept', 'pickup'] as const)(
   },
 )
 
+it('lets the courier review photos before submitting them all at once', async () => {
+  let blobs = 0
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:${++blobs}`)
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  order = {
+    ...order,
+    status: 'PICKED_UP',
+    courier: { id: 'courier', name: 'Jamie' },
+  }
+  vi.mocked(axiosClient.get).mockImplementation(async (url) =>
+    url === '/orders' || url === '/orders/mine'
+      ? list()
+      : url.endsWith('/delivery-photos')
+        ? {
+            data: ['p1', 'p2'].map((id) => ({
+              id,
+              url: `https://photos.test/${id}.jpg`,
+              expiresAt: '2099-01-01T00:00:00Z',
+            })),
+          }
+        : { data: order },
+  )
+  const post = vi.spyOn(axiosClient, 'post').mockImplementation(async () => {
+    order = {
+      ...order,
+      status: 'DELIVERED',
+      deliveredAt: '2030-01-01T00:30:00Z',
+      hasDeliveryPhoto: true,
+    }
+    return {
+      data: {
+        errandId: order.id,
+        status: order.status,
+        creditState: order.creditState,
+      },
+    }
+  })
+  const { user } = await openDetails(assignedPath)
+  await user.click(screen.getByRole('button', { name: 'Mark as delivered' }))
+  const submit = await screen.findByRole('button', { name: 'Submit photo' })
+  expect(submit).toBeDisabled()
+  const input = screen.getByLabelText('Delivery photos')
+  await user.upload(
+    input,
+    new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.png', {
+      type: 'image/png',
+    }),
+  )
+  expect(
+    screen.getByText('Please choose an image up to 5 MB.'),
+  ).toBeInTheDocument()
+  expect(submit).toBeDisabled()
+
+  // review the three photos, shown large one at a time.
+  const photos = ['a', 'b', 'c'].map(
+    (name) => new File([name], `${name}.png`, { type: 'image/png' }),
+  )
+  await user.upload(input, photos)
+  expect(screen.getByRole('img', { name: 'Photo 1 of 3' })).toHaveAttribute(
+    'src',
+    'blob:1',
+  )
+  await user.click(screen.getByRole('button', { name: 'View photo 3' }))
+  expect(screen.getByRole('img', { name: 'Photo 3 of 3' })).toHaveAttribute(
+    'src',
+    'blob:3',
+  )
+  // adjust the 2nd photo taken
+  await user.click(screen.getByRole('button', { name: 'Remove photo 2' }))
+  expect(screen.getByText(/2 of 5 photos/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Submit 2 photos' }))
+
+  // one submission with both photos, in order
+  expect(post).toHaveBeenCalledExactlyOnceWith(
+    `/orders/${order.id}/deliver`,
+    expect.any(FormData),
+    { timeout: 120_000 },
+  )
+  expect((post.mock.calls[0][1] as FormData).getAll('photos')).toEqual([
+    photos[0],
+    photos[2],
+  ])
+  await screen.findByText('Delivered. Errand updated.')
+  expect(
+    await screen.findByText('Delivered. Waiting for Alex to confirm receipt.'),
+  ).toBeInTheDocument()
+  // after submitting, the photos are view-only.
+  expect(
+    await screen.findAllByRole('img', { name: /^Delivery photo/ }),
+  ).toHaveLength(2)
+  expect(
+    screen.queryByRole('button', { name: 'Mark as delivered' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /Remove/ }),
+  ).not.toBeInTheDocument()
+})
+
 it('shows account preparation after rejected acceptance without reporting success', async () => {
   vi.spyOn(axiosClient, 'post').mockRejectedValue(
     failure('CREDIT_ACCOUNT_PENDING'),

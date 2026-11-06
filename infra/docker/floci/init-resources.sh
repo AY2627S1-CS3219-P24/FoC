@@ -6,7 +6,7 @@ prefix="${FOC_NAME_PREFIX:-foc-dev}"
 
 aws_local() { aws --endpoint-url http://localhost:4566 "$@"; }
 
-for bucket in "${FOC_USER_BUCKET:-foc-dev-user}" "${FOC_SUPPLIER_BUCKET:-foc-dev-supplier}"; do
+for bucket in "${FOC_USER_BUCKET:-foc-dev-user}" "${FOC_SUPPLIER_BUCKET:-foc-dev-supplier}" "${FOC_ORDER_BUCKET:-foc-dev-order}"; do
   if ! aws_local s3api head-bucket --bucket "$bucket" 2>/dev/null; then
     aws_local s3api create-bucket --bucket "$bucket" --create-bucket-configuration "LocationConstraint=$AWS_DEFAULT_REGION" >/dev/null
   fi
