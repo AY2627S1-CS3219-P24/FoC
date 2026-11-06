@@ -19,7 +19,14 @@ export const parseOrderListSearch = (
   page: parsePage(search.page),
   q: typeof search.q === 'string' && search.q.trim() ? search.q : undefined,
 })
-export const parseAdminOrderSearch = (search: Record<string, unknown>) => ({
+export const parseAdminOrderSearch = (
+  search: Record<string, unknown>,
+): {
+  requesterId: string
+  page: number
+  auditPage?: number
+} => ({
   requesterId: typeof search.requesterId === 'string' ? search.requesterId : '',
   page: parsePage(search.page),
+  auditPage: search.auditPage == null ? undefined : parsePage(search.auditPage),
 })

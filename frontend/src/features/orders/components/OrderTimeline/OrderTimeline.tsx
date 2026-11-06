@@ -20,8 +20,19 @@ export const OrderTimeline = ({ order }: { order: Errand }) => {
     : endedEarly
       ? [
           { label: 'Request created', at: order.createdAt },
+          ...(order.acceptedAt
+            ? [{ label: 'Courier accepted', at: order.acceptedAt }]
+            : []),
+          ...(order.pickedUpAt
+            ? [{ label: 'Picked up', at: order.pickedUpAt }]
+            : []),
           {
-            label: order.status === 'CANCELLED' ? 'Cancelled' : 'Expired',
+            label:
+              order.status === 'CANCELLED'
+                ? order.dispute?.decision === 'RELEASE_CREDITS'
+                  ? 'Cancelled by admin resolution'
+                  : 'Cancelled'
+                : 'Expired',
             at: order.endedAt,
           },
         ]
@@ -30,7 +41,10 @@ export const OrderTimeline = ({ order }: { order: Errand }) => {
           { label: 'Courier accepted', at: order.acceptedAt },
           { label: 'Picked up', at: order.pickedUpAt },
           {
-            label: 'Received',
+            label:
+              order.dispute?.decision === 'PAY_COURIER'
+                ? 'Completed by admin resolution'
+                : 'Received',
             at: order.status === 'COMPLETED' ? order.endedAt : undefined,
           },
         ]

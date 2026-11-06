@@ -10,7 +10,11 @@ export const availableOrderActions = (
   userId: string,
   now = Date.now(),
 ): Array<OrderAction> => {
-  if (isTerminal(order)) return []
+  if (
+    isTerminal(order) ||
+    (order.dispute && order.dispute.status !== 'RESOLVED')
+  )
+    return []
   if (order.status === 'OPEN')
     return order.requester.id === userId
       ? ['cancel']

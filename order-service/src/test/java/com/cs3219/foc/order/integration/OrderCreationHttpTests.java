@@ -73,7 +73,7 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, event_publication");
+        jdbc.execute("TRUNCATE order_disputes, errands, event_publication");
         when(suppliers.get(any()))
                 .thenAnswer(call -> new SupplierPickupDto(call.getArgument(0), "Cafe", "COM1", "01", "Lobby", true));
         when(users.find(any())).thenAnswer(call -> ((Set<UUID>) call.getArgument(0))
