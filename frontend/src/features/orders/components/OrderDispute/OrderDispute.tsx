@@ -24,9 +24,10 @@ export const OrderDispute = ({
   userId: string
   admin?: boolean
 }) => {
-  const { report, resolve } = useDisputeActions(order.id)
+  const { report, resolve, respond } = useDisputeActions(order.id)
   const [showReport, setShowReport] = useState(false)
   const [complaint, setComplaint] = useState('')
+  const [response, setResponse] = useState('')
   const [explanation, setExplanation] = useState('')
   const [decision, setDecision] = useState<DisputeDecision>(
     order.status === 'PICKED_UP' ? 'PAY_COURIER' : 'RELEASE_CREDITS',
@@ -41,6 +42,12 @@ export const OrderDispute = ({
     order.creditState === 'RESERVED'
   const canResolve =
     admin && !participant && eligible && dispute?.status === 'OPEN'
+  const canRespond =
+    participant &&
+    !!dispute &&
+    dispute.reporterId !== userId &&
+    dispute.status === 'OPEN' &&
+    !dispute.response
   const validDecision =
     decision !== 'PAY_COURIER' ||
     (order.status === 'PICKED_UP' && !!order.courier)
@@ -74,6 +81,17 @@ export const OrderDispute = ({
       setConfirm(false)
     } catch {
       /* Keep the decision visible for a retry after refresh. */
+    } finally {
+      lock.current = false
+    }
+  }
+  const submitResponse = async () => {
+    if (lock.current || !dispute || !canRespond || !response.trim()) return
+    lock.current = true
+    try {
+      await respond.mutateAsync({ id: dispute.id, response: response.trim() })
+    } catch {
+      /* Mutation renders the error. */
     } finally {
       lock.current = false
     }
@@ -155,13 +173,80 @@ export const OrderDispute = ({
       ) : (
         <>
           <p className={common.muted} title={dispute.id}>
-            Case #{shortOrderId(dispute.id)} · Reported by{' '}
-            {dispute.reporterId === order.requester.id
-              ? (order.requester.name ?? 'Requester')
-              : (order.courier?.name ?? 'Courier')}{' '}
-            · {formatOrderTime(dispute.createdAt)}
+            Case #{shortOrderId(dispute.id)}
           </p>
-          <p className={styles.text}>{dispute.complaint}</p>
+          <div className={styles.statements}>
+            <div>
+              <h3 className={common.sectionTitle}>Complaint</h3>
+              <p className={common.muted}>
+                Reported by{' '}
+                {dispute.reporterId === order.requester.id
+                  ? (order.requester.name ?? 'Requester')
+                  : (order.courier?.name ?? 'Courier')}{' '}
+                · {formatOrderTime(dispute.createdAt)}
+              </p>
+              <p className={styles.text}>{dispute.complaint}</p>
+            </div>
+            <div>
+              <h3 className={common.sectionTitle}>Participant response</h3>
+              {dispute.response ? (
+                <>
+                  <p className={common.muted}>
+                    Responded by{' '}
+                    {dispute.responderId === order.requester.id
+                      ? (order.requester.name ?? 'Requester')
+                      : (order.courier?.name ?? 'Courier')}{' '}
+                    {dispute.respondedAt &&
+                      `· ${formatOrderTime(dispute.respondedAt)}`}
+                  </p>
+                  <p className={styles.text}>{dispute.response}</p>
+                </>
+              ) : canRespond ? (
+                <form
+                  className={styles.form}
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void submitResponse()
+                  }}
+                >
+                  <label>
+                    Your response
+                    <textarea
+                      className={common.input}
+                      rows={3}
+                      maxLength={2000}
+                      required
+                      value={response}
+                      onChange={(event) => setResponse(event.target.value)}
+                      disabled={respond.isPending}
+                    />
+                  </label>
+                  <p className={common.muted}>
+                    One response per case. Both participants and the admin can
+                    read it.
+                  </p>
+                  {respond.error && !isCancel(respond.error) && (
+                    <p role="alert" className={common.error}>
+                      {disputeErrorMessage(respond.error)}
+                    </p>
+                  )}
+                  <Button
+                    type="submit"
+                    className={common.button}
+                    disabled={respond.isPending || !response.trim()}
+                  >
+                    {respond.isPending ? 'Submitting…' : 'Submit response'}
+                  </Button>
+                </form>
+              ) : (
+                <p className={common.muted}>
+                  {dispute.status === 'OPEN'
+                    ? 'The other participant has not responded yet.'
+                    : 'No response was submitted.'}
+                </p>
+              )}
+            </div>
+          </div>
           {dispute.status === 'OPEN' && (
             <p>
               Pickup and completion are paused. Credits remain reserved while an

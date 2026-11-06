@@ -301,6 +301,25 @@ class OrderControllerTests {
                 .resolve(eq(id), argThat(request -> request.explanation().equals("Reviewed")));
     }
 
+    @Test
+    void disputeResponseRequiresAuthenticationAndValidBody() throws Exception {
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"My explanation\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"My explanation\"}"))
+                .andExpect(status().isOk());
+        verify(disputes).respond(eq(id), argThat(request -> request.response().equals("My explanation")));
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport

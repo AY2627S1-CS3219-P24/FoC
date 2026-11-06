@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -138,7 +139,9 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
                     // The order changes while its public detail request is fetching participant names.
                     as(courier, "USER");
                     orders.accept(id);
-                    report(id);
+                    var dispute = report(id);
+                    as(courier, "USER");
+                    disputes.respond(dispute.id(), new RespondToDisputeRequest("Courier explanation"));
                     as(visitor, "USER");
                     return names;
                 })
@@ -185,6 +188,86 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         as(requester, "USER");
         orders.complete(id);
         assertThat(orders.get(id).status().name()).isEqualTo("COMPLETED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void onlyTheOtherParticipantCanRespondAndTheStatementIsPreserved(boolean courierReports) {
+        var id = accepted(false);
+        var reporterId = courierReports ? courier : requester;
+        var responderId = courierReports ? requester : courier;
+        as(reporterId, "USER");
+        var dispute = disputes.report(id, new ReportDisputeRequest("Original complaint"));
+        var request = new RespondToDisputeRequest("  My explanation  ");
+        assertThatThrownBy(() -> disputes.respond(dispute.id(), request)).isInstanceOf(AccessDeniedException.class);
+        as(UUID.randomUUID(), "USER");
+        assertThatThrownBy(() -> disputes.respond(dispute.id(), request)).isInstanceOf(AccessDeniedException.class);
+        as(admin, "ADMIN");
+        assertThatThrownBy(() -> disputes.respond(dispute.id(), request)).isInstanceOf(AccessDeniedException.class);
+
+        as(responderId, "USER");
+        var responded = disputes.respond(dispute.id(), request);
+        assertThat(responded.response()).isEqualTo("My explanation");
+        assertThat(responded.responderId()).isEqualTo(responderId);
+        assertThat(responded.respondedAt()).isNotNull();
+        assertThat(responded.complaint()).isEqualTo("Original complaint");
+        assertThat(responded.status()).isEqualTo(DisputeStatus.OPEN);
+        assertThat(disputes.respond(dispute.id(), request)).isEqualTo(responded);
+        assertThatThrownBy(() -> disputes.respond(dispute.id(), new RespondToDisputeRequest("Replacement")))
+                .isInstanceOf(OrderConflictException.class);
+        assertThat(orders.get(id).creditState().name()).isEqualTo("RESERVED");
+        assertThat(facts.events).isEmpty();
+
+        var resolved = resolve(dispute, DisputeDecision.DISMISS);
+        assertThat(resolved.response()).isEqualTo("My explanation");
+        assertThat(resolved.respondedAt()).isEqualTo(responded.respondedAt());
+        assertThat(orders.get(id).dispute().response()).isEqualTo("My explanation");
+        as(responderId, "USER");
+        assertThat(disputes.respond(dispute.id(), request)).isEqualTo(resolved);
+    }
+
+    @ParameterizedTest
+    @EnumSource(DisputeDecision.class)
+    void newResponsesAreRejectedAfterAnAdminDecision(DisputeDecision decision) {
+        var dispute = report(accepted(true));
+        resolve(dispute, decision);
+        as(courier, "USER");
+        assertThatThrownBy(() -> disputes.respond(dispute.id(), new RespondToDisputeRequest("Late explanation")))
+                .isInstanceOf(OrderConflictException.class);
+        assertThat(disputes.forOrder(dispute.orderId()).response()).isNull();
+    }
+
+    @Test
+    void competingResponsesRecordOnlyOneStatement() throws Exception {
+        var dispute = report(accepted(false));
+        var barrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            List<Future<Boolean>> attempts = new ArrayList<>();
+            for (var response : List.of("First explanation", "Second explanation")) {
+                attempts.add(executor.submit(() -> {
+                    as(courier, "USER");
+                    try {
+                        barrier.await(10, TimeUnit.SECONDS);
+                        disputes.respond(dispute.id(), new RespondToDisputeRequest(response));
+                        return true;
+                    } catch (OrderConflictException conflict) {
+                        return false;
+                    } finally {
+                        SecurityContextHolder.clearContext();
+                    }
+                }));
+            }
+            assertThat(List.of(
+                            attempts.get(0).get(20, TimeUnit.SECONDS),
+                            attempts.get(1).get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        var recorded = disputes.forOrder(dispute.orderId());
+        assertThat(recorded.response()).isIn("First explanation", "Second explanation");
+        assertThat(recorded.responderId()).isEqualTo(courier);
+        assertThat(recorded.respondedAt()).isNotNull();
+        assertThat(recorded.status()).isEqualTo(DisputeStatus.OPEN);
+        assertThat(facts.events).isEmpty();
     }
 
     @Test

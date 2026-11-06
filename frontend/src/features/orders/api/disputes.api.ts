@@ -24,6 +24,15 @@ export const listDisputes = async (page: number, signal?: AbortSignal) =>
     })
   ).data
 
+export const respondToDispute = async (id: string, response: string) =>
+  (
+    await axiosClient.post<OrderDispute>(
+      `/orders/disputes/${id}/response`,
+      { response },
+      { timeout },
+    )
+  ).data
+
 export const resolveDispute = async (
   id: string,
   decision: DisputeDecision,

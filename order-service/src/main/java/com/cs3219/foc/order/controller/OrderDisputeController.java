@@ -25,6 +25,11 @@ public class OrderDisputeController {
         return service.list(pageable);
     }
 
+    @PostMapping("/disputes/{id}/response")
+    public OrderDisputeDto respond(@PathVariable UUID id, @Valid @RequestBody RespondToDisputeRequest request) {
+        return service.respond(id, request);
+    }
+
     @PostMapping("/disputes/{id}/resolve")
     public OrderDisputeDto resolve(@PathVariable UUID id, @Valid @RequestBody ResolveDisputeRequest request) {
         return service.resolve(id, request);

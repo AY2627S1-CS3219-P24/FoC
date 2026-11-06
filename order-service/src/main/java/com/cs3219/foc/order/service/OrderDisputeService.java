@@ -64,6 +64,33 @@ public class OrderDisputeService {
         return OrderDisputeDto.from(disputes.saveAndFlush(dispute));
     }
 
+    @Transactional
+    public OrderDisputeDto respond(UUID id, RespondToDisputeRequest request) {
+        var actor = currentUser.requireCurrentUserId();
+        var orderId = disputes.findOrderIdById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Dispute not found"));
+        var order = orders.findForUpdateById(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
+        var dispute = disputes.findForUpdateByOrderId(orderId).orElseThrow();
+        if (actor.equals(dispute.getReporterId())
+                || (!actor.equals(order.getRequesterId()) && !actor.equals(order.getCourierId()))) {
+            throw new AccessDeniedException("Only the other order participant can respond to this dispute");
+        }
+        var response = request.response().strip();
+        if (dispute.getResponse() != null) {
+            if (!dispute.getResponse().equals(response)) {
+                throw new OrderConflictException("A response has already been recorded for this dispute");
+            }
+            return OrderDisputeDto.from(dispute);
+        }
+        if (dispute.getStatus() != DisputeStatus.OPEN) {
+            throw new OrderConflictException("Responses can only be submitted while the dispute is open");
+        }
+        dispute.setResponderId(actor);
+        dispute.setResponse(response);
+        dispute.setRespondedAt(now());
+        return OrderDisputeDto.from(disputes.saveAndFlush(dispute));
+    }
+
     @Transactional(readOnly = true)
     public PageDto<OrderDisputeDto> list(Pageable pageable) {
         requireAdmin();

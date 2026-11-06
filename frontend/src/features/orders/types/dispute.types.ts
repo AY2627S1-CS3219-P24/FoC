@@ -6,6 +6,9 @@ export type OrderDispute = {
   orderId: string
   reporterId: string
   complaint: string
+  responderId: string | null
+  response: string | null
+  respondedAt: string | null
   status: DisputeStatus
   decision: DisputeDecision | null
   explanation: string | null

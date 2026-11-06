@@ -3,6 +3,7 @@ import { useSession } from '#/features/auth/hooks/useSession'
 import {
   listDisputes,
   reportDispute,
+  respondToDispute,
   resolveDispute,
 } from '../api/disputes.api'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
@@ -55,5 +56,13 @@ export const useDisputeActions = (orderId: string) => {
     retry: false,
     onSettled: refresh,
   })
-  return { report, resolve }
+  const respond = useMutation({
+    mutationFn: ({ id, response }: { id: string; response: string }) =>
+      respondToDispute(id, response),
+    networkMode: 'always',
+    gcTime: 0,
+    retry: false,
+    onSettled: refresh,
+  })
+  return { report, resolve, respond }
 }

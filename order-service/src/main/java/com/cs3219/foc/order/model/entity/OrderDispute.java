@@ -25,6 +25,15 @@ public class OrderDispute {
     @Column(nullable = false, length = 2000)
     private String complaint;
 
+    @Column(name = "responder_id")
+    private UUID responderId;
+
+    @Column(length = 2000)
+    private String response;
+
+    @Column(name = "responded_at")
+    private OffsetDateTime respondedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
     private DisputeStatus status;

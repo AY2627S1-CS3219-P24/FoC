@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,6 +19,7 @@ import * as orders from '../api/orders.api'
 import * as disputes from '../api/disputes.api'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
+import { formatOrderTime } from '../utils/orderFormat'
 
 const state = vi.hoisted(() => ({ navigate: vi.fn() }))
 vi.mock('@tanstack/react-router', () => ({
@@ -43,6 +50,7 @@ vi.mock('../api/orders.api', () => ({
 }))
 vi.mock('../api/disputes.api', () => ({
   reportDispute: vi.fn(),
+  respondToDispute: vi.fn(),
   resolveDispute: vi.fn(),
   listDisputes: vi.fn(),
 }))
@@ -52,6 +60,9 @@ const caseFixture = (overrides: Partial<OrderDispute> = {}): OrderDispute => ({
   orderId: orderFixture().id,
   reporterId: 'requester',
   complaint: 'The item was not delivered',
+  responderId: null,
+  response: null,
+  respondedAt: null,
   status: 'OPEN',
   decision: null,
   explanation: null,
@@ -273,4 +284,175 @@ it('shows a recorded decision after its response is lost without offering anothe
     screen.queryByRole('button', { name: 'Review decision' }),
   ).not.toBeInTheDocument()
   expect(disputes.resolveDispute).toHaveBeenCalledTimes(1)
+})
+
+it.each(['requester', 'courier'] as const)(
+  'lets the other participant respond when the reporter is %s',
+  async (reporterId) => {
+    const responderId = reporterId === 'requester' ? 'courier' : 'requester'
+    const responderName = responderId === 'courier' ? 'Sam' : 'Alex'
+    setAccessToken(token(responderId))
+    const user = userEvent.setup()
+    let current = orderFixture({
+      status: 'ACCEPTED',
+      courier: { id: 'courier', name: 'Sam' },
+      dispute: caseFixture({ reporterId }),
+    })
+    vi.mocked(orders.getOrder).mockImplementation(async () => current)
+    vi.mocked(disputes.respondToDispute).mockImplementation(
+      async (_id, response) => {
+        current = {
+          ...current,
+          dispute: {
+            ...current.dispute!,
+            responderId,
+            response,
+            respondedAt: '2030-01-01T00:12:00Z',
+          },
+        }
+        return current.dispute!
+      },
+    )
+    setup(<OrderDetailPage />)
+    const input = await screen.findByRole('textbox', { name: 'Your response' })
+    expect(
+      screen.getByRole('button', { name: 'Submit response' }),
+    ).toBeDisabled()
+    await user.type(input, '  My explanation  ')
+    await user.click(screen.getByRole('button', { name: 'Submit response' }))
+
+    await screen.findByText('My explanation')
+    expect(disputes.respondToDispute).toHaveBeenCalledExactlyOnceWith(
+      'case-1',
+      'My explanation',
+    )
+    expect(
+      screen.getByText(new RegExp(`Responded by ${responderName}`)),
+    ).toHaveTextContent(formatOrderTime('2030-01-01T00:12:00Z'))
+    expect(screen.getByText('The item was not delivered')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Your response' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Dispute · Open' }),
+    ).toBeInTheDocument()
+  },
+)
+
+it('shows both statements with their authors and timestamps in the admin order detail', async () => {
+  setAccessToken(token('admin', 'ADMIN'))
+  vi.mocked(orders.getOrder).mockResolvedValue(
+    orderFixture({
+      status: 'ACCEPTED',
+      courier: { id: 'courier', name: 'Sam' },
+      dispute: caseFixture({
+        responderId: 'courier',
+        response: 'We agreed to meet at the library entrance',
+        respondedAt: '2030-01-01T00:12:00Z',
+      }),
+    }),
+  )
+  setup(<AdminOrderDetailPage />)
+  const evidence = within(
+    await screen.findByRole('region', { name: 'Order dispute' }),
+  )
+  expect(
+    evidence.getByRole('heading', { name: 'Complaint' }),
+  ).toBeInTheDocument()
+  expect(
+    evidence.getByRole('heading', { name: 'Participant response' }),
+  ).toBeInTheDocument()
+  expect(evidence.getByText('The item was not delivered')).toBeInTheDocument()
+  expect(
+    evidence.getByText('We agreed to meet at the library entrance'),
+  ).toBeInTheDocument()
+  expect(evidence.getByText(/Reported by Alex/)).toHaveTextContent(
+    formatOrderTime('2030-01-01T00:10:00Z'),
+  )
+  expect(evidence.getByText(/Responded by Sam/)).toHaveTextContent(
+    formatOrderTime('2030-01-01T00:12:00Z'),
+  )
+  expect(
+    evidence.queryByRole('textbox', { name: 'Your response' }),
+  ).not.toBeInTheDocument()
+  expect(
+    evidence.getByRole('combobox', { name: 'Decision' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Reserved')).toBeInTheDocument()
+})
+
+it('does not offer the reporter a response form', async () => {
+  vi.mocked(orders.getOrder).mockResolvedValue(
+    orderFixture({
+      status: 'ACCEPTED',
+      courier: { id: 'courier', name: 'Sam' },
+      dispute: caseFixture(),
+    }),
+  )
+  setup(<OrderDetailPage />)
+  await screen.findByText('The other participant has not responded yet.')
+  expect(
+    screen.queryByRole('textbox', { name: 'Your response' }),
+  ).not.toBeInTheDocument()
+})
+
+it('does not offer a response form after dismissal', async () => {
+  setAccessToken(token('courier'))
+  vi.mocked(orders.getOrder).mockResolvedValue(
+    orderFixture({
+      status: 'ACCEPTED',
+      courier: { id: 'courier', name: 'Sam' },
+      dispute: caseFixture({
+        status: 'RESOLVED',
+        decision: 'DISMISS',
+        explanation: 'Continue the delivery',
+        adminId: 'admin',
+        decidedAt: '2030-01-01T00:15:00Z',
+        resolvedAt: '2030-01-01T00:15:00Z',
+      }),
+    }),
+  )
+  setup(<OrderDetailPage />)
+  await screen.findByText('No response was submitted.')
+  expect(
+    screen.queryByRole('textbox', { name: 'Your response' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: "I've collected it" }),
+  ).toBeInTheDocument()
+})
+
+it('shows a recorded participant response after its HTTP response is lost', async () => {
+  setAccessToken(token('courier'))
+  const user = userEvent.setup()
+  let current = orderFixture({
+    status: 'ACCEPTED',
+    courier: { id: 'courier', name: 'Sam' },
+    dispute: caseFixture(),
+  })
+  vi.mocked(orders.getOrder).mockImplementation(async () => current)
+  vi.mocked(disputes.respondToDispute).mockImplementation(async () => {
+    current = {
+      ...current,
+      dispute: {
+        ...current.dispute!,
+        responderId: 'courier',
+        response: 'My recorded explanation',
+        respondedAt: '2030-01-01T00:12:00Z',
+      },
+    }
+    throw new AxiosError('Response timed out', 'ECONNABORTED')
+  })
+  setup(<OrderDetailPage />)
+  await user.type(
+    await screen.findByRole('textbox', { name: 'Your response' }),
+    'My recorded explanation',
+  )
+  await user.click(screen.getByRole('button', { name: 'Submit response' }))
+  await screen.findByText('My recorded explanation')
+  expect(
+    screen.queryByRole('button', { name: 'Submit response' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(disputes.respondToDispute).toHaveBeenCalledTimes(1)
 })
