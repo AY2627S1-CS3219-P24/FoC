@@ -43,7 +43,7 @@ run "messaging_topology_and_permissions" {
       errand_message_posted = {
         publisher   = "order"
         consumer    = "realtime"
-        event_types = ["ErrandMessagePostedEvent"]
+        event_types = ["ErrandMessagePostedEvent", "ErrandChatReadEvent"]
       }
       user_created = {
         publisher   = "user"

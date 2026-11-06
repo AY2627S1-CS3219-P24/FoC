@@ -87,7 +87,7 @@ subscribe() {
 }
 EOF
   subscription_arn=$(aws_local sns subscribe --cli-input-json file:///tmp/foc-subscribe.json --query SubscriptionArn --output text)
-  # an existing subscription keeps its old filter, so always apply the current one
+  # An existing subscription keeps its old filter, so always apply the current one.
   printf '%s' "$filter" | sed 's/\\"/"/g' > /tmp/foc-filter.json
   aws_local sns set-subscription-attributes --subscription-arn "$subscription_arn" \
     --attribute-name FilterPolicy --attribute-value file:///tmp/foc-filter.json
@@ -101,7 +101,7 @@ allow_sns credit "[\"$user_topic\",\"$order_topic\"]"
 allow_sns order "[\"$credit_topic\"]"
 allow_sns realtime "[\"$supplier_topic\",\"$order_topic\"]"
 subscribe supplier realtime '{\"eventType\":[\"SupplierChangedEvent\"]}'
-subscribe order realtime '{\"eventType\":[\"ErrandMessagePostedEvent\"]}'
+subscribe order realtime '{\"eventType\":[\"ErrandMessagePostedEvent\",\"ErrandChatReadEvent\"]}'
 subscribe user credit '{\"eventType\":[\"UserCreatedEvent\"]}'
 subscribe order credit '{\"eventType\":[\"ErrandCancelledEvent\",\"ErrandExpiredEvent\",\"ErrandCompletedEvent\"]}'
 subscribe credit order '{\"eventType\":[\"CreditSettlementResultEvent\"]}'
