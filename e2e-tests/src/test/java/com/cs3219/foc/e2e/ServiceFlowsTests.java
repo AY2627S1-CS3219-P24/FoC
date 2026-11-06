@@ -18,6 +18,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+import tools.jackson.databind.JsonNode;
 
 class ServiceFlowsTests extends AbstractEndToEndTest {
     @AutoClose
@@ -183,6 +184,9 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             awaitBalance(courier, 15);
             var id = create(requester, supplier, 5);
             request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
+            // The chat opens once a courier accepts.
+            say(id, requester, "Less ice please", 200);
+            say(id, courier, "Got it", 200);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 409);
             request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
             // The requester can only confirm after the courier has delivered it with a photo.
@@ -197,6 +201,11 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             deliver(id, courier.token(), 409);
             request("POST", "/api/orders/" + id + "/complete", courier.token(), null, 403);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 200);
+            // after confirmation the chat is read-only
+            say(id, requester, "Thanks!", 409);
+            var chat = request("GET", "/api/orders/" + id + "/messages", courier.token(), null, 200);
+            assertThat(chat.get("messages").size()).isEqualTo(2);
+            assertThat(chat.get("messages").get(0).get("body").asString()).isEqualTo("Less ice please");
             awaitOrder(id, "COMPLETED", "SETTLED");
             awaitBalance(requester, 10);
             awaitBalance(courier, 20);
@@ -205,7 +214,11 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                                     "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, id))
                     .isEqualTo(2);
             assertPublishedContracts(
-                    observations, "UserCreatedEvent", "ErrandCompletedEvent", "CreditSettlementResultEvent");
+                    observations,
+                    "UserCreatedEvent",
+                    "ErrandMessagePostedEvent",
+                    "ErrandCompletedEvent",
+                    "CreditSettlementResultEvent");
         } finally {
             deleteObservationQueue(observations);
         }
@@ -408,6 +421,15 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         awaitBalance(second, 15);
     }
 
+    private JsonNode say(UUID errand, TestUser sender, String body, int expected) {
+        return request(
+                "POST",
+                "/api/orders/" + errand + "/messages",
+                sender.token(),
+                Map.of("id", UUID.randomUUID().toString(), "body", body),
+                expected);
+    }
+
     private void assertPublishedContracts(String observations, String... expectedTypes) {
         var types = new HashSet<String>();
         await().pollInSameThread().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -440,6 +462,10 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                     case "ErrandCancelledEvent", "ErrandExpiredEvent" -> {
                         assertThat(payload.has("requesterId")).isTrue();
                         assertThat(payload.get("amount").isIntegralNumber()).isTrue();
+                    }
+                    case "ErrandMessagePostedEvent" -> {
+                        assertThat(payload.get("recipientIds").size()).isEqualTo(2);
+                        assertThat(payload.get("body").asString()).isNotBlank();
                     }
                     case "CreditSettlementResultEvent" -> {
                         assertThat(payload.has("operationId")).isTrue();
