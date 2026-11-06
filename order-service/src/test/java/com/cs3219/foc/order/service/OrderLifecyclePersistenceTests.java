@@ -92,7 +92,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, event_publication");
+        jdbc.execute("TRUNCATE order_disputes, errands, event_publication");
         clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit);
@@ -999,6 +999,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
     @Import({
         OrderService.class,
+        OrderDisputeService.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

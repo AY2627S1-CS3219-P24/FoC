@@ -14,6 +14,7 @@ import com.cs3219.foc.order.model.dto.ErrandActionResponse;
 import com.cs3219.foc.order.model.dto.PageDto;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
+import com.cs3219.foc.order.service.OrderDisputeService;
 import com.cs3219.foc.order.service.OrderService;
 import java.util.List;
 import java.util.Map;
@@ -45,12 +46,15 @@ class OrderControllerTests {
     @Autowired
     private OrderService service;
 
+    @Autowired
+    private OrderDisputeService disputes;
+
     private MockMvc mvc;
     private final UUID id = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        reset(service);
+        reset(service, disputes);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -260,15 +264,57 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id).with(jwt())).andExpect(status().isNotFound());
     }
 
+    @Test
+    void disputeRoutesRequireAuthenticationAndValidateBodies() throws Exception {
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\"Delivery issue\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\"Delivery issue\"}"))
+                .andExpect(status().isOk());
+        verify(disputes).report(eq(id), argThat(request -> request.complaint().equals("Delivery issue")));
+
+        when(disputes.list(any())).thenReturn(new PageDto<>(List.of(), 0, 0, 20));
+        mvc.perform(get("/orders/disputes").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        verify(service, never()).get(any());
+        mvc.perform(post("/orders/disputes/" + id + "/resolve")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"DISMISS\",\"explanation\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/disputes/" + id + "/resolve")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"DISMISS\",\"explanation\":\"Reviewed\"}"))
+                .andExpect(status().isOk());
+        verify(disputes)
+                .resolve(eq(id), argThat(request -> request.explanation().equals("Reviewed")));
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport
     @EnableWebSecurity
-    @Import({OrderController.class, SecurityConfig.class, GlobalExceptionHandler.class})
+    @Import({OrderController.class, OrderDisputeController.class, SecurityConfig.class, GlobalExceptionHandler.class})
     static class TestConfig {
         @Bean
         OrderService orderService() {
             return mock(OrderService.class);
+        }
+
+        @Bean
+        OrderDisputeService orderDisputeService() {
+            return mock(OrderDisputeService.class);
         }
 
         @Bean

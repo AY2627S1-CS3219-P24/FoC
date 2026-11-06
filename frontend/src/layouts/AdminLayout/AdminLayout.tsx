@@ -9,7 +9,7 @@ const sections = [
   { label: 'Suppliers', to: '/admin/suppliers', exact: false },
   { label: 'Users', to: '/admin/users', exact: false },
   { label: 'Orders', to: '/admin/orders', exact: false },
-  { label: 'Audit log', to: null, exact: false },
+  { label: 'Audit log', to: '/admin/audit-log', exact: false },
 ] as const
 
 export const AdminLayout = () => {
@@ -31,24 +31,18 @@ export const AdminLayout = () => {
           </Button>
         </div>
         <nav className={styles.nav}>
-          {sections.map(({ label, to, exact }) =>
-            to ? (
-              <Link
-                key={label}
-                to={to}
-                className={styles.link}
-                activeOptions={{ exact }}
-                activeProps={{ 'data-active': true }}
-                onClick={closeMenu}
-              >
-                {label}
-              </Link>
-            ) : (
-              <span key={label} className={styles.link} aria-disabled="true">
-                {label}
-              </span>
-            ),
-          )}
+          {sections.map(({ label, to, exact }) => (
+            <Link
+              key={label}
+              to={to}
+              className={styles.link}
+              activeOptions={{ exact }}
+              activeProps={{ 'data-active': true }}
+              onClick={closeMenu}
+            >
+              {label}
+            </Link>
+          ))}
           <Link to="/" className={`${styles.link} ${styles.back}`}>
             ← Back to home
           </Link>
