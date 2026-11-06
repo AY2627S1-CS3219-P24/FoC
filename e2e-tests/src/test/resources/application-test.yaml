@@ -74,9 +74,16 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: http://user-service:8080/api/.well-known/jwks.json
+  cloud:
+    aws:
+      sns:
+        endpoint: http://floci:4566
 storage:
   s3:
     bucket: foc-e2e-supplier
+events:
+  messaging:
+    topic-arn: arn:aws:sns:ap-southeast-1:000000000000:foc-e2e-supplier-events
 ---
 spring:
   config:
@@ -113,10 +120,11 @@ spring:
           jwk-set-uri: http://user-service:8080/api/.well-known/jwks.json
   cloud:
     aws:
-      s3:
-        enabled: false
       sns:
         endpoint: http://toxiproxy:8667
+storage:
+  delivery-photos:
+    bucket: foc-e2e-order
 services:
   credit-url: http://credit-service:8083/api
   supplier-url: http://supplier-service:8081/api

@@ -27,6 +27,7 @@ services:
       FOC_NAME_PREFIX: foc-e2e
       FOC_USER_BUCKET: foc-e2e-user
       FOC_SUPPLIER_BUCKET: foc-e2e-supplier
+      FOC_ORDER_BUCKET: foc-e2e-order
       FLOCI_SERVICES_S3_ENFORCE_AUTH: "true"
       FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "180"
     volumes:
