@@ -88,6 +88,30 @@ describe('realtime event handlers', () => {
         ]);
     });
 
+    it('tells both people when the chat was read', () => {
+        const {emissions, handlers} = createHandlers();
+        const requester = '33333333-3333-4333-8333-333333333333';
+        const courier = '44444444-4444-4444-8444-444444444444';
+        const read = {
+            errandId: '66666666-6666-4666-8666-666666666666',
+            readerId: courier,
+            lastReadAt: '2026-01-01T00:00:00Z',
+        };
+
+        assert.equal(handlers[3].eventType, 'ErrandChatReadEvent');
+        handlers[3].handle(body({
+            eventId: '22222222-2222-4222-8222-222222222222',
+            schemaVersion: 1,
+            occurredAt: '2026-01-01T00:00:01Z',
+            payload: {...read, recipientIds: [requester, courier]},
+        }));
+
+        assert.deepEqual(emissions, [
+            {room: `user:${requester}`, event: 'errand.read', data: read},
+            {room: `user:${courier}`, event: 'errand.read', data: read},
+        ]);
+    });
+
     it('throws for malformed event bodies so the consumer can reject them', () => {
         const {handlers} = createHandlers();
 

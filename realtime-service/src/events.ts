@@ -44,3 +44,19 @@ export type ErrandMessagePostedEvent = z.infer<typeof errandMessagePostedEventSc
 
 export const parseErrandMessagePostedEvent = (body: Buffer): ErrandMessagePostedEvent =>
     errandMessagePostedEventSchema.parse(JSON.parse(body.toString('utf8')));
+
+export const errandChatReadEventSchema = z.object({
+    eventId: z.uuid(),
+    occurredAt: z.iso.datetime({offset: true}),
+    payload: z.object({
+        errandId: z.uuid(),
+        readerId: z.uuid(),
+        recipientIds: z.array(z.uuid()).min(1),
+        lastReadAt: z.iso.datetime({offset: true}),
+    }),
+});
+
+export type ErrandChatReadEvent = z.infer<typeof errandChatReadEventSchema>;
+
+export const parseErrandChatReadEvent = (body: Buffer): ErrandChatReadEvent =>
+    errandChatReadEventSchema.parse(JSON.parse(body.toString('utf8')));
