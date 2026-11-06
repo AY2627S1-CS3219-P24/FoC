@@ -29,6 +29,7 @@ export const OrderTimeline = ({ order }: { order: Errand }) => {
           { label: 'Request created', at: order.createdAt },
           { label: 'Courier accepted', at: order.acceptedAt },
           { label: 'Picked up', at: order.pickedUpAt },
+          { label: 'Delivered', at: order.deliveredAt },
           {
             label: 'Received',
             at: order.status === 'COMPLETED' ? order.endedAt : undefined,

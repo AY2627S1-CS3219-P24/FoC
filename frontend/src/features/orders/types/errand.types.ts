@@ -4,6 +4,7 @@ export const ERRAND_STATUSES = [
   'OPEN',
   'ACCEPTED',
   'PICKED_UP',
+  'DELIVERED',
   'COMPLETED',
   'CANCELLED',
   'EXPIRED',
@@ -33,7 +34,13 @@ export type Errand = {
   pickedUpAt: string | null
   endedAt: string | null
   createRequestId: string | null
+  deliveredAt: string | null
+  hasDeliveryPhoto: boolean
 }
+// get the courier's photos of the delivery to view with a short live link
+export type DeliveryPhoto = { id: string; url: string; expiresAt: string }
+// the courier can keep up to this many photos per delivery
+export const MAX_DELIVERY_PHOTOS = 5
 export type OrderErrorResponse = {
   code: string
   message: string
