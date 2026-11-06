@@ -26,3 +26,7 @@ export const availableOrderActions = (
 }
 export const canDeliver = (order: Errand, userId: string) =>
   order.status === 'PICKED_UP' && order.courier?.id === userId
+// The chat opens when a courier accepts and closes when the requester confirms
+// receipt, the conversation stays only readable afterwards
+export const chatIsOpen = (order: Errand) =>
+  ['ACCEPTED', 'PICKED_UP', 'DELIVERED'].includes(order.status)

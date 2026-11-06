@@ -14,6 +14,7 @@ import { AuthProvider } from '#/features/auth/providers/AuthProvider'
 import { axiosClient } from '#/lib/axiosClient'
 import { orderFixture } from './orderFixtures'
 import type { Errand } from '../types/errand.types'
+import type * as OrdersApi from '../api/orders.api'
 
 vi.mock('#/features/auth/api/userProfile.api', () => ({
   getUserProfile: vi.fn(async () => ({
@@ -23,6 +24,13 @@ vi.mock('#/features/auth/api/userProfile.api', () => ({
     roles: ['USER'],
     avatarUrl: null,
   })),
+}))
+vi.mock('#/lib/realtime', () => ({
+  connectRealtime: () => ({ on: vi.fn(), off: vi.fn() }),
+}))
+vi.mock('../api/orders.api', async (original) => ({
+  ...(await original<typeof OrdersApi>()),
+  getChat: vi.fn(async () => ({ messages: [] })),
 }))
 vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(async () => ({

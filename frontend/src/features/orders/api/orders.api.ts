@@ -2,7 +2,9 @@ import { axiosClient } from '#/lib/axiosClient'
 import type {
   CreateOrderRequest,
   CreateOrderResponse,
+  Chat,
   DeliveryPhoto,
+  ErrandMessage,
   Errand,
   MineParams,
   OrderAction,
@@ -74,4 +76,17 @@ export const getDeliveryPhotos = async (id: string, signal?: AbortSignal) =>
       `/orders/${id}/delivery-photos`,
       { signal, timeout },
     )
+  ).data
+export const getChat = async (id: string, signal?: AbortSignal) =>
+  (await axiosClient.get<Chat>(`/orders/${id}/messages`, { signal, timeout }))
+    .data
+// the message id comes from the app, retry a send dont post it twice
+export const sendMessage = async (
+  id: string,
+  message: { id: string; body: string },
+) =>
+  (
+    await axiosClient.post<ErrandMessage>(`/orders/${id}/messages`, message, {
+      timeout,
+    })
   ).data

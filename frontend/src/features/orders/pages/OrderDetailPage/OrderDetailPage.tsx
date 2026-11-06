@@ -5,6 +5,7 @@ import { getApiErrorCode } from '#/lib/httpErrors'
 import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
 import { DeliveryPhotos } from '../../components/DeliveryPhotos/DeliveryPhotos'
+import { ErrandChat } from '../../components/ErrandChat/ErrandChat'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
 import { OrderActions } from '../../components/OrderActions/OrderActions'
 import {
@@ -114,7 +115,10 @@ export const OrderDetailPage = () => {
             Errand #{shortOrderId(order.id)}
           </p>
           <div className={styles.detailGrid}>
-            <OrderDetails order={order} />
+            <div className={styles.main}>
+              <OrderDetails order={order} />
+              <ErrandChat order={order} />
+            </div>
             {/* the errand order progress */}
             <div className={styles.side}>
               <OrderTimeline order={order} />

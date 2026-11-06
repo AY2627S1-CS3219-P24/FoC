@@ -2,6 +2,7 @@ import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
 import { DeliveryPhotos } from '../../components/DeliveryPhotos/DeliveryPhotos'
+import { ErrandChat } from '../../components/ErrandChat/ErrandChat'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
 import {
   OrderFeedback,
@@ -48,6 +49,7 @@ export const AdminOrderDetailPage = () => {
             <OrderDetails order={order} />
             <OrderTimeline order={order} />
             <DeliveryPhotos order={order} />
+            <ErrandChat order={order} />
           </div>
         </>
       )}
