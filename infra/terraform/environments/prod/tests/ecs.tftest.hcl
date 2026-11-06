@@ -56,10 +56,12 @@ run "service_credentials_and_messaging_permissions" {
     image_bucket_names = {
       user     = "foc-test-user"
       supplier = "foc-test-supplier"
+      order    = "foc-test-order"
     }
     image_bucket_policy_arns = {
       user     = "arn:aws:iam::123456789012:policy/foc-test-user-images"
       supplier = "arn:aws:iam::123456789012:policy/foc-test-supplier-images"
+      order    = "arn:aws:iam::123456789012:policy/foc-test-order-images"
     }
     service_discovery_service_arns = {
       realtime = "arn:aws:servicediscovery:ap-southeast-1:123456789012:service/srv-realtime"
@@ -101,7 +103,7 @@ run "service_credentials_and_messaging_permissions" {
       order = {
         runtime = "java"
         port    = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
-        jwt     = false, mail = false
+        jwt     = false, mail = false, bucket_env = "FOC_ORDER_BUCKET"
       }
       credit = {
         runtime = "java"

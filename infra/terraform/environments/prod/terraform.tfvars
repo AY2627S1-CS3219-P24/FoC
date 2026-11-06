@@ -3,6 +3,7 @@ name_prefix = "foc-prod"
 image_bucket_names = {
   user     = "foc-prod-user"
   supplier = "foc-prod-supplier"
+  order    = "foc-prod-order"
 }
 
 domain_name        = "cs3219-p24.mooo.com"

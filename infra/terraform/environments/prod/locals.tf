@@ -25,12 +25,13 @@ locals {
     }
 
     order = {
-      runtime  = "java"
-      database = "foc_order"
-      username = "foc_order"
-      port     = 8082
-      cpu      = 512
-      memory   = 640
+      runtime    = "java"
+      database   = "foc_order"
+      username   = "foc_order"
+      port       = 8082
+      cpu        = 512
+      memory     = 640
+      bucket_env = "FOC_ORDER_BUCKET"
     }
 
     credit = {
