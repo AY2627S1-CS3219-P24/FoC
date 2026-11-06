@@ -26,3 +26,21 @@ export type SupplierChangedEvent = z.infer<typeof supplierChangedEventSchema>;
 
 export const parseSupplierChangedEvent = (body: Buffer): SupplierChangedEvent =>
     supplierChangedEventSchema.parse(JSON.parse(body.toString('utf8')));
+
+export const errandMessagePostedEventSchema = z.object({
+    eventId: z.uuid(),
+    occurredAt: z.iso.datetime({offset: true}),
+    payload: z.object({
+        messageId: z.uuid(),
+        errandId: z.uuid(),
+        senderId: z.uuid(),
+        recipientIds: z.array(z.uuid()).min(1),
+        body: z.string().min(1),
+        sentAt: z.iso.datetime({offset: true}),
+    }),
+});
+
+export type ErrandMessagePostedEvent = z.infer<typeof errandMessagePostedEventSchema>;
+
+export const parseErrandMessagePostedEvent = (body: Buffer): ErrandMessagePostedEvent =>
+    errandMessagePostedEventSchema.parse(JSON.parse(body.toString('utf8')));
