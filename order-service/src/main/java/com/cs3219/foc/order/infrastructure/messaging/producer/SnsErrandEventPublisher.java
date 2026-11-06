@@ -4,6 +4,7 @@ import com.cs3219.foc.order.config.EventMessagingProperties;
 import com.cs3219.foc.order.model.dto.event.ErrandCancelledEvent;
 import com.cs3219.foc.order.model.dto.event.ErrandCompletedEvent;
 import com.cs3219.foc.order.model.dto.event.ErrandExpiredEvent;
+import com.cs3219.foc.order.model.dto.event.ErrandMessagePostedEvent;
 import io.awspring.cloud.sns.core.SnsNotification;
 import io.awspring.cloud.sns.core.SnsOperations;
 import java.util.UUID;
@@ -30,6 +31,11 @@ public class SnsErrandEventPublisher {
     @ApplicationModuleListener(id = "order-expired")
     public void publish(ErrandExpiredEvent event) {
         send(event, ErrandExpiredEvent.TYPE, event.eventId());
+    }
+
+    @ApplicationModuleListener(id = "order-message-posted")
+    public void publish(ErrandMessagePostedEvent event) {
+        send(event, ErrandMessagePostedEvent.TYPE, event.eventId());
     }
 
     private void send(Object event, String type, UUID eventId) {

@@ -10,12 +10,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.order.config.SecurityConfig;
 import com.cs3219.foc.order.exception.*;
+import com.cs3219.foc.order.model.dto.ChatDto;
 import com.cs3219.foc.order.model.dto.CreateErrandResponse;
 import com.cs3219.foc.order.model.dto.DeliveryPhotoDto;
 import com.cs3219.foc.order.model.dto.ErrandActionResponse;
+import com.cs3219.foc.order.model.dto.ErrandMessageDto;
 import com.cs3219.foc.order.model.dto.PageDto;
+import com.cs3219.foc.order.model.dto.SendMessageRequest;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
+import com.cs3219.foc.order.service.ChatService;
 import com.cs3219.foc.order.service.DeliveryService;
 import com.cs3219.foc.order.service.OrderService;
 import java.time.OffsetDateTime;
@@ -54,12 +58,15 @@ class OrderControllerTests {
     @Autowired
     private DeliveryService delivery;
 
+    @Autowired
+    private ChatService chat;
+
     private MockMvc mvc;
     private final UUID id = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        reset(service, delivery);
+        reset(service, delivery, chat);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -317,6 +324,57 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id + "/delivery-photos").with(jwt())).andExpect(status().isForbidden());
     }
 
+    @Test
+    void chatMessagesCanBeReadAndSent() throws Exception {
+        var messageId = UUID.randomUUID();
+        var sender = UUID.randomUUID();
+        var sentAt = OffsetDateTime.parse("2030-01-01T00:10Z");
+        var message = new ErrandMessageDto(messageId, id, sender, "On my way", sentAt);
+        when(chat.chat(id)).thenReturn(new ChatDto(List.of(message)));
+        mvc.perform(get("/orders/" + id + "/messages").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messages[0].body").value("On my way"))
+                .andExpect(jsonPath("$.messages[0].senderId").value(sender.toString()));
+
+        when(chat.send(eq(id), any())).thenReturn(message);
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"On my way"}
+                                """.formatted(messageId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(messageId.toString()));
+        verify(chat).send(id, new SendMessageRequest(messageId, "On my way"));
+
+        when(chat.send(eq(id), any())).thenThrow(new OrderConflictException("This chat is closed"));
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"Thanks"}
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isConflict());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"body\":\"Hi\"}", "{\"id\":\"%s\",\"body\":\"   \"}"})
+    void invalidMessagesAreRejected(String body) throws Exception {
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(UUID.randomUUID())))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"%s"}
+                                """.formatted(UUID.randomUUID(), "x".repeat(1001))))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(chat);
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport
@@ -331,6 +389,11 @@ class OrderControllerTests {
         @Bean
         DeliveryService deliveryService() {
             return mock(DeliveryService.class);
+        }
+
+        @Bean
+        ChatService chatService() {
+            return mock(ChatService.class);
         }
 
         @Bean

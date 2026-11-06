@@ -75,6 +75,9 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     private DeliveryService delivery;
 
     @Autowired
+    private ChatService chat;
+
+    @Autowired
     private DeliveryPhotoProcessor photoProcessor;
 
     @Autowired
@@ -107,7 +110,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, delivery_photos, event_publication");
+        jdbc.execute("TRUNCATE errands, delivery_photos, errand_messages, event_publication");
         clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit, photoProcessor, photoStorage);
@@ -1108,6 +1111,77 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         assertThatThrownBy(() -> delivery.photos(id)).isInstanceOf(AccessDeniedException.class);
     }
 
+    private ErrandMessageDto say(UUID errand, String body) {
+        return chat.send(errand, new SendMessageRequest(UUID.randomUUID(), body));
+    }
+
+    @Test
+    void chatOpensWhenACourierAcceptsAndBecomesReadOnlyAfterConfirmation() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        // No courier yet, so the chat nobody to talk to
+        assertThatThrownBy(() -> say(id, "Hello?")).isInstanceOf(AccessDeniedException.class);
+        as(courier);
+        service.accept(id);
+
+        as(requester);
+        clock.time.set(START.plusSeconds(10));
+        var first = say(id, "  Less ice please  ");
+        assertThat(first.body()).isEqualTo("Less ice please");
+        assertThat(first.senderId()).isEqualTo(requester);
+        as(courier);
+        clock.time.set(START.plusSeconds(20));
+        say(id, "Got it!");
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chat.chat(id)).isInstanceOf(AccessDeniedException.class);
+        // Admins can read the chat but not take part
+        as(UUID.randomUUID(), "ADMIN");
+        assertThat(chat.chat(id).messages())
+                .extracting(ErrandMessageDto::body)
+                .containsExactly("Less ice please", "Got it!");
+        assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
+
+        // Each message is announced to both side people
+        var posted = facts.events.stream()
+                .filter(ErrandMessagePostedEvent.class::isInstance)
+                .map(ErrandMessagePostedEvent.class::cast)
+                .toList();
+        assertThat(posted).hasSize(2);
+        assertThat(posted.getFirst().payload())
+                .isEqualTo(new ErrandMessagePostedEvent.Payload(
+                        first.id(), id, requester, List.of(requester, courier), "Less ice please", first.sentAt()));
+
+        // Chat will still be open while the item is on the way and after delivery
+        as(courier);
+        service.pickUp(id);
+        say(id, "On my way");
+        deliver(id);
+        say(id, "Left it at the door");
+        as(requester);
+        service.complete(id);
+        assertThatThrownBy(() -> say(id, "Thanks!")).isInstanceOf(OrderConflictException.class);
+        assertThat(chat.chat(id).messages()).hasSize(4);
+    }
+
+    @Test
+    void retryingTheSameMessageStoresAndAnnouncesItOnce() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        as(requester);
+        var request = new SendMessageRequest(UUID.randomUUID(), "Are you there?");
+        var sent = chat.send(id, request);
+        assertThat(chat.send(id, request)).isEqualTo(sent);
+        assertThat(chat.chat(id).messages()).hasSize(1);
+        assertThat(count(ErrandMessagePostedEvent.class)).isEqualTo(1);
+        // Someone else cannot reuse that id
+        as(courier);
+        assertThatThrownBy(() -> chat.send(id, new SendMessageRequest(request.id(), "Mine")))
+                .isInstanceOf(OrderConflictException.class);
+    }
+
     @Test
     void databaseRejectsInvalidBaseFields() {
         var id = open();
@@ -1156,6 +1230,11 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         public void expired(ErrandExpiredEvent e) {
             events.add(e);
         }
+
+        @EventListener
+        public void messagePosted(ErrandMessagePostedEvent e) {
+            events.add(e);
+        }
     }
 
     @TestConfiguration
@@ -1165,6 +1244,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @Import({
         OrderService.class,
         DeliveryService.class,
+        ChatService.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

@@ -10,14 +10,17 @@ import com.cs3219.foc.order.infrastructure.messaging.consumer.SqsCreditSettlemen
 import com.cs3219.foc.order.infrastructure.messaging.producer.SnsErrandEventPublisher;
 import com.cs3219.foc.order.model.dto.event.*;
 import com.cs3219.foc.order.service.OrderService;
+import io.awspring.cloud.sns.core.SnsNotification;
 import io.awspring.cloud.sns.core.SnsOperations;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.MessagingException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
@@ -57,6 +60,28 @@ class MessagingContractTests {
         assertThatThrownBy(() -> publisher.publish(new ErrandCancelledEvent(
                         eventId, 1, occurredAt, new ErrandCancelledEvent.Payload(errandId, requesterId, 80))))
                 .isSameAs(failure);
+    }
+
+    @Test
+    void chatMessagesArePublishedWithTheirTypeForTheRealtimeService() {
+        var event = new ErrandMessagePostedEvent(
+                eventId,
+                1,
+                occurredAt,
+                new ErrandMessagePostedEvent.Payload(
+                        UUID.randomUUID(),
+                        errandId,
+                        requesterId,
+                        List.of(requesterId, courierId),
+                        "Less ice please",
+                        occurredAt));
+        publisher.publish(event);
+        var notification = ArgumentCaptor.forClass(SnsNotification.class);
+        verify(sns).sendNotification(eq(TOPIC), notification.capture());
+        assertThat(notification.getValue().getPayload()).isEqualTo(event);
+        assertThat(notification.getValue().getHeaders())
+                .containsEntry("eventType", "ErrandMessagePostedEvent")
+                .containsEntry("eventId", eventId.toString());
     }
 
     @Test
