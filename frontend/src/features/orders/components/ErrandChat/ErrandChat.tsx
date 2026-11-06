@@ -7,7 +7,7 @@ import { MAX_MESSAGE_LENGTH } from '../../types/errand.types'
 import type { Errand } from '../../types/errand.types'
 import styles from './ErrandChat.module.scss'
 
-// a message on its way
+// A message on its way.
 type Outgoing = {
   id: string
   body: string
@@ -15,8 +15,32 @@ type Outgoing = {
   queuedAt: string
 }
 
-// The chat between the requester and the courier, open while the errand is in
-// progress and becomes read only once the requester confirms receipt
+// A time label appears before the first message and after a quiet gap.
+const GAP_MS = 5 * 60_000
+
+const timeOnly = new Intl.DateTimeFormat('en-SG', {
+  timeStyle: 'short',
+  timeZone: 'Asia/Singapore',
+})
+const dayAndTime = new Intl.DateTimeFormat('en-SG', {
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'Asia/Singapore',
+})
+const sgDay = (time: Date) =>
+  time.toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore' })
+export const timeLabel = (sentAt: string, now = new Date()) => {
+  const time = new Date(sentAt)
+  if (sgDay(time) === sgDay(now)) return timeOnly.format(time)
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60_000)
+  if (sgDay(time) === sgDay(yesterday))
+    return `Yesterday ${timeOnly.format(time)}`
+  return dayAndTime.format(time)
+}
+// Chat between the requester and the courier, open while the errand is in
+// progress and read-only once the requester confirms receipt.
 export const ErrandChat = ({ order }: { order: Errand }) => {
   // The message list
   const [list, setList] = useState<HTMLOListElement | null>(null)
@@ -30,7 +54,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
   const waiting = outgoing.filter((message) => !sent.has(message.id))
   const count = confirmed.length + waiting.length
 
-  // Keep the newest message at the bottom
+  // Keep the newest message at bottom
   useEffect(() => {
     if (list) list.scrollTop = list.scrollHeight
   }, [list, count])
@@ -53,7 +77,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
     try {
       await send.mutateAsync({ id: message.id, body: message.body })
     } catch {
-      // Kept with a Retry button, resend the same id cant duplicate it
+      // Kept with a Retry button; resending the same id cannot duplicate it.
       update(message.id, { failed: true })
     }
   }
@@ -72,7 +96,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
     setText('')
     queue({ id: crypto.randomUUID(), body })
   }
-  // One list in time order: sent messages, then those still on their way.
+  // One list in time order, with a time label wherever a gap starts
   const rows = [
     ...confirmed.map((message) => ({
       ...message,
@@ -124,10 +148,19 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
           )}
           {rows.map((row, index) => {
             const previous = index > 0 ? rows[index - 1] : undefined
+            const showTime =
+              !previous ||
+              Date.parse(row.at) - Date.parse(previous.at) >= GAP_MS
             const mine = row.senderId === userId
-            const newSender = !previous || previous.senderId !== row.senderId
+            const newSender =
+              !previous || previous.senderId !== row.senderId || showTime
             return (
               <li key={row.id} className={styles.row}>
+                {showTime && (
+                  <time className={styles.separator} dateTime={row.at}>
+                    {timeLabel(row.at)}
+                  </time>
+                )}
                 <div
                   className={styles.message}
                   data-mine={mine}
@@ -178,8 +211,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
-              // use the keyboard shortcut keys
-              // Enter sends, Shift+Enter starts a new line
+              // Enter sends, Shift+Enter starts a new line.
               // Ignore Enter while an input method like pinyin is still composing
               if (
                 event.key === 'Enter' &&

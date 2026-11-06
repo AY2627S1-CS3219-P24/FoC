@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 import { connectRealtime } from '#/lib/realtime'
 import * as api from '../api/orders.api'
-import { ErrandChat } from '../components/ErrandChat/ErrandChat'
+import { ErrandChat, timeLabel } from '../components/ErrandChat/ErrandChat'
 import { orderFixture } from './orderFixtures'
 import type { Errand, ErrandMessage } from '../types/errand.types'
 
@@ -15,6 +15,7 @@ vi.mock('../api/orders.api', () => ({
   sendMessage: vi.fn(),
 }))
 
+// tests trigger its events directly
 const handlers = new Map<string, (payload?: unknown) => void>()
 const socket = {
   on: vi.fn((event: string, handler: (payload?: unknown) => void) =>
@@ -31,6 +32,7 @@ const accepted = (overrides: Partial<Errand> = {}) =>
     courier: { id: 'courier', name: 'Sam' },
     ...overrides,
   })
+// Times are minutes after 08:00 UTC (4 pm in Singapore) on 1 Jan 2030.
 const at = (minute: number) =>
   new Date(Date.UTC(2030, 0, 1, 8, minute)).toISOString()
 const message = (
@@ -97,6 +99,35 @@ it('shows the conversation and sends with Enter', async () => {
   const mine = await screen.findByText('Less ice please')
   expect(mine.closest('[data-mine]')).toHaveAttribute('data-mine', 'true')
   expect(box).toHaveValue('')
+})
+
+it('shows a time label only at the start and after a quiet gap', async () => {
+  vi.mocked(api.getChat).mockResolvedValue(
+    chat([
+      message('m1', 'courier', 'On my way', 0),
+      message('m2', 'courier', 'Queue is long', 1),
+      message('m3', 'requester', 'Thanks', 3),
+      message('m4', 'courier', 'Here now', 20),
+    ]),
+  )
+  const { container } = setup(accepted())
+  await screen.findByText('Here now')
+  const labels = [...container.querySelectorAll('time')]
+  expect(labels.map((label) => label.getAttribute('dateTime'))).toEqual([
+    at(0),
+    at(20),
+  ])
+  // The sender's name is shown once per group, not on every message.
+  expect(screen.getAllByText('Sam')).toHaveLength(2)
+})
+
+it('labels times like a chat app: today, yesterday, then the date', () => {
+  const now = new Date('2030-01-02T08:00:00Z')
+  expect(timeLabel('2030-01-02T03:05:00Z', now)).toMatch(/^11:05\s?am$/i)
+  expect(timeLabel('2030-01-01T03:05:00Z', now)).toMatch(
+    /^Yesterday 11:05\s?am$/i,
+  )
+  expect(timeLabel('2029-12-25T03:05:00Z', now)).toMatch(/25 Dec/)
 })
 
 it('does not send on Shift+Enter or while an input method is composing', async () => {
