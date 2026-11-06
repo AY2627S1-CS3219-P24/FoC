@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { connectRealtime } from '#/lib/realtime'
 import { describe, expect, it, vi } from 'vitest'
 import { supplierKeys } from './useSuppliers'
-import { applySupplierChanged, useSupplierChanges } from './useSupplierChanges'
+import {
+  applySupplierChanged,
+  useSupplierRealtimeUpdates,
+} from './useSupplierRealtimeUpdates'
 import type { Supplier } from '../types/supplier.types'
 
 vi.mock('#/lib/realtime', () => ({ connectRealtime: vi.fn() }))
@@ -99,7 +102,7 @@ describe('useSupplierChanges', () => {
     )
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
-    const { unmount } = renderHook(() => useSupplierChanges(), {
+    const { unmount } = renderHook(() => useSupplierRealtimeUpdates(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client }, children),
     })

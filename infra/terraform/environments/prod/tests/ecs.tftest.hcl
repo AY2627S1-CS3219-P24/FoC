@@ -191,4 +191,24 @@ run "service_credentials_and_messaging_permissions" {
     error_message = "Realtime must receive its Node and SQS configuration without Java settings or application secrets."
   }
 
+  assert {
+    condition = alltrue([
+      for name in keys(var.services) : (
+        try(jsondecode(aws_ecs_task_definition.app[name].container_definitions)[0].restartPolicy.enabled, false)
+        && try(jsondecode(aws_ecs_task_definition.app[name].container_definitions)[0].versionConsistency, null) == "disabled"
+      )
+    ])
+    error_message = "All application services must enable container restarts and use disabled version consistency."
+  }
+
+  assert {
+    condition = alltrue([
+      for container in concat([
+        jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0]
+        ], [for task in aws_ecs_task_definition.database_bootstrap : jsondecode(task.container_definitions)[0]]
+      ) : !contains(keys(container), "restartPolicy") && !contains(keys(container), "versionConsistency")
+    ])
+    error_message = "Shared application policies must not change gateway or database-bootstrap container behavior."
+  }
+
 }

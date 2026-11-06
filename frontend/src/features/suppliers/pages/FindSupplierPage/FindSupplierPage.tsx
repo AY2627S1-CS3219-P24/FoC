@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CategoryTiles } from '../../components/CategoryTiles/CategoryTiles'
 import { SupplierSlideOver } from '../../components/SupplierSlideOver/SupplierSlideOver'
 import { useSuppliers } from '../../hooks/useSuppliers'
+import { useSupplierRealtimeUpdates } from '../../hooks/useSupplierRealtimeUpdates'
 import type { Supplier } from '../../types/supplier.types'
 import { getOpenStatus } from '../../utils/openingHours'
 import styles from './FindSupplierPage.module.scss'
@@ -9,6 +10,7 @@ import { useNow } from '#/hooks/useNow'
 import { SupplierCard } from './components/SupplierCard/SupplierCard'
 
 export const FindSupplierPage = () => {
+  useSupplierRealtimeUpdates()
   const suppliers = useSuppliers()
   const [selected, setSelected] = useState<Supplier | null>(null)
   const now = useNow(60_000)
