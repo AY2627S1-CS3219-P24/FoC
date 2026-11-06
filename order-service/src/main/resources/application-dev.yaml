@@ -8,6 +8,9 @@ spring:
     aws:
       region:
         static: ${AWS_REGION:ap-southeast-1}
+      s3:
+        endpoint: http://localhost:4566
+        path-style-access-enabled: true
       sns:
         endpoint: http://localhost:4566
       sqs:

@@ -1,6 +1,7 @@
 package com.cs3219.foc.order.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -10,11 +11,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.cs3219.foc.order.config.SecurityConfig;
 import com.cs3219.foc.order.exception.*;
 import com.cs3219.foc.order.model.dto.CreateErrandResponse;
+import com.cs3219.foc.order.model.dto.DeliveryPhotoDto;
 import com.cs3219.foc.order.model.dto.ErrandActionResponse;
 import com.cs3219.foc.order.model.dto.PageDto;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
+import com.cs3219.foc.order.service.DeliveryService;
 import com.cs3219.foc.order.service.OrderService;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +30,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -45,12 +51,15 @@ class OrderControllerTests {
     @Autowired
     private OrderService service;
 
+    @Autowired
+    private DeliveryService delivery;
+
     private MockMvc mvc;
     private final UUID id = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        reset(service);
+        reset(service, delivery);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -260,6 +269,54 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id).with(jwt())).andExpect(status().isNotFound());
     }
 
+    @Test
+    void courierDeliversWithAPhotoAndPartiesCanFetchIt() throws Exception {
+        var photo = new MockMultipartFile("photos", "handover.jpg", "image/jpeg", new byte[] {1});
+        when(delivery.deliver(eq(id), any()))
+                .thenReturn(new ErrandActionResponse(id, ErrandStatus.DELIVERED, CreditState.RESERVED));
+        var second = new MockMultipartFile("photos", "second.jpg", "image/jpeg", new byte[] {2});
+        mvc.perform(multipart("/orders/" + id + "/deliver")
+                        .file(photo)
+                        .file(second)
+                        .with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELIVERED"));
+        // both photos arrive in one submission, in order
+        verify(delivery)
+                .deliver(
+                        eq(id),
+                        argThat(files -> files.size() == 2
+                                && files.get(0).getOriginalFilename().equals("handover.jpg")
+                                && files.get(1).getOriginalFilename().equals("second.jpg")));
+
+        var photoId = UUID.randomUUID();
+        var photos = List.of(
+                new DeliveryPhotoDto(photoId, "https://photos.test/a.jpg", OffsetDateTime.parse("2030-01-01T00:10Z")));
+        when(delivery.photos(id)).thenReturn(photos);
+        mvc.perform(get("/orders/" + id + "/delivery-photos").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(photoId.toString()))
+                .andExpect(jsonPath("$[0].url").value("https://photos.test/a.jpg"));
+    }
+
+    @Test
+    void deliveryWithoutAPhotoOrWithABadOneIsRejected() throws Exception {
+        mvc.perform(multipart("/orders/" + id + "/deliver").with(jwt()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.photos").value("Required"));
+        verifyNoInteractions(delivery);
+
+        when(delivery.deliver(eq(id), any()))
+                .thenThrow(new DeliveryPhotoException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Use a JPEG or PNG photo"));
+        mvc.perform(multipart("/orders/" + id + "/deliver")
+                        .file(new MockMultipartFile("photos", "a.gif", "image/gif", new byte[] {1}))
+                        .with(jwt()))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("DELIVERY_PHOTO_INVALID"));
+        when(delivery.photos(id)).thenThrow(new AccessDeniedException("Not yours"));
+        mvc.perform(get("/orders/" + id + "/delivery-photos").with(jwt())).andExpect(status().isForbidden());
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport
@@ -269,6 +326,11 @@ class OrderControllerTests {
         @Bean
         OrderService orderService() {
             return mock(OrderService.class);
+        }
+
+        @Bean
+        DeliveryService deliveryService() {
+            return mock(DeliveryService.class);
         }
 
         @Bean

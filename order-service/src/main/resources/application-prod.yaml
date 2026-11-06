@@ -26,3 +26,6 @@ management:
   opentelemetry:
     resource-attributes:
       "[service.instance.id]": ${HOSTNAME}
+storage:
+  delivery-photos:
+    bucket: ${FOC_ORDER_BUCKET}

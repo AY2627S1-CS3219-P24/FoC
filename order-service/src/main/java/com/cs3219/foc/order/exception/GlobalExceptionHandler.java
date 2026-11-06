@@ -15,6 +15,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
@@ -36,6 +38,26 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> accountPending(CreditAccountPendingException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("CREDIT_ACCOUNT_PENDING", e.getMessage()));
+    }
+
+    @ExceptionHandler(DeliveryPhotoException.class)
+    ResponseEntity<ErrorResponse> deliveryPhoto(DeliveryPhotoException e) {
+        if (e.getStatus().is5xxServerError()) log.error("Delivery photo failed", e);
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse("DELIVERY_PHOTO_INVALID", e.getMessage()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ErrorResponse> uploadTooLarge(MaxUploadSizeExceededException e) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                .body(new ErrorResponse(
+                        "DELIVERY_PHOTO_INVALID", "Each photo must be at most 5 MB, and at most 5 photos"));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors missingPart(MissingServletRequestPartException e) {
+        return new ErrorResponseWithFieldErrors(
+                "VALIDATION_FAILED", "Add at least one delivery photo", Map.of(e.getRequestPartName(), "Required"));
     }
 
     @ExceptionHandler(OrderNotFoundException.class)

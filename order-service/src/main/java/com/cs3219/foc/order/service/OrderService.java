@@ -204,7 +204,7 @@ public class OrderService {
         List<ErrandStatus> statuses =
                 switch (view) {
                     case "all" -> List.of(ErrandStatus.values());
-                    case "active" -> List.of(CREATING, OPEN, ACCEPTED, PICKED_UP);
+                    case "active" -> List.of(CREATING, OPEN, ACCEPTED, PICKED_UP, DELIVERED);
                     case "history" -> List.of(CREATE_FAILED, COMPLETED, CANCELLED, EXPIRED);
                     default ->
                         throw new ResponseStatusException(
@@ -271,8 +271,9 @@ public class OrderService {
             var lockedErrand = locked(id);
             requireRequester(lockedErrand, actor);
             if (lockedErrand.getStatus() == COMPLETED) return lockedErrand;
-            if (lockedErrand.getStatus() != PICKED_UP)
-                throw new OrderConflictException("Order must be picked up before completion");
+            // the courier must confirm deliver with a photo
+            if (lockedErrand.getStatus() != DELIVERED)
+                throw new OrderConflictException("Order must be delivered before completion");
             end(lockedErrand, COMPLETED, SETTLEMENT_PENDING);
             events.publishEvent(new ErrandCompletedEvent(
                     lockedErrand.getSettlementEventId(),
