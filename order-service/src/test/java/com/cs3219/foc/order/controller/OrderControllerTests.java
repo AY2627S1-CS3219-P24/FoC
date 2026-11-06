@@ -330,11 +330,12 @@ class OrderControllerTests {
         var sender = UUID.randomUUID();
         var sentAt = OffsetDateTime.parse("2030-01-01T00:10Z");
         var message = new ErrandMessageDto(messageId, id, sender, "On my way", sentAt);
-        when(chat.chat(id)).thenReturn(new ChatDto(List.of(message)));
+        when(chat.chat(id)).thenReturn(new ChatDto(List.of(message), List.of(new ChatDto.Read(sender, sentAt))));
         mvc.perform(get("/orders/" + id + "/messages").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messages[0].body").value("On my way"))
-                .andExpect(jsonPath("$.messages[0].senderId").value(sender.toString()));
+                .andExpect(jsonPath("$.messages[0].senderId").value(sender.toString()))
+                .andExpect(jsonPath("$.reads[0].userId").value(sender.toString()));
 
         when(chat.send(eq(id), any())).thenReturn(message);
         mvc.perform(post("/orders/" + id + "/messages")
@@ -355,6 +356,24 @@ class OrderControllerTests {
                                 {"id":"%s","body":"Thanks"}
                                 """.formatted(UUID.randomUUID())))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void readReceiptsHaveTheirOwnEndpoint() throws Exception {
+        var messageId = UUID.randomUUID();
+        mvc.perform(post("/orders/" + id + "/messages/read")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"messageId":"%s"}
+                                """.formatted(messageId)))
+                .andExpect(status().isNoContent());
+        verify(chat).markRead(id, messageId);
+        mvc.perform(post("/orders/" + id + "/messages/read")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 
     @ParameterizedTest

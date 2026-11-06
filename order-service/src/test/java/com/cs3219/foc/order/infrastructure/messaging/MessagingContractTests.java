@@ -85,6 +85,19 @@ class MessagingContractTests {
     }
 
     @Test
+    void readReceiptsArePublishedWithTheirType() {
+        var event = new ErrandChatReadEvent(
+                eventId,
+                1,
+                occurredAt,
+                new ErrandChatReadEvent.Payload(errandId, courierId, List.of(requesterId, courierId), occurredAt));
+        publisher.publish(event);
+        var notification = ArgumentCaptor.forClass(SnsNotification.class);
+        verify(sns).sendNotification(eq(TOPIC), notification.capture());
+        assertThat(notification.getValue().getHeaders()).containsEntry("eventType", "ErrandChatReadEvent");
+    }
+
+    @Test
     void invalidResultsNeverReachTheOrderService() {
         assertThatThrownBy(() -> consumer.consume("UnknownEvent", "{}")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> consumer.consume(CreditSettlementResultEvent.TYPE, "not json"))

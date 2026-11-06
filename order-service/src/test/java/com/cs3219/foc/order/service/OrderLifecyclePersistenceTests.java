@@ -110,7 +110,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, delivery_photos, errand_messages, event_publication");
+        jdbc.execute("TRUNCATE errands, delivery_photos, errand_messages, errand_chat_reads, event_publication");
         clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit, photoProcessor, photoStorage);
@@ -1119,7 +1119,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     void chatOpensWhenACourierAcceptsAndBecomesReadOnlyAfterConfirmation() {
         var id = open();
         var courier = UUID.randomUUID();
-        // No courier yet, so the chat nobody to talk to
+        // No courier yet: nobody to talk to.
         assertThatThrownBy(() -> say(id, "Hello?")).isInstanceOf(AccessDeniedException.class);
         as(courier);
         service.accept(id);
@@ -1135,14 +1135,14 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         as(UUID.randomUUID());
         assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> chat.chat(id)).isInstanceOf(AccessDeniedException.class);
-        // Admins can read the chat but not take part
+        // Admins can read the conversation but not take part.
         as(UUID.randomUUID(), "ADMIN");
         assertThat(chat.chat(id).messages())
                 .extracting(ErrandMessageDto::body)
                 .containsExactly("Less ice please", "Got it!");
         assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
 
-        // Each message is announced to both side people
+        // Each message is announced to both people.
         var posted = facts.events.stream()
                 .filter(ErrandMessagePostedEvent.class::isInstance)
                 .map(ErrandMessagePostedEvent.class::cast)
@@ -1152,7 +1152,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                 .isEqualTo(new ErrandMessagePostedEvent.Payload(
                         first.id(), id, requester, List.of(requester, courier), "Less ice please", first.sentAt()));
 
-        // Chat will still be open while the item is on the way and after delivery
+        // Still open while the item is on the way and after delivery.
         as(courier);
         service.pickUp(id);
         say(id, "On my way");
@@ -1176,10 +1176,51 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         assertThat(chat.send(id, request)).isEqualTo(sent);
         assertThat(chat.chat(id).messages()).hasSize(1);
         assertThat(count(ErrandMessagePostedEvent.class)).isEqualTo(1);
-        // Someone else cannot reuse that id
+        // Someone else cannot reuse that id.
         as(courier);
         assertThatThrownBy(() -> chat.send(id, new SendMessageRequest(request.id(), "Mine")))
                 .isInstanceOf(OrderConflictException.class);
+    }
+
+    /** An accepted errand between the requester and a new courier; returns the courier. */
+    private UUID acceptedChat(UUID id) {
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        return courier;
+    }
+
+    @Test
+    void readReceiptsOnlyMoveForwardAndAreAnnouncedToBoth() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(requester);
+        clock.time.set(START.plusSeconds(10));
+        var first = say(id, "Hi");
+        clock.time.set(START.plusSeconds(20));
+        var second = say(id, "Are you there?");
+        // Reading your own messages changes nothing.
+        chat.markRead(id, second.id());
+        assertThat(chat.chat(id).reads()).isEmpty();
+
+        as(courier);
+        chat.markRead(id, second.id());
+        chat.markRead(id, first.id()); // an older message never moves it back
+        chat.markRead(id, second.id()); // nor does reading the same one again
+        assertThat(chat.chat(id).reads()).containsExactly(new ChatDto.Read(courier, second.sentAt()));
+        var receipts = facts.events.stream()
+                .filter(ErrandChatReadEvent.class::isInstance)
+                .map(event -> ((ErrandChatReadEvent) event).payload())
+                .toList();
+        assertThat(receipts)
+                .containsExactly(
+                        new ErrandChatReadEvent.Payload(id, courier, List.of(requester, courier), second.sentAt()));
+
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> chat.markRead(id, second.id())).isInstanceOf(AccessDeniedException.class);
+        as(courier);
+        var other = open();
+        assertThatThrownBy(() -> chat.markRead(other, second.id())).isInstanceOf(RuntimeException.class);
     }
 
     @Test
@@ -1233,6 +1274,11 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
 
         @EventListener
         public void messagePosted(ErrandMessagePostedEvent e) {
+            events.add(e);
+        }
+
+        @EventListener
+        public void chatRead(ErrandChatReadEvent e) {
             events.add(e);
         }
     }

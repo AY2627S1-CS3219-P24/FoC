@@ -7,10 +7,13 @@ import com.cs3219.foc.order.exception.OrderNotFoundException;
 import com.cs3219.foc.order.model.dto.ChatDto;
 import com.cs3219.foc.order.model.dto.ErrandMessageDto;
 import com.cs3219.foc.order.model.dto.SendMessageRequest;
+import com.cs3219.foc.order.model.dto.event.ErrandChatReadEvent;
 import com.cs3219.foc.order.model.dto.event.ErrandMessagePostedEvent;
 import com.cs3219.foc.order.model.entity.Errand;
+import com.cs3219.foc.order.model.entity.ErrandChatRead;
 import com.cs3219.foc.order.model.entity.ErrandMessage;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
+import com.cs3219.foc.order.repository.ErrandChatReadRepository;
 import com.cs3219.foc.order.repository.ErrandMessageRepository;
 import com.cs3219.foc.order.repository.ErrandRepository;
 import com.cs3219.foc.order.security.CurrentUserService;
@@ -29,8 +32,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Chat between an errand's requester and courier. It opens when a courier accepts and closes when the requester
- * confirms receipt. The history will then be view only. Each new message is published as an event, the
- * realtime service will push it to both people's browsers
+ * confirms receipt; the history stays readable afterwards. New messages and read receipts are published as events,
+ * which the realtime service pushes to both people's browsers.
  */
 @Service
 public class ChatService {
@@ -39,6 +42,7 @@ public class ChatService {
 
     private final ErrandRepository errands;
     private final ErrandMessageRepository messages;
+    private final ErrandChatReadRepository reads;
     private final CurrentUserService currentUserService;
     private final ApplicationEventPublisher events;
     private final Clock clock;
@@ -47,19 +51,21 @@ public class ChatService {
     public ChatService(
             ErrandRepository errands,
             ErrandMessageRepository messages,
+            ErrandChatReadRepository reads,
             CurrentUserService currentUserService,
             ApplicationEventPublisher events,
             Clock clock,
             PlatformTransactionManager transactionManager) {
         this.errands = errands;
         this.messages = messages;
+        this.reads = reads;
         this.currentUserService = currentUserService;
         this.events = events;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
-    /** The conversation, oldest first, for the requester, the courier or an admin. */
+    /** The conversation, oldest first, with read positions, for the requester, the courier or an admin. */
     public ChatDto chat(UUID errandId) {
         var actor = currentUserService.requireCurrentUser();
         return transactions.execute(tx -> {
@@ -69,7 +75,10 @@ public class ChatService {
             var list = messages.findByErrandIdOrderBySentAtAscIdAsc(errandId).stream()
                     .map(ChatService::toDto)
                     .toList();
-            return new ChatDto(list);
+            var positions = reads.findByErrandId(errandId).stream()
+                    .map(read -> new ChatDto.Read(read.getUserId(), read.getLastReadAt()))
+                    .toList();
+            return new ChatDto(list, positions);
         });
     }
 
@@ -78,6 +87,38 @@ public class ChatService {
         UUID actor = currentUserService.requireCurrentUserId();
         String body = request.body().strip();
         return transactions.execute(tx -> post(errandId, request.id(), actor, body));
+    }
+
+    /**
+     * The reader has seen everything up to {@code messageId}. Only moves forward; the other person is told so their
+     * app can show "Seen". Reading your own messages changes nothing.
+     */
+    public void markRead(UUID errandId, UUID messageId) {
+        UUID actor = currentUserService.requireCurrentUserId();
+        transactions.executeWithoutResult(tx -> {
+            Errand errand = find(errandId);
+            if (!isParticipant(errand, actor))
+                throw new AccessDeniedException("Only the requester or courier can read this chat");
+            var message = messages.findById(messageId)
+                    .filter(found -> found.getErrandId().equals(errandId))
+                    .orElseThrow(() -> new OrderNotFoundException(errandId));
+            if (message.getSenderId().equals(actor)) return;
+            var key = new ErrandChatRead.Key(errandId, actor);
+            var read = reads.findById(key).orElse(null);
+            if (read != null && !read.getLastReadAt().isBefore(message.getSentAt())) return;
+            if (read == null) {
+                read = new ErrandChatRead();
+                read.setErrandId(errandId);
+                read.setUserId(actor);
+            }
+            read.setLastReadAt(message.getSentAt());
+            reads.saveAndFlush(read);
+            events.publishEvent(new ErrandChatReadEvent(
+                    UUID.randomUUID(),
+                    1,
+                    now(),
+                    new ErrandChatReadEvent.Payload(errandId, actor, participants(errand), message.getSentAt())));
+        });
     }
 
     /** Saves a message inside the caller's transaction, or returns the one already saved under this id. */

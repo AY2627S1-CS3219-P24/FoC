@@ -98,6 +98,12 @@ public class OrderController {
         return chatService.send(id, request);
     }
 
+    @PostMapping("/{id}/messages/read")
+    public ResponseEntity<Void> markRead(@PathVariable UUID id, @Valid @RequestBody MarkReadRequest request) {
+        chatService.markRead(id, request.messageId());
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/complete")
     public ErrandActionResponse complete(@PathVariable UUID id) {
         return orderService.complete(id);
