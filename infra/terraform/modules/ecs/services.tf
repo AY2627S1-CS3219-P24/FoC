@@ -60,7 +60,18 @@ locals {
     for name, service in var.services : name => { MAIL_FROM = var.mail_from } if service.mail
   }
 
+  ai_environment = {
+    for name, service in var.services : name => merge(
+      { FOC_ORDER_AI_ENABLED = tostring(service.ai_enabled) },
+      { for key, value in {
+        FOC_ORDER_AI_MODEL               = service.ai_model
+        FOC_ORDER_AI_TRANSCRIPTION_MODEL = service.ai_transcription_model
+      } : key => value if value != null }
+    ) if name == "order"
+  }
+
   capability_environments = [
+    local.ai_environment,
     local.database_environment,
     local.publisher_environment,
     local.consumer_environment,
@@ -89,7 +100,13 @@ locals {
     } if service.mail
   }
 
-  capability_secrets = [local.database_secrets, local.mail_secrets]
+  ai_secrets = {
+    for name, service in var.services : name => {
+      OPENAI_API_KEY = "${local.parameter_arn}-openai-api-key"
+    } if name == "order" && service.ai_enabled
+  }
+
+  capability_secrets = [local.database_secrets, local.mail_secrets, local.ai_secrets]
 
   service_secrets = {
     for name, service in var.services : name => merge(
