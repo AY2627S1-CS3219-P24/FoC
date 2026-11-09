@@ -36,7 +36,7 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
     CreditReservationService reservations;
 
     @Autowired
-    CreditSettlementService settlement;
+    CreditRefundService refund;
 
     @Autowired
     JdbcTemplate sql;
@@ -129,8 +129,7 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
         var rolledBack = cancelled(owner, 10);
         sql.execute("ALTER TABLE event_publication ADD CONSTRAINT fail_publication CHECK(FALSE) NOT VALID");
         try {
-            assertThatThrownBy(() -> settlement.releaseReservedCredits(rolledBack))
-                    .isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> refund.releaseReservedCredits(rolledBack)).isInstanceOf(RuntimeException.class);
             assertThat(creditAccountService.getBalance(owner).reservedBalance()).isEqualTo(10);
             assertThat(sql.queryForObject(
                             "SELECT count(*) FROM credit_transaction_log WHERE operation_id=?",
@@ -162,13 +161,19 @@ class SettlementMessagingTests extends AbstractIntegrationTest {
                                                 .path("operationId")
                                                 .asText()
                                                 .equals(operationId.toString())
-                                        && !event.path("eventId").asText().equals(String.valueOf(previousResultId)))
+                                        && !event.path("eventId").asText().equals(String.valueOf(previousResultId))) {
+                                    assertThat(message.messageAttributes()
+                                                    .get("eventType")
+                                                    .stringValue())
+                                            .isEqualTo(CreditPaidEvent.TYPE);
                                     return event;
+                                }
                             }
                             return null;
                         },
                         Objects::nonNull);
-        assertThat(result.get("payload").get("outcome").asText()).isEqualTo("PAID");
+        assertThat(result.get("payload").has("outcome")).isFalse();
+        assertThat(result.get("payload").get("courierId").asText()).isNotBlank();
         return UUID.fromString(result.get("eventId").asText());
     }
 

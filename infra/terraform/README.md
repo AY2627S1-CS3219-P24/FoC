@@ -292,7 +292,8 @@ non-TLS access. Failed messages move to the DLQ after five receives.
 
 `event_subscriptions` in `terraform.tfvars` selects the event types. Production
 routes `UserCreatedEvent` from User to Credit, errand completion, cancellation,
-and expiry from Order to Credit, and `CreditSettlementResultEvent` from Credit
+and expiry from Order to Credit, and `CreditPaidEvent`, `CreditPaymentDeclinedEvent`, `CreditRefundedEvent`, and
+`CreditRefundDeclinedEvent` from Credit
 to Order. Subscriptions deliver raw JSON.
 
 Copy `deployment.topics` and `deployment.queue_names` into the topic and queue

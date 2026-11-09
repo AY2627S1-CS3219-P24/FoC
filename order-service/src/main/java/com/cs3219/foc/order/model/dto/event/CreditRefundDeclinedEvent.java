@@ -7,19 +7,17 @@ import jakarta.validation.constraints.Positive;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record CreditSettlementResultEvent(
+public record CreditRefundDeclinedEvent(
         @NotNull UUID eventId,
         int schemaVersion,
         @NotNull OffsetDateTime occurredAt,
         @NotNull @Valid Payload payload) {
-    public static final String TYPE = "CreditSettlementResultEvent";
+    public static final String TYPE = "CreditRefundDeclinedEvent";
 
     public record Payload(
             @NotNull UUID operationId,
             @NotNull UUID errandId,
             @NotNull UUID requesterId,
             @Positive long amount,
-            @NotBlank String outcome,
-            @NotBlank String settlementType,
-            UUID courierId) {}
+            @NotBlank String reason) {}
 }
