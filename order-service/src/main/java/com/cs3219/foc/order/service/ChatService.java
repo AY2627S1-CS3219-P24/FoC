@@ -39,8 +39,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Chat between an errand's requester and courier. It opens when a courier accepts and closes when the requester
- * confirms receipt; the history stays readable afterwards. Messages are text or a photo. New messages and read
- * receipts are published as events, which the realtime service pushes to both people's browsers.
+ * confirms receipt; the history stays readable afterwards. Messages are text, a photo or a video. New messages and
+ * read receipts are published as events, which the realtime service pushes to both people's browsers.
  */
 @Service
 public class ChatService {
@@ -54,6 +54,7 @@ public class ChatService {
     private final ErrandChatReadRepository reads;
     private final CurrentUserService currentUserService;
     private final DeliveryPhotoProcessor photoProcessor;
+    private final ChatVideoValidator videoValidator;
     private final DeliveryPhotoStorage storage;
     private final DeliveryPhotoStorageProperties storageProperties;
     private final ApplicationEventPublisher events;
@@ -66,6 +67,7 @@ public class ChatService {
             ErrandChatReadRepository reads,
             CurrentUserService currentUserService,
             DeliveryPhotoProcessor photoProcessor,
+            ChatVideoValidator videoValidator,
             DeliveryPhotoStorage storage,
             DeliveryPhotoStorageProperties storageProperties,
             ApplicationEventPublisher events,
@@ -76,6 +78,7 @@ public class ChatService {
         this.reads = reads;
         this.currentUserService = currentUserService;
         this.photoProcessor = photoProcessor;
+        this.videoValidator = videoValidator;
         this.storage = storage;
         this.storageProperties = storageProperties;
         this.events = events;
@@ -110,8 +113,8 @@ public class ChatService {
     }
 
     /**
-     * Sends a photo (JPEG/PNG up to 5 MB, re-encoded without location data). The photo is checked and stored before
-     * the message is saved; if saving fails, it is removed again.
+     * Sends a photo (JPEG/PNG up to 5 MB, re-encoded without location data) or a video (MP4/MOV/WebM up to 20 MB).
+     * The file is checked and stored before the message is saved; if saving fails, the file is removed again.
      */
     public ErrandMessageDto sendAttachment(UUID errandId, UUID messageId, MultipartFile file) {
         UUID actor = currentUserService.requireCurrentUserId();
@@ -121,11 +124,27 @@ public class ChatService {
         // check before the slow work, wrong caller or closed chat will not store anything
         transactions.executeWithoutResult(tx -> requireCanSend(find(errandId), actor));
 
-        byte[] content = photoProcessor.toJpeg(file);
-        String key = "chat/%s/%s.jpg".formatted(errandId, UUID.randomUUID());
-        storage.put(key, content, "image/jpeg");
+        boolean video = file != null
+                && file.getContentType() != null
+                && file.getContentType().startsWith("video/");
+        byte[] content;
+        String contentType;
+        String extension;
+        if (video) {
+            var checked = videoValidator.read(file);
+            content = checked.bytes();
+            contentType = checked.contentType();
+            extension = checked.extension();
+        } else {
+            content = photoProcessor.toJpeg(file);
+            contentType = "image/jpeg";
+            extension = "jpg";
+        }
+        String key = "chat/%s/%s.%s".formatted(errandId, UUID.randomUUID(), extension);
+        storage.put(key, content, contentType);
         try {
-            var message = transactions.execute(tx -> post(errandId, messageId, actor, null, key, AttachmentType.IMAGE));
+            var type = video ? AttachmentType.VIDEO : AttachmentType.IMAGE;
+            var message = transactions.execute(tx -> post(errandId, messageId, actor, null, key, type));
             if (!key.equals(messageKey(message))) discard(key); // a retry that was already saved
             return message;
         } catch (RuntimeException exception) {

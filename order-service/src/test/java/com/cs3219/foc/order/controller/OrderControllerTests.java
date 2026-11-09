@@ -359,7 +359,7 @@ class OrderControllerTests {
     }
 
     @Test
-    void photosAndReadReceiptsHaveTheirOwnEndpoints() throws Exception {
+    void photosVideosAndReadReceiptsHaveTheirOwnEndpoints() throws Exception {
         var messageId = UUID.randomUUID();
         var photo = new ErrandMessageDto(
                 messageId,

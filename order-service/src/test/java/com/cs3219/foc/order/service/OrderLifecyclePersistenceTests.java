@@ -1200,8 +1200,15 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         return new MockMultipartFile("file", name, type, content);
     }
 
+    // The first bytes of an MP4 or MOV file: a box size, "ftyp", then the brand.
+    private static byte[] mp4(String brand) {
+        var bytes = Arrays.copyOf(new byte[] {0, 0, 0, 32, 'f', 't', 'y', 'p'}, 64);
+        for (int i = 0; i < 4; i++) bytes[8 + i] = (byte) brand.charAt(i);
+        return bytes;
+    }
+
     @Test
-    void photosCanBeSentAndAreStoredPrivately() {
+    void photosAndVideosCanBeSentAndAreStoredPrivately() {
         var id = open();
         var courier = acceptedChat(id);
         as(courier);
@@ -1214,23 +1221,35 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         verify(photoStorage).put(stored.capture(), eq(new byte[] {1, 2, 3}), eq("image/jpeg"));
         assertThat(stored.getValue()).startsWith("chat/" + id + "/").endsWith(".jpg");
 
+        clock.time.set(START.plusSeconds(20));
+        var video = chat.sendAttachment(id, UUID.randomUUID(), file("clip.mov", "video/quicktime", mp4("qt  ")));
+        assertThat(video.attachment().type()).isEqualTo("VIDEO");
+        verify(photoStorage).put(argThat(key -> key.endsWith(".mov")), any(), eq("video/quicktime"));
+        chat.sendAttachment(id, UUID.randomUUID(), file("clip.mp4", "video/mp4", mp4("isom")));
+        verify(photoStorage).put(argThat(key -> key.endsWith(".mp4")), any(), eq("video/mp4"));
+
         // The other person is told what kind of file arrived; the link is fetched with the chat.
         var announced = facts.events.stream()
                 .filter(ErrandMessagePostedEvent.class::isInstance)
                 .map(event -> ((ErrandMessagePostedEvent) event).payload().attachmentType())
                 .toList();
-        assertThat(announced).containsExactly("IMAGE");
+        assertThat(announced).containsExactly("IMAGE", "VIDEO", "VIDEO");
         as(requester);
         assertThat(chat.chat(id).messages())
                 .extracting(message -> message.attachment().type())
-                .containsExactly("IMAGE");
+                .containsExactly("IMAGE", "VIDEO", "VIDEO");
     }
 
     @Test
-    void strangersAreRefusedAndLateFilesRemoved() {
+    void unsupportedFilesAndStrangersAreRefusedAndLateFilesRemoved() {
         var id = open();
         var courier = acceptedChat(id);
         as(courier);
+        // Not a real video, whatever its name says.
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("x.mp4", "video/mp4", new byte[64])))
+                .isInstanceOfSatisfying(
+                        DeliveryPhotoException.class,
+                        e -> assertThat(e.getStatus().value()).isEqualTo(415));
         as(UUID.randomUUID());
         assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
                 .isInstanceOf(AccessDeniedException.class);
@@ -1368,6 +1387,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         OrderService.class,
         DeliveryService.class,
         ChatService.class,
+        ChatVideoValidator.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

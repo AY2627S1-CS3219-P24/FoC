@@ -2,7 +2,7 @@ package com.cs3219.foc.order.infrastructure.storage;
 
 import java.time.Duration;
 
-// private file storage: delivery photos and chat photos
+// private file storage: delivery photos and chat photos and videos
 public interface DeliveryPhotoStorage {
     void put(String key, byte[] content, String contentType);
 

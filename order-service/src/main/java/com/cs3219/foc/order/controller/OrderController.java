@@ -98,7 +98,7 @@ public class OrderController {
         return chatService.send(id, request);
     }
 
-    // A photo message: multi parts, code id + file
+    // A photo or video message: multi parts, code id + file
     @PostMapping(path = "/{id}/messages/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ErrandMessageDto sendAttachment(
             @PathVariable UUID id, @RequestParam("id") UUID messageId, @RequestPart("file") MultipartFile file) {

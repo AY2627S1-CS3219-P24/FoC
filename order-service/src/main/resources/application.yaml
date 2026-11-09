@@ -36,8 +36,9 @@ spring:
       enabled: true
   servlet:
     multipart:
-      # Up to 5 delivery photos of 5 MB each in one submission
-      max-file-size: 5MB
+      # Photos up to 5 MB, chat videos up to 20 MB,
+      # and up to 5 delivery photos in one submission
+      max-file-size: 20MB
       max-request-size: 26MB
   security:
     oauth2:

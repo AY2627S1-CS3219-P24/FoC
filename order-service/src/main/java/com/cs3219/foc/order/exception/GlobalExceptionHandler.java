@@ -50,7 +50,7 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> uploadTooLarge(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(new ErrorResponse(
-                        "DELIVERY_PHOTO_INVALID", "Each photo must be at most 5 MB, and at most 5 photos"));
+                        "DELIVERY_PHOTO_INVALID", "The file is too large: photos up to 5 MB, videos up to 20 MB"));
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
