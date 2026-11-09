@@ -50,7 +50,8 @@ export type ErrandMessage = {
   sentAt: string
 }
 // the conversation, oldest first
-export type Chat = { messages: Array<ErrandMessage> }
+export type ChatRead = { userId: string; lastReadAt: string }
+export type Chat = { messages: Array<ErrandMessage>; reads: Array<ChatRead> }
 export const MAX_MESSAGE_LENGTH = 1000
 export type OrderErrorResponse = {
   code: string

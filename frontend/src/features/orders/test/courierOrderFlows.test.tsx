@@ -30,7 +30,7 @@ vi.mock('#/lib/realtime', () => ({
 }))
 vi.mock('../api/orders.api', async (original) => ({
   ...(await original<typeof OrdersApi>()),
-  getChat: vi.fn(async () => ({ messages: [] })),
+  getChat: vi.fn(async () => ({ messages: [], reads: [] })),
 }))
 vi.mock('#/features/credits/api/credits.api', () => ({
   getCreditBalance: vi.fn(async () => ({

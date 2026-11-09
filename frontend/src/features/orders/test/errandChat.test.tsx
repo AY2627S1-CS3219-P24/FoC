@@ -7,15 +7,16 @@ import { connectRealtime } from '#/lib/realtime'
 import * as api from '../api/orders.api'
 import { ErrandChat, timeLabel } from '../components/ErrandChat/ErrandChat'
 import { orderFixture } from './orderFixtures'
-import type { Errand, ErrandMessage } from '../types/errand.types'
+import type { Chat, Errand, ErrandMessage } from '../types/errand.types'
 
 vi.mock('#/lib/realtime', () => ({ connectRealtime: vi.fn() }))
 vi.mock('../api/orders.api', () => ({
   getChat: vi.fn(),
   sendMessage: vi.fn(),
+  markChatRead: vi.fn(),
 }))
 
-// tests trigger its events directly
+// tests trigger the events directly
 const handlers = new Map<string, (payload?: unknown) => void>()
 const socket = {
   on: vi.fn((event: string, handler: (payload?: unknown) => void) =>
@@ -32,7 +33,6 @@ const accepted = (overrides: Partial<Errand> = {}) =>
     courier: { id: 'courier', name: 'Sam' },
     ...overrides,
   })
-// Times are minutes after 08:00 UTC (4 pm in Singapore) on 1 Jan 2030.
 const at = (minute: number) =>
   new Date(Date.UTC(2030, 0, 1, 8, minute)).toISOString()
 const message = (
@@ -47,7 +47,10 @@ const message = (
   body,
   sentAt: at(minute),
 })
-const chat = (messages: Array<ErrandMessage>) => ({ messages })
+const chat = (messages: Array<ErrandMessage>, reads: Chat['reads'] = []) => ({
+  messages,
+  reads,
+})
 const signIn = (userId: string, roles = ['USER']) =>
   setAccessToken(
     `header.${btoa(JSON.stringify({ sub: userId, roles }))}.signature`,
@@ -70,6 +73,8 @@ beforeEach(() => {
   vi.mocked(api.getChat).mockResolvedValue(
     chat([message('m1', 'courier', 'On my way to the cafe', 1)]),
   )
+  vi.mocked(api.markChatRead).mockResolvedValue()
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true) // chat is focused
   signIn('requester')
 })
 afterEach(() => {
@@ -117,7 +122,7 @@ it('shows a time label only at the start and after a quiet gap', async () => {
     at(0),
     at(20),
   ])
-  // The sender's name is shown once per group, not on every message.
+  // sender name is shown once per group (the time group)
   expect(screen.getAllByText('Sam')).toHaveLength(2)
 })
 
@@ -163,6 +168,84 @@ it('shows messages pushed by the realtime service, once each', async () => {
   await screen.findByText('Queue is long')
   expect(screen.getAllByText('Queue is long')).toHaveLength(1)
   expect(screen.queryByText('Wrong chat')).not.toBeInTheDocument()
+})
+
+it('tells the other person what has been seen, and shows Seen on mine', async () => {
+  vi.mocked(api.getChat).mockResolvedValue(
+    chat([
+      message('m1', 'courier', 'On my way', 1),
+      message('m2', 'requester', 'Less ice please', 2),
+      message('m3', 'requester', 'And a straw', 3),
+    ]),
+  )
+  setup(accepted())
+  // mark the latest msg as read
+  await vi.waitFor(() =>
+    expect(api.markChatRead).toHaveBeenCalledExactlyOnceWith(
+      accepted().id,
+      'm1',
+    ),
+  )
+  expect(screen.queryByText('Seen')).not.toBeInTheDocument()
+
+  // move the "seen" to the place of the lastest msg
+  push('errand.read', {
+    errandId: accepted().id,
+    readerId: 'courier',
+    lastReadAt: at(2),
+  })
+  const seen = await screen.findByText('Seen')
+  expect(seen.closest('[data-mine]')).toHaveTextContent('Less ice please')
+  push('errand.read', {
+    errandId: accepted().id,
+    readerId: 'courier',
+    lastReadAt: at(3),
+  })
+  await vi.waitFor(() =>
+    expect(screen.getByText('Seen').closest('[data-mine]')).toHaveTextContent(
+      'And a straw',
+    ),
+  )
+  expect(api.markChatRead).toHaveBeenCalledOnce()
+})
+
+it('only counts messages as seen while the chat is really being looked at', async () => {
+  vi.mocked(document.hasFocus).mockReturnValue(false)
+  let reportVisibility!: (onScreen: boolean) => void
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(
+        callback: (entries: Array<{ isIntersecting: boolean }>) => void,
+      ) {
+        reportVisibility = (onScreen) =>
+          callback([{ isIntersecting: onScreen }])
+      }
+      observe() {}
+      disconnect() {}
+    },
+  )
+  setup(accepted())
+  await screen.findByText('On my way to the cafe')
+  expect(api.markChatRead).not.toHaveBeenCalled()
+
+  // back to the window, but the chat is scrolled out of view
+  act(() => reportVisibility(false))
+  vi.mocked(document.hasFocus).mockReturnValue(true)
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+  expect(api.markChatRead).not.toHaveBeenCalled()
+
+  // scroll the chat to the view
+  act(() => reportVisibility(true))
+  await vi.waitFor(() =>
+    expect(api.markChatRead).toHaveBeenCalledExactlyOnceWith(
+      accepted().id,
+      'm1',
+    ),
+  )
+  vi.unstubAllGlobals()
 })
 
 it('keeps a failed message with a Retry that resends the same message', async () => {
@@ -223,6 +306,7 @@ it('lets admins read the conversation without joining it', async () => {
     screen.queryByRole('textbox', { name: 'Message' }),
   ).not.toBeInTheDocument()
   expect(connectRealtime).not.toHaveBeenCalled()
+  expect(api.markChatRead).not.toHaveBeenCalled()
 })
 
 it('stays hidden until a courier has accepted', () => {

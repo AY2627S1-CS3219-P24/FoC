@@ -1,20 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { connectRealtime } from '#/lib/realtime'
-import { getChat, sendMessage } from '../api/orders.api'
+import { getChat, markChatRead, sendMessage } from '../api/orders.api'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { chatIsOpen } from '../utils/orderPermissions'
-import type { Chat, Errand, ErrandMessage } from '../types/errand.types'
+import type {
+  Chat,
+  ChatRead,
+  Errand,
+  ErrandMessage,
+} from '../types/errand.types'
 
-// add messages to the cached conversation and oldest first
+type PushedRead = { errandId: string; readerId: string; lastReadAt: string }
+
+// The newest item that matches
+export const lastWhere = <T>(items: Array<T>, test: (item: T) => boolean) => {
+  for (let index = items.length - 1; index >= 0; index--)
+    if (test(items[index])) return items[index]
+  return undefined
+}
+
+// Adds messages to the cached conversation, once each, oldest first
 export const addMessages = (
   client: QueryClient,
   key: ReadonlyArray<unknown>,
   incoming: Array<ErrandMessage>,
 ) =>
-  client.setQueryData<Chat>(key, (chat = { messages: [] }) => {
+  client.setQueryData<Chat>(key, (chat = { messages: [], reads: [] }) => {
     const byId = new Map(chat.messages.map((message) => [message.id, message]))
     incoming.forEach((message) => byId.set(message.id, message))
     const messages = [...byId.values()].sort(
@@ -24,7 +38,57 @@ export const addMessages = (
     return { ...chat, messages }
   })
 
-export const useErrandChat = (order: Errand) => {
+// to move the read position forward
+const addRead = (
+  client: QueryClient,
+  key: ReadonlyArray<unknown>,
+  read: ChatRead,
+) =>
+  client.setQueryData<Chat>(key, (chat) => {
+    if (!chat) return chat
+    const current = chat.reads.find((item) => item.userId === read.userId)
+    if (
+      current &&
+      Date.parse(current.lastReadAt) >= Date.parse(read.lastReadAt)
+    )
+      return chat
+    return {
+      ...chat,
+      reads: [...chat.reads.filter((item) => item !== current), read],
+    }
+  })
+
+// only when both visible & focused then the messages will be count as seen
+export const useViewing = (element: HTMLElement | null) => {
+  const [onScreen, setOnScreen] = useState(true)
+  const [active, setActive] = useState(
+    () => document.visibilityState === 'visible' && document.hasFocus(),
+  )
+  useEffect(() => {
+    if (!element || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      ([entry]) => setOnScreen(entry.isIntersecting),
+      { threshold: 0.25 },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element])
+  useEffect(() => {
+    const update = () =>
+      setActive(document.visibilityState === 'visible' && document.hasFocus())
+    document.addEventListener('visibilitychange', update)
+    window.addEventListener('focus', update)
+    window.addEventListener('blur', update)
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      window.removeEventListener('focus', update)
+      window.removeEventListener('blur', update)
+    }
+  }, [])
+  return onScreen && active
+}
+
+export const useErrandChat = (order: Errand, viewing: boolean) => {
   const { userId, roles } = useSession()
   const client = useQueryClient()
   const participant =
@@ -35,14 +99,14 @@ export const useErrandChat = (order: Errand) => {
   const open = chatIsOpen(order)
   // pushed messages arrive through the realtime connection while it is open
   const live = participant && open
-  // null while connecting, false when it has failed for a few seconds
+  // null while connecting, false once it has failed for a few seconds
   const [connected, setConnected] = useState<boolean | null>(null)
 
   const chat = useQuery({
     queryKey: errandQueryKeys.messages(userId, order.id),
     queryFn: ({ signal }) => getChat(order.id, signal),
     enabled: readable && !!order.courier,
-    refetchInterval: open ? 30_000 : false,
+    refetchInterval: open ? 30_000 : false, // in case msg was missed
     refetchOnWindowFocus: 'always',
     retry: false,
   })
@@ -57,7 +121,11 @@ export const useErrandChat = (order: Errand) => {
     const onMessage = (message: ErrandMessage) => {
       if (message.errandId === order.id) addMessages(client, key, [message])
     }
-    // after re-connect or connect, catch up anything sent offline
+    const onRead = ({ errandId, readerId, lastReadAt }: PushedRead) => {
+      if (errandId === order.id)
+        addRead(client, key, { userId: readerId, lastReadAt })
+    }
+    // After re-connect or connect, catch anything sent offline
     const onConnect = () => {
       setConnected(true)
       refetch()
@@ -68,17 +136,46 @@ export const useErrandChat = (order: Errand) => {
       4_000,
     )
     socket.on('errand.message', onMessage)
+    socket.on('errand.read', onRead)
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
     return () => {
       clearTimeout(slow)
       socket.off('errand.message', onMessage)
+      socket.off('errand.read', onRead)
       socket.off('connect', onConnect)
       socket.off('disconnect', onDisconnect)
       controller.abort()
       setConnected(null)
     }
   }, [live, client, userId, order.id])
+
+  // tell the other person alr seen the message
+  const reported = useRef<string | null>(null)
+  const latestFromOther = participant
+    ? lastWhere(
+        chat.data?.messages ?? [],
+        (message) => message.senderId !== userId,
+      )
+    : undefined
+  const myRead = chat.data?.reads.find((read) => read.userId === userId)
+  const unread =
+    !!latestFromOther &&
+    (!myRead ||
+      Date.parse(myRead.lastReadAt) < Date.parse(latestFromOther.sentAt))
+  useEffect(() => {
+    if (!viewing || !unread || !userId) return
+    if (reported.current === latestFromOther.id) return
+    reported.current = latestFromOther.id
+    const key = errandQueryKeys.messages(userId, order.id)
+    markChatRead(order.id, latestFromOther.id)
+      .then(() =>
+        addRead(client, key, { userId, lastReadAt: latestFromOther.sentAt }),
+      )
+      .catch(() => {
+        reported.current = null
+      })
+  }, [viewing, unread, latestFromOther, userId, order.id, client])
 
   const key = errandQueryKeys.messages(userId, order.id)
   const send = useMutation({

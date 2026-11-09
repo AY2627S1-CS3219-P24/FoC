@@ -81,8 +81,9 @@ vi.mock('#/lib/realtime', () => ({
 }))
 vi.mock('../api/orders.api', () => ({
   getOrder: vi.fn(),
-  getChat: vi.fn(async () => ({ messages: [] })),
+  getChat: vi.fn(async () => ({ messages: [], reads: [] })),
   sendMessage: vi.fn(),
+  markChatRead: vi.fn(),
   getDeliveryPhotos: vi.fn(),
   deliverOrder: vi.fn(),
   listMyOrders: vi.fn(),

@@ -80,7 +80,7 @@ export const getDeliveryPhotos = async (id: string, signal?: AbortSignal) =>
 export const getChat = async (id: string, signal?: AbortSignal) =>
   (await axiosClient.get<Chat>(`/orders/${id}/messages`, { signal, timeout }))
     .data
-// the message id comes from the app, retry a send dont post it twice
+// The message id comes from the app, so retrying a send cannot post it twice
 export const sendMessage = async (
   id: string,
   message: { id: string; body: string },
@@ -90,3 +90,11 @@ export const sendMessage = async (
       timeout,
     })
   ).data
+// Everything up to this message has been seen
+export const markChatRead = async (id: string, messageId: string) => {
+  await axiosClient.post(
+    `/orders/${id}/messages/read`,
+    { messageId },
+    { timeout },
+  )
+}

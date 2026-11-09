@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { SendHorizontal } from 'lucide-react'
-import { useErrandChat } from '../../hooks/useErrandChat'
+import { lastWhere, useErrandChat, useViewing } from '../../hooks/useErrandChat'
 import { orderErrorMessage } from '../../utils/orderErrors'
 import { MAX_MESSAGE_LENGTH } from '../../types/errand.types'
 import type { Errand } from '../../types/errand.types'
@@ -42,10 +42,11 @@ export const timeLabel = (sentAt: string, now = new Date()) => {
 // Chat between the requester and the courier, open while the errand is in
 // progress and read-only once the requester confirms receipt.
 export const ErrandChat = ({ order }: { order: Errand }) => {
-  // The message list
+  // The message list, once shown; messages count as seen while it is in view.
   const [list, setList] = useState<HTMLOListElement | null>(null)
+  const viewing = useViewing(list)
   const { chat, send, userId, participant, readable, open, reconnecting } =
-    useErrandChat(order)
+    useErrandChat(order, viewing)
   const [text, setText] = useState('')
   const [outgoing, setOutgoing] = useState<Array<Outgoing>>([])
 
@@ -54,7 +55,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
   const waiting = outgoing.filter((message) => !sent.has(message.id))
   const count = confirmed.length + waiting.length
 
-  // Keep the newest message at bottom
+  // Keep the newest message in view.
   useEffect(() => {
     if (list) list.scrollTop = list.scrollHeight
   }, [list, count])
@@ -67,6 +68,18 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
     senderId === order.requester.id
       ? (order.requester.name ?? 'Requester')
       : (order.courier?.name ?? 'Courier')
+
+  // "Seen" goes under my latest message the other person has read.
+  const otherRead = chat.data?.reads.find((read) => read.userId === other.id)
+  const seenId =
+    participant && otherRead
+      ? lastWhere(
+          confirmed,
+          (message) =>
+            message.senderId === userId &&
+            Date.parse(message.sentAt) <= Date.parse(otherRead.lastReadAt),
+        )?.id
+      : undefined
 
   const update = (id: string, change: Partial<Outgoing>) =>
     setOutgoing((all) =>
@@ -96,7 +109,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
     setText('')
     queue({ id: crypto.randomUUID(), body })
   }
-  // One list in time order, with a time label wherever a gap starts
+  // One list in time order, with a time label wherever a gap starts.
   const rows = [
     ...confirmed.map((message) => ({
       ...message,
@@ -187,7 +200,11 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
                     ) : (
                       <span className={styles.status}>Sending…</span>
                     )
-                  ) : null}
+                  ) : (
+                    row.id === seenId && (
+                      <span className={styles.status}>Seen</span>
+                    )
+                  )}
                 </div>
               </li>
             )
