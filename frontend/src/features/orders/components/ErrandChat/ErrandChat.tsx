@@ -4,10 +4,10 @@ import { Paperclip, SendHorizontal } from 'lucide-react'
 import { lastWhere, useErrandChat, useViewing } from '../../hooks/useErrandChat'
 import { orderErrorMessage } from '../../utils/orderErrors'
 import { MAX_MESSAGE_LENGTH } from '../../types/errand.types'
-import type { Errand } from '../../types/errand.types'
+import type { ChatAttachment, Errand } from '../../types/errand.types'
 import styles from './ErrandChat.module.scss'
 
-// sending msg
+// a sending msg
 type Outgoing = {
   id: string
   body: string | null
@@ -18,6 +18,7 @@ type Outgoing = {
 }
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png']
+const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm']
 const MB = 1024 * 1024
 // A time label appears before the first message and after a quiet gap.
 const GAP_MS = 5 * 60_000
@@ -46,14 +47,25 @@ export const timeLabel = (sentAt: string, now = new Date()) => {
 const fileProblem = (file: File) => {
   if (IMAGE_TYPES.includes(file.type))
     return file.size > 5 * MB ? 'Photos can be up to 5 MB.' : null
-  return 'Send a JPEG or PNG photo.'
+  if (VIDEO_TYPES.includes(file.type))
+    return file.size > 20 * MB ? 'Videos can be up to 20 MB.' : null
+  return 'Send a JPEG or PNG photo, or an MP4, MOV or WebM video.'
 }
 
-const Photo = ({ url }: { url: string }) => (
-  <a className={styles.mediaLink} href={url} target="_blank" rel="noreferrer">
-    <img className={styles.media} src={url} alt="Photo" />
-  </a>
-)
+const Media = ({ type, url }: { type: ChatAttachment['type']; url: string }) =>
+  type === 'VIDEO' ? (
+    <video
+      className={styles.media}
+      src={url}
+      controls
+      preload="metadata"
+      aria-label="Video"
+    />
+  ) : (
+    <a className={styles.mediaLink} href={url} target="_blank" rel="noreferrer">
+      <img className={styles.media} src={url} alt="Photo" />
+    </a>
+  )
 
 // Chat between the requester and the courier, open while the errand is in
 // progress and read-only once the requester confirms receipt.
@@ -85,7 +97,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
   useEffect(() => {
     if (list) list.scrollTop = list.scrollHeight
   }, [list, count])
-  // after send the msg, free the photos previews
+  // Free the device previews of photos and videos that have been sent.
   useEffect(() => {
     outgoing
       .filter((message) => message.preview && sent.has(message.id))
@@ -102,7 +114,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
       ? (order.requester.name ?? 'Requester')
       : (order.courier?.name ?? 'Courier')
 
-  // to display "Seen" under my latest message after the other person read
+  // "Seen" goes under my latest message the other person has read.
   const otherRead = chat.data?.reads.find((read) => read.userId === other.id)
   const seenId =
     participant && otherRead
@@ -159,7 +171,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
       )
   }
 
-  // One list in time order, with a time label wherever a gap starts
+  // One list in time order, with a time label wherever a gap starts.
   const rows = [
     ...confirmed.map((message) => ({
       ...message,
@@ -171,7 +183,12 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
       senderId: userId!,
       body: message.body,
       attachment: message.file
-        ? { type: 'IMAGE' as const, url: message.preview! }
+        ? {
+            type: message.file.type.startsWith('video/')
+              ? ('VIDEO' as const)
+              : ('IMAGE' as const),
+            url: message.preview!,
+          }
         : null,
       at: message.queuedAt,
       pending: message,
@@ -237,7 +254,12 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
                       {nameOf(row.senderId)}
                     </span>
                   )}
-                  {row.attachment && <Photo url={row.attachment.url} />}
+                  {row.attachment && (
+                    <Media
+                      type={row.attachment.type}
+                      url={row.attachment.url}
+                    />
+                  )}
                   {row.body && <p className={styles.bubble}>{row.body}</p>}
                   {row.pending ? (
                     row.pending.failed ? (
@@ -277,7 +299,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
           <button
             type="button"
             className={styles.attach}
-            aria-label="Send a photo"
+            aria-label="Send a photo or video"
             onClick={() => fileRef.current?.click()}
           >
             <Paperclip size={18} aria-hidden="true" />
@@ -285,10 +307,10 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
           <input
             ref={fileRef}
             type="file"
-            accept={IMAGE_TYPES.join(',')}
+            accept={[...IMAGE_TYPES, ...VIDEO_TYPES].join(',')}
             multiple
             hidden
-            aria-label="Photo"
+            aria-label="Photo or video"
             onChange={(event) => {
               attach(Array.from(event.target.files ?? []))
               event.target.value = ''

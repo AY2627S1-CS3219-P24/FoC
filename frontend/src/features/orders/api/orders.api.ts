@@ -90,7 +90,7 @@ export const sendMessage = async (
       timeout,
     })
   ).data
-// for the photo to sent (JPEG / JPG, 5MB)
+// A photo (JPEG/PNG up to 5 MB) or video (MP4/MOV/WebM up to 20 MB)
 export const sendChatFile = async (
   id: string,
   messageId: string,

@@ -176,7 +176,7 @@ it('shows messages pushed by the realtime service, once each', async () => {
   expect(screen.getAllByText('Queue is long')).toHaveLength(1)
   expect(screen.queryByText('Wrong chat')).not.toBeInTheDocument()
 
-  // when the pushed photo has no link, fetch the conversation again
+  // A pushed photo has no link yet, so the conversation is fetched again.
   vi.mocked(api.getChat).mockClear()
   push('errand.message', {
     ...pushed,
@@ -265,7 +265,7 @@ it('only counts messages as seen while the chat is really being looked at', asyn
   vi.unstubAllGlobals()
 })
 
-it('sends photos, previewing them while they upload', async () => {
+it('sends photos and videos, previewing them while they upload', async () => {
   let finish!: (value: ErrandMessage) => void
   vi.mocked(api.sendChatFile).mockImplementation(
     (_errand, id) =>
@@ -282,16 +282,16 @@ it('sends photos, previewing them while they upload', async () => {
   )
   const { user } = setup(accepted())
   await screen.findByText('On my way to the cafe')
-  const input = screen.getByLabelText('Photo')
+  const input = screen.getByLabelText('Photo or video')
 
   // Too big, or not a supported type: refused before uploading
   await user.upload(
     input,
-    new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.png', {
-      type: 'image/png',
+    new File([new Uint8Array(20 * 1024 * 1024 + 1)], 'long.mp4', {
+      type: 'video/mp4',
     }),
   )
-  expect(screen.getByText('Photos can be up to 5 MB.')).toBeInTheDocument()
+  expect(screen.getByText('Videos can be up to 20 MB.')).toBeInTheDocument()
   expect(api.sendChatFile).not.toHaveBeenCalled()
 
   const photo = new File(['png'], 'photo.png', { type: 'image/png' })
@@ -314,6 +314,22 @@ it('sends photos, previewing them while they upload', async () => {
     ),
   )
   expect(screen.queryByText('Sending…')).not.toBeInTheDocument()
+})
+
+it('plays videos in the conversation', async () => {
+  vi.mocked(api.getChat).mockResolvedValue(
+    chat([
+      message('m1', 'courier', null, 1, {
+        type: 'VIDEO',
+        url: 'https://files.test/clip.mp4',
+        expiresAt: '2099-01-01T00:00:00Z',
+      }),
+    ]),
+  )
+  setup(accepted())
+  const video = await screen.findByLabelText('Video')
+  expect(video).toHaveAttribute('src', 'https://files.test/clip.mp4')
+  expect(video).toHaveAttribute('controls')
 })
 
 it('keeps a failed message with a Retry that resends the same message', async () => {

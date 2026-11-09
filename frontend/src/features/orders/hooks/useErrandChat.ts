@@ -18,9 +18,9 @@ import type {
   ErrandMessage,
 } from '../types/errand.types'
 
-// What the realtime service pushes, the file link is fetched with the chat
+// what the realtime service pushes, the file's link is fetched with the chat
 export type PushedMessage = Omit<ErrandMessage, 'attachment'> & {
-  attachmentType: 'IMAGE' | null
+  attachmentType: 'IMAGE' | 'VIDEO' | null
 }
 type PushedRead = { errandId: string; readerId: string; lastReadAt: string }
 
