@@ -8,11 +8,16 @@ import java.util.UUID;
 public record ErrandMessagePostedEvent(UUID eventId, int schemaVersion, OffsetDateTime occurredAt, Payload payload) {
     public static final String TYPE = "ErrandMessagePostedEvent";
 
+    /**
+     * {@code body} is null if a photo with no text. {@code attachmentType} is IMAGE or null;
+     * the photo's link is not included, cause it will expire, apps fetch the conversation to show it
+     */
     public record Payload(
             UUID messageId,
             UUID errandId,
             UUID senderId,
             List<UUID> recipientIds,
             String body,
+            String attachmentType,
             OffsetDateTime sentAt) {}
 }

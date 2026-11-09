@@ -1150,7 +1150,13 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         assertThat(posted).hasSize(2);
         assertThat(posted.getFirst().payload())
                 .isEqualTo(new ErrandMessagePostedEvent.Payload(
-                        first.id(), id, requester, List.of(requester, courier), "Less ice please", first.sentAt()));
+                        first.id(),
+                        id,
+                        requester,
+                        List.of(requester, courier),
+                        "Less ice please",
+                        null,
+                        first.sentAt()));
 
         // Still open while the item is on the way and after delivery.
         as(courier);
@@ -1188,6 +1194,77 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         as(courier);
         service.accept(id);
         return courier;
+    }
+
+    private static MockMultipartFile file(String name, String type, byte[] content) {
+        return new MockMultipartFile("file", name, type, content);
+    }
+
+    @Test
+    void photosCanBeSentAndAreStoredPrivately() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(courier);
+        clock.time.set(START.plusSeconds(10));
+        var photo = chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9}));
+        assertThat(photo.body()).isNull();
+        assertThat(photo.attachment().type()).isEqualTo("IMAGE");
+        assertThat(photo.attachment().url()).isEqualTo("https://photos.test/handover.jpg");
+        var stored = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage).put(stored.capture(), eq(new byte[] {1, 2, 3}), eq("image/jpeg"));
+        assertThat(stored.getValue()).startsWith("chat/" + id + "/").endsWith(".jpg");
+
+        // The other person is told what kind of file arrived; the link is fetched with the chat.
+        var announced = facts.events.stream()
+                .filter(ErrandMessagePostedEvent.class::isInstance)
+                .map(event -> ((ErrandMessagePostedEvent) event).payload().attachmentType())
+                .toList();
+        assertThat(announced).containsExactly("IMAGE");
+        as(requester);
+        assertThat(chat.chat(id).messages())
+                .extracting(message -> message.attachment().type())
+                .containsExactly("IMAGE");
+    }
+
+    @Test
+    void strangersAreRefusedAndLateFilesRemoved() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(courier);
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(photoStorage, never()).put(any(), any(), any());
+
+        // The errand closes while the file uploads: the message is refused and the file removed again.
+        as(courier);
+        doAnswer(call -> jdbc.update("UPDATE errands SET status='CANCELLED' WHERE id=?", id))
+                .when(photoStorage)
+                .put(any(), any(), any());
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(OrderConflictException.class);
+        var stored = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage).put(stored.capture(), any(), any());
+        verify(photoStorage).delete(stored.getValue());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM errand_messages", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void afterConfirmationNoFilesCanBeSent() {
+        var id = open();
+        var courier = acceptedChat(id);
+        // After confirmation nothing more can be sent.
+        as(courier);
+        service.pickUp(id);
+        deliver(id);
+        as(requester);
+        service.complete(id);
+        as(courier);
+        clearInvocations(photoStorage);
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(OrderConflictException.class);
+        verify(photoStorage, never()).put(any(), any(), any());
     }
 
     @Test

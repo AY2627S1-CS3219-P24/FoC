@@ -329,7 +329,7 @@ class OrderControllerTests {
         var messageId = UUID.randomUUID();
         var sender = UUID.randomUUID();
         var sentAt = OffsetDateTime.parse("2030-01-01T00:10Z");
-        var message = new ErrandMessageDto(messageId, id, sender, "On my way", sentAt);
+        var message = new ErrandMessageDto(messageId, id, sender, "On my way", null, sentAt);
         when(chat.chat(id)).thenReturn(new ChatDto(List.of(message), List.of(new ChatDto.Read(sender, sentAt))));
         mvc.perform(get("/orders/" + id + "/messages").with(jwt()))
                 .andExpect(status().isOk())
@@ -359,8 +359,25 @@ class OrderControllerTests {
     }
 
     @Test
-    void readReceiptsHaveTheirOwnEndpoint() throws Exception {
+    void photosAndReadReceiptsHaveTheirOwnEndpoints() throws Exception {
         var messageId = UUID.randomUUID();
+        var photo = new ErrandMessageDto(
+                messageId,
+                id,
+                UUID.randomUUID(),
+                null,
+                new ErrandMessageDto.Attachment(
+                        "IMAGE", "https://photos.test/a.jpg", OffsetDateTime.parse("2030-01-01T00:20Z")),
+                OffsetDateTime.parse("2030-01-01T00:10Z"));
+        when(chat.sendAttachment(eq(id), eq(messageId), any())).thenReturn(photo);
+        mvc.perform(multipart("/orders/" + id + "/messages/attachments")
+                        .file(new MockMultipartFile("file", "a.png", "image/png", new byte[] {1}))
+                        .param("id", messageId.toString())
+                        .with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attachment.type").value("IMAGE"))
+                .andExpect(jsonPath("$.body").doesNotExist());
+
         mvc.perform(post("/orders/" + id + "/messages/read")
                         .with(jwt())
                         .contentType(MediaType.APPLICATION_JSON)

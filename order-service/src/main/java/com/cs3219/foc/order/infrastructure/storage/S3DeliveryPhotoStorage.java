@@ -23,18 +23,17 @@ public class S3DeliveryPhotoStorage implements DeliveryPhotoStorage {
     private final DeliveryPhotoStorageProperties properties;
 
     @Override
-    public void putJpeg(String key, byte[] jpeg) {
+    public void put(String key, byte[] content, String contentType) {
         try {
             s3Client.putObject(
                     PutObjectRequest.builder()
                             .bucket(properties.bucket())
                             .key(key)
-                            .contentType("image/jpeg")
+                            .contentType(contentType)
                             .build(),
-                    RequestBody.fromBytes(jpeg));
+                    RequestBody.fromBytes(content));
         } catch (SdkException exception) {
-            throw new DeliveryPhotoException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "The delivery photo could not be saved", exception);
+            throw new DeliveryPhotoException(HttpStatus.SERVICE_UNAVAILABLE, "The file could not be saved", exception);
         }
     }
 
@@ -52,8 +51,7 @@ public class S3DeliveryPhotoStorage implements DeliveryPhotoStorage {
                     .url()
                     .toString();
         } catch (SdkException exception) {
-            throw new DeliveryPhotoException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "The delivery photo is unavailable", exception);
+            throw new DeliveryPhotoException(HttpStatus.SERVICE_UNAVAILABLE, "The file is unavailable", exception);
         }
     }
 
@@ -66,7 +64,7 @@ public class S3DeliveryPhotoStorage implements DeliveryPhotoStorage {
                     .build());
         } catch (SdkException exception) {
             throw new DeliveryPhotoException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "The delivery photo could not be removed", exception);
+                    HttpStatus.SERVICE_UNAVAILABLE, "The file could not be removed", exception);
         }
     }
 }

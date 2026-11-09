@@ -98,6 +98,13 @@ public class OrderController {
         return chatService.send(id, request);
     }
 
+    // A photo message: multi parts, code id + file
+    @PostMapping(path = "/{id}/messages/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ErrandMessageDto sendAttachment(
+            @PathVariable UUID id, @RequestParam("id") UUID messageId, @RequestPart("file") MultipartFile file) {
+        return chatService.sendAttachment(id, messageId, file);
+    }
+
     @PostMapping("/{id}/messages/read")
     public ResponseEntity<Void> markRead(@PathVariable UUID id, @Valid @RequestBody MarkReadRequest request) {
         chatService.markRead(id, request.messageId());

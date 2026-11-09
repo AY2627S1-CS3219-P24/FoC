@@ -74,6 +74,7 @@ class MessagingContractTests {
                         requesterId,
                         List.of(requesterId, courierId),
                         "Less ice please",
+                        null,
                         occurredAt));
         publisher.publish(event);
         var notification = ArgumentCaptor.forClass(SnsNotification.class);

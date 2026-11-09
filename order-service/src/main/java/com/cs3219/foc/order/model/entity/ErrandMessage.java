@@ -25,8 +25,17 @@ public class ErrandMessage {
     @Column(name = "sender_id", nullable = false)
     private UUID senderId;
 
-    @Column(nullable = false, length = 1000)
+    // The text; empty when the message is only a photo or video
+    @Column(length = 1000)
     private String body;
+
+    // 3 key of an attached photo or video
+    @Column(name = "attachment_key", length = 255)
+    private String attachmentKey;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "attachment_type", length = 10)
+    private AttachmentType attachmentType;
 
     @Column(name = "sent_at", nullable = false)
     private OffsetDateTime sentAt;
