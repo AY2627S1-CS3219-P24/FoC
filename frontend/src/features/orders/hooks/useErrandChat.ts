@@ -3,7 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { useSession } from '#/features/auth/hooks/useSession'
 import { connectRealtime } from '#/lib/realtime'
-import { getChat, markChatRead, sendMessage } from '../api/orders.api'
+import {
+  getChat,
+  markChatRead,
+  sendChatFile,
+  sendMessage,
+} from '../api/orders.api'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
 import { chatIsOpen } from '../utils/orderPermissions'
 import type {
@@ -13,6 +18,10 @@ import type {
   ErrandMessage,
 } from '../types/errand.types'
 
+// What the realtime service pushes, the file link is fetched with the chat
+export type PushedMessage = Omit<ErrandMessage, 'attachment'> & {
+  attachmentType: 'IMAGE' | null
+}
 type PushedRead = { errandId: string; readerId: string; lastReadAt: string }
 
 // The newest item that matches
@@ -22,6 +31,15 @@ export const lastWhere = <T>(items: Array<T>, test: (item: T) => boolean) => {
   return undefined
 }
 
+// Keep the valid photo link, so photos not reload each time
+// the conversation is fetched again
+const keepLink = (previous: ErrandMessage | undefined, next: ErrandMessage) =>
+  previous?.attachment &&
+  next.attachment &&
+  Date.parse(previous.attachment.expiresAt) - Date.now() > 2 * 60_000
+    ? { ...next, attachment: previous.attachment }
+    : next
+
 // Adds messages to the cached conversation, once each, oldest first
 export const addMessages = (
   client: QueryClient,
@@ -30,7 +48,9 @@ export const addMessages = (
 ) =>
   client.setQueryData<Chat>(key, (chat = { messages: [], reads: [] }) => {
     const byId = new Map(chat.messages.map((message) => [message.id, message]))
-    incoming.forEach((message) => byId.set(message.id, message))
+    incoming.forEach((message) =>
+      byId.set(message.id, keepLink(byId.get(message.id), message)),
+    )
     const messages = [...byId.values()].sort(
       (a, b) =>
         Date.parse(a.sentAt) - Date.parse(b.sentAt) || a.id.localeCompare(b.id),
@@ -118,8 +138,12 @@ export const useErrandChat = (order: Errand, viewing: boolean) => {
     const socket = connectRealtime(controller.signal)
     const refetch = () =>
       void client.invalidateQueries({ queryKey: key, exact: true })
-    const onMessage = (message: ErrandMessage) => {
-      if (message.errandId === order.id) addMessages(client, key, [message])
+    const onMessage = (message: PushedMessage) => {
+      if (message.errandId !== order.id) return
+      const { attachmentType, ...rest } = message
+      // A file's link comes with the conversation, so fetch it.
+      if (attachmentType) refetch()
+      else addMessages(client, key, [{ ...rest, attachment: null }])
     }
     const onRead = ({ errandId, readerId, lastReadAt }: PushedRead) => {
       if (errandId === order.id)
@@ -185,9 +209,18 @@ export const useErrandChat = (order: Errand, viewing: boolean) => {
       sendMessage(order.id, message),
     onSuccess: (message) => addMessages(client, key, [message]),
   })
+  const sendFile = useMutation({
+    networkMode: 'always',
+    retry: false,
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      sendChatFile(order.id, id, file),
+    onSuccess: (message) => addMessages(client, key, [message]),
+  })
+
   return {
     chat,
     send,
+    sendFile,
     userId,
     participant,
     readable,

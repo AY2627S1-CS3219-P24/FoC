@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@base-ui/react/button'
-import { SendHorizontal } from 'lucide-react'
+import { Paperclip, SendHorizontal } from 'lucide-react'
 import { lastWhere, useErrandChat, useViewing } from '../../hooks/useErrandChat'
 import { orderErrorMessage } from '../../utils/orderErrors'
 import { MAX_MESSAGE_LENGTH } from '../../types/errand.types'
 import type { Errand } from '../../types/errand.types'
 import styles from './ErrandChat.module.scss'
 
-// A message on its way.
+// sending msg
 type Outgoing = {
   id: string
-  body: string
+  body: string | null
+  file: File | null
+  preview: string | null
   failed: boolean
   queuedAt: string
 }
 
+const IMAGE_TYPES = ['image/jpeg', 'image/png']
+const MB = 1024 * 1024
 // A time label appears before the first message and after a quiet gap.
 const GAP_MS = 5 * 60_000
 
@@ -39,16 +43,38 @@ export const timeLabel = (sentAt: string, now = new Date()) => {
     return `Yesterday ${timeOnly.format(time)}`
   return dayAndTime.format(time)
 }
+const fileProblem = (file: File) => {
+  if (IMAGE_TYPES.includes(file.type))
+    return file.size > 5 * MB ? 'Photos can be up to 5 MB.' : null
+  return 'Send a JPEG or PNG photo.'
+}
+
+const Photo = ({ url }: { url: string }) => (
+  <a className={styles.mediaLink} href={url} target="_blank" rel="noreferrer">
+    <img className={styles.media} src={url} alt="Photo" />
+  </a>
+)
+
 // Chat between the requester and the courier, open while the errand is in
 // progress and read-only once the requester confirms receipt.
 export const ErrandChat = ({ order }: { order: Errand }) => {
   // The message list, once shown; messages count as seen while it is in view.
   const [list, setList] = useState<HTMLOListElement | null>(null)
   const viewing = useViewing(list)
-  const { chat, send, userId, participant, readable, open, reconnecting } =
-    useErrandChat(order, viewing)
+  const {
+    chat,
+    send,
+    sendFile,
+    userId,
+    participant,
+    readable,
+    open,
+    reconnecting,
+  } = useErrandChat(order, viewing)
   const [text, setText] = useState('')
   const [outgoing, setOutgoing] = useState<Array<Outgoing>>([])
+  const [problem, setProblem] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const confirmed = chat.data?.messages ?? []
   const sent = new Set(confirmed.map((message) => message.id))
@@ -59,6 +85,13 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
   useEffect(() => {
     if (list) list.scrollTop = list.scrollHeight
   }, [list, count])
+  // after send the msg, free the photos previews
+  useEffect(() => {
+    outgoing
+      .filter((message) => message.preview && sent.has(message.id))
+      .forEach((message) => URL.revokeObjectURL(message.preview!))
+  })
+
   if (!order.courier || !readable) return null
   const isRequester = order.requester.id === userId
   const other = isRequester ? order.courier : order.requester
@@ -69,7 +102,7 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
       ? (order.requester.name ?? 'Requester')
       : (order.courier?.name ?? 'Courier')
 
-  // "Seen" goes under my latest message the other person has read.
+  // to display "Seen" under my latest message after the other person read
   const otherRead = chat.data?.reads.find((read) => read.userId === other.id)
   const seenId =
     participant && otherRead
@@ -88,7 +121,9 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
   const deliver = async (message: Outgoing) => {
     update(message.id, { failed: false })
     try {
-      await send.mutateAsync({ id: message.id, body: message.body })
+      if (message.file)
+        await sendFile.mutateAsync({ id: message.id, file: message.file })
+      else await send.mutateAsync({ id: message.id, body: message.body! })
     } catch {
       // Kept with a Retry button; resending the same id cannot duplicate it.
       update(message.id, { failed: true })
@@ -107,9 +142,24 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
     const body = text.trim()
     if (!body || body.length > MAX_MESSAGE_LENGTH) return
     setText('')
-    queue({ id: crypto.randomUUID(), body })
+    queue({ id: crypto.randomUUID(), body, file: null, preview: null })
   }
-  // One list in time order, with a time label wherever a gap starts.
+  const attach = (files: Array<File>) => {
+    const bad = files.map(fileProblem).find(Boolean)
+    setProblem(bad ?? null)
+    files
+      .filter((file) => !fileProblem(file))
+      .forEach((file) =>
+        queue({
+          id: crypto.randomUUID(),
+          body: null,
+          file,
+          preview: URL.createObjectURL(file),
+        }),
+      )
+  }
+
+  // One list in time order, with a time label wherever a gap starts
   const rows = [
     ...confirmed.map((message) => ({
       ...message,
@@ -120,6 +170,9 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
       id: message.id,
       senderId: userId!,
       body: message.body,
+      attachment: message.file
+        ? { type: 'IMAGE' as const, url: message.preview! }
+        : null,
       at: message.queuedAt,
       pending: message,
     })),
@@ -184,7 +237,8 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
                       {nameOf(row.senderId)}
                     </span>
                   )}
-                  <p className={styles.bubble}>{row.body}</p>
+                  {row.attachment && <Photo url={row.attachment.url} />}
+                  {row.body && <p className={styles.bubble}>{row.body}</p>}
                   {row.pending ? (
                     row.pending.failed ? (
                       <span className={styles.status} role="alert">
@@ -220,6 +274,26 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
             submit()
           }}
         >
+          <button
+            type="button"
+            className={styles.attach}
+            aria-label="Send a photo"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Paperclip size={18} aria-hidden="true" />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={IMAGE_TYPES.join(',')}
+            multiple
+            hidden
+            aria-label="Photo"
+            onChange={(event) => {
+              attach(Array.from(event.target.files ?? []))
+              event.target.value = ''
+            }}
+          />
           <textarea
             aria-label="Message"
             placeholder={`Message ${otherName}`}
@@ -256,11 +330,17 @@ export const ErrandChat = ({ order }: { order: Errand }) => {
             : 'Read-only.'}
         </p>
       )}
-      {send.error && waiting.some((message) => message.failed) && (
+      {problem && (
         <p role="alert" className={styles.error}>
-          {orderErrorMessage(send.error)}
+          {problem}
         </p>
       )}
+      {(send.error || sendFile.error) &&
+        waiting.some((message) => message.failed) && (
+          <p role="alert" className={styles.error}>
+            {orderErrorMessage(sendFile.error ?? send.error)}
+          </p>
+        )}
     </section>
   )
 }

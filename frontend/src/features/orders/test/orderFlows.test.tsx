@@ -83,6 +83,7 @@ vi.mock('../api/orders.api', () => ({
   getOrder: vi.fn(),
   getChat: vi.fn(async () => ({ messages: [], reads: [] })),
   sendMessage: vi.fn(),
+  sendChatFile: vi.fn(),
   markChatRead: vi.fn(),
   getDeliveryPhotos: vi.fn(),
   deliverOrder: vi.fn(),

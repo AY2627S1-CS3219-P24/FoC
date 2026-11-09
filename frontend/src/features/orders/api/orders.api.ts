@@ -90,6 +90,23 @@ export const sendMessage = async (
       timeout,
     })
   ).data
+// for the photo to sent (JPEG / JPG, 5MB)
+export const sendChatFile = async (
+  id: string,
+  messageId: string,
+  file: File,
+) => {
+  const body = new FormData()
+  body.append('id', messageId)
+  body.append('file', file)
+  return (
+    await axiosClient.post<ErrandMessage>(
+      `/orders/${id}/messages/attachments`,
+      body,
+      { timeout: 120_000 },
+    )
+  ).data
+}
 // Everything up to this message has been seen
 export const markChatRead = async (id: string, messageId: string) => {
   await axiosClient.post(

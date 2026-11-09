@@ -55,8 +55,11 @@
       color: white;
     }
   }
-  &[data-failed='true'] .bubble {
-    opacity: 0.6;
+  &[data-failed='true'] {
+    .bubble,
+    .media {
+      opacity: 0.6;
+    }
   }
 }
 .sender {
@@ -75,6 +78,21 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+// to send photo with a fixed size
+.mediaLink {
+  display: block;
+  line-height: 0;
+}
+.media {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  max-height: 280px;
+  border-radius: 12px;
+  background: #e4e8ee;
+  object-fit: cover;
+}
 .status {
   margin: 0 4px;
   font-size: 11px;
@@ -87,6 +105,18 @@
   background: #fff4e0;
   color: #8b4c0b;
   font-size: 13px;
+}
+.attach {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid #c9d1dc;
+  border-radius: 50%;
+  background: white;
+  color: #414b59;
+  cursor: pointer;
 }
 .composer {
   display: flex;

@@ -13,6 +13,7 @@ vi.mock('#/lib/realtime', () => ({ connectRealtime: vi.fn() }))
 vi.mock('../api/orders.api', () => ({
   getChat: vi.fn(),
   sendMessage: vi.fn(),
+  sendChatFile: vi.fn(),
   markChatRead: vi.fn(),
 }))
 
@@ -33,18 +34,21 @@ const accepted = (overrides: Partial<Errand> = {}) =>
     courier: { id: 'courier', name: 'Sam' },
     ...overrides,
   })
+
 const at = (minute: number) =>
   new Date(Date.UTC(2030, 0, 1, 8, minute)).toISOString()
 const message = (
   id: string,
   senderId: string,
-  body: string,
+  body: string | null,
   minute = 0,
+  attachment: ErrandMessage['attachment'] = null,
 ): ErrandMessage => ({
   id,
   errandId: accepted().id,
   senderId,
   body,
+  attachment,
   sentAt: at(minute),
 })
 const chat = (messages: Array<ErrandMessage>, reads: Chat['reads'] = []) => ({
@@ -74,6 +78,8 @@ beforeEach(() => {
     chat([message('m1', 'courier', 'On my way to the cafe', 1)]),
   )
   vi.mocked(api.markChatRead).mockResolvedValue()
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   vi.spyOn(document, 'hasFocus').mockReturnValue(true) // chat is focused
   signIn('requester')
 })
@@ -154,6 +160,7 @@ it('shows messages pushed by the realtime service, once each', async () => {
     errandId: accepted().id,
     senderId: 'courier',
     body: 'Queue is long',
+    attachmentType: null,
     sentAt: at(3),
   }
   push('errand.message', pushed)
@@ -168,6 +175,16 @@ it('shows messages pushed by the realtime service, once each', async () => {
   await screen.findByText('Queue is long')
   expect(screen.getAllByText('Queue is long')).toHaveLength(1)
   expect(screen.queryByText('Wrong chat')).not.toBeInTheDocument()
+
+  // when the pushed photo has no link, fetch the conversation again
+  vi.mocked(api.getChat).mockClear()
+  push('errand.message', {
+    ...pushed,
+    id: 'm4',
+    body: null,
+    attachmentType: 'IMAGE',
+  })
+  await vi.waitFor(() => expect(api.getChat).toHaveBeenCalledOnce())
 })
 
 it('tells the other person what has been seen, and shows Seen on mine', async () => {
@@ -246,6 +263,57 @@ it('only counts messages as seen while the chat is really being looked at', asyn
     ),
   )
   vi.unstubAllGlobals()
+})
+
+it('sends photos, previewing them while they upload', async () => {
+  let finish!: (value: ErrandMessage) => void
+  vi.mocked(api.sendChatFile).mockImplementation(
+    (_errand, id) =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve(
+            message(id, 'requester', null, 2, {
+              type: 'IMAGE',
+              url: 'https://files.test/photo.jpg',
+              expiresAt: '2099-01-01T00:00:00Z',
+            }),
+          )
+      }),
+  )
+  const { user } = setup(accepted())
+  await screen.findByText('On my way to the cafe')
+  const input = screen.getByLabelText('Photo')
+
+  // Too big, or not a supported type: refused before uploading
+  await user.upload(
+    input,
+    new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.png', {
+      type: 'image/png',
+    }),
+  )
+  expect(screen.getByText('Photos can be up to 5 MB.')).toBeInTheDocument()
+  expect(api.sendChatFile).not.toHaveBeenCalled()
+
+  const photo = new File(['png'], 'photo.png', { type: 'image/png' })
+  await user.upload(input, photo)
+  expect(screen.getByRole('img', { name: 'Photo' })).toHaveAttribute(
+    'src',
+    'blob:preview',
+  )
+  expect(screen.getByText('Sending…')).toBeInTheDocument()
+  expect(api.sendChatFile).toHaveBeenCalledExactlyOnceWith(
+    accepted().id,
+    expect.stringMatching(/^[0-9a-f-]{36}$/),
+    photo,
+  )
+  await act(async () => finish(undefined as never))
+  await vi.waitFor(() =>
+    expect(screen.getByRole('img', { name: 'Photo' })).toHaveAttribute(
+      'src',
+      'https://files.test/photo.jpg',
+    ),
+  )
+  expect(screen.queryByText('Sending…')).not.toBeInTheDocument()
 })
 
 it('keeps a failed message with a Retry that resends the same message', async () => {
