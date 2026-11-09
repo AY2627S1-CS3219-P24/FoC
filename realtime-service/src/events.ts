@@ -35,7 +35,9 @@ export const errandMessagePostedEventSchema = z.object({
         errandId: z.uuid(),
         senderId: z.uuid(),
         recipientIds: z.array(z.uuid()).min(1),
-        body: z.string().min(1),
+        // null for a photo or video without text
+        body: z.string().min(1).nullable(),
+        attachmentType: z.enum(['IMAGE', 'VIDEO']).nullable(),
         sentAt: z.iso.datetime({offset: true}),
     }),
 });

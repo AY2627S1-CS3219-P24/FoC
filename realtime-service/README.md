@@ -41,8 +41,9 @@ SNS topic. Every connected socket receives `supplier.changed` with `{supplierId,
 It also subscribes the queue to the errand chat events from the order SNS topic. The
 errand's requester and courier (only) receive:
 
-- `errand.message` with `{id, errandId, senderId, body, sentAt}` for
-  `ErrandMessagePostedEvent`;
+- `errand.message` with `{id, errandId, senderId, body, attachmentType, sentAt}` for
+  `ErrandMessagePostedEvent` (`body` is null for a photo or video without text; the
+  app fetches the conversation to get the file's link);
 - `errand.read` with `{errandId, readerId, lastReadAt}` for `ErrandChatReadEvent`.
 The consumer also understands `UserUpdatedEvent` with `{userId, event, data}` for
 user-scoped notifications, but no producer or subscription for that event exists yet.

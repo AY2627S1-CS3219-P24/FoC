@@ -64,6 +64,7 @@ describe('realtime event handlers', () => {
             errandId: '66666666-6666-4666-8666-666666666666',
             senderId: requester,
             body: 'Less ice please',
+            attachmentType: null,
             sentAt: '2026-01-01T00:00:00Z',
         };
 
@@ -78,6 +79,7 @@ describe('realtime event handlers', () => {
                 senderId: requester,
                 recipientIds: [requester, courier],
                 body: message.body,
+                attachmentType: null,
                 sentAt: message.sentAt,
             },
         }));
