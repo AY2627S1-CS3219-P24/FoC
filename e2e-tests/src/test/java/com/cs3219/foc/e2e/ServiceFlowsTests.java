@@ -186,7 +186,18 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
             // The chat opens once a courier accepts.
             say(id, requester, "Less ice please", 200);
-            say(id, courier, "Got it", 200);
+            var gotIt = say(id, courier, "Got it", 200);
+            assertThat(sendChatPhoto(id, courier.token(), 200)
+                            .get("attachment")
+                            .get("type")
+                            .asString())
+                    .isEqualTo("IMAGE");
+            request(
+                    "POST",
+                    "/api/orders/" + id + "/messages/read",
+                    requester.token(),
+                    Map.of("messageId", gotIt.get("id").asString()),
+                    204);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 409);
             request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
             // The requester can only confirm after the courier has delivered it with a photo.
@@ -204,8 +215,12 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             // after confirmation the chat is read-only
             say(id, requester, "Thanks!", 409);
             var chat = request("GET", "/api/orders/" + id + "/messages", courier.token(), null, 200);
-            assertThat(chat.get("messages").size()).isEqualTo(2);
+            assertThat(chat.get("messages").size()).isEqualTo(3);
             assertThat(chat.get("messages").get(0).get("body").asString()).isEqualTo("Less ice please");
+            assertThat(chat.get("messages").get(2).get("attachment").get("url").asString())
+                    .contains("chat/" + id + "/");
+            assertThat(chat.get("reads").get(0).get("userId").asString())
+                    .isEqualTo(requester.id().toString());
             awaitOrder(id, "COMPLETED", "SETTLED");
             awaitBalance(requester, 10);
             awaitBalance(courier, 20);
@@ -217,6 +232,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                     observations,
                     "UserCreatedEvent",
                     "ErrandMessagePostedEvent",
+                    "ErrandChatReadEvent",
                     "ErrandCompletedEvent",
                     "CreditSettlementResultEvent");
         } finally {
@@ -465,7 +481,16 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                     }
                     case "ErrandMessagePostedEvent" -> {
                         assertThat(payload.get("recipientIds").size()).isEqualTo(2);
-                        assertThat(payload.get("body").asString()).isNotBlank();
+                        // Text, or a photo/video without text
+                        assertThat(
+                                        payload.get("body").isNull()
+                                                ? payload.get("attachmentType").asString()
+                                                : payload.get("body").asString())
+                                .isNotBlank();
+                    }
+                    case "ErrandChatReadEvent" -> {
+                        assertThat(payload.get("recipientIds").size()).isEqualTo(2);
+                        assertThat(payload.has("lastReadAt")).isTrue();
                     }
                     case "CreditSettlementResultEvent" -> {
                         assertThat(payload.has("operationId")).isTrue();

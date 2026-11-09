@@ -209,6 +209,21 @@ abstract class AbstractEndToEndTest {
         return response.text().isEmpty() ? null : json.readTree(response.text());
     }
 
+    // Sends a small PNG as a chat photo, returns the message.
+    protected JsonNode sendChatPhoto(UUID errand, String token, int expected) {
+        var path = "/api/orders/" + errand + "/messages/attachments";
+        var response = api.fetch(
+                path,
+                RequestOptions.create()
+                        .setMethod("POST")
+                        .setHeader("Authorization", "Bearer " + token)
+                        .setMultipart(FormData.create()
+                                .set("id", UUID.randomUUID().toString())
+                                .set("file", new FilePayload("photo.png", "image/png", png()))));
+        assertThat(response.status()).as("POST %s: %s", path, response.text()).isEqualTo(expected);
+        return response.text().isEmpty() ? null : json.readTree(response.text());
+    }
+
     private static byte[] png() {
         var png = new ByteArrayOutputStream();
         try {
