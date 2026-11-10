@@ -337,3 +337,213 @@ Identified that the IDE was launching TypeScript directly through Node instead o
 #### Author Notes
 
 I clarified that the IDE configuration should be persisted in .run. The change reused the existing template. The transcript does not confirm a successful launch afterward.
+
+## XU ZIHAO
+
+## User Profile — Backend Implementation
+
+### Date/Time:
+
+2026-09-23 to 2026-09-29
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement authenticated profile retrieval and updates, password changes, and profile photo upload, retrieval and removal. Add validation, error handling and automated tests.
+
+### Output Summary:
+
+Implemented profile retrieval and updates for name, email, phone number and faculty. Added password changes with current-password verification and refresh-token removal. Implemented profile photo processing, storage, retrieval, replacement and removal. Added controller, service and persistence tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Provided the backend endpoints used by the profile overview and editing pages. Users can retrieve and update their personal details, change their password, and upload, replace or remove their profile photo.
+
+---
+
+## Shared User Header — Frontend Implementation
+
+### Date/Time:
+
+2026-09-27 to 2026-09-29
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement the shared user header and page layout, including navigation, account information, avatar display, credit balance display and responsive styling.
+
+### Output Summary:
+
+Implemented the shared header and user layout, navigation content, account controls, avatar fallback, credit balance display and notification button states. Added responsive styling, a skip-to-content link and component tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+This contribution implemented the header components and display states. Live credit balance retrieval was added later.
+
+---
+
+## User Profile — Frontend Implementation
+
+### Date/Time:
+
+2026-09-29 to 2026-10-01
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement the profile overview and editing pages. Connect profile updates, password changes and profile photo controls to the existing backend endpoints.
+
+### Output Summary:
+
+Implemented profile overview and editing pages with profile retrieval, editable name, phone number and faculty fields, password changes, and photo upload and removal. Updated profile navigation and added frontend tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Follow-up changes restored profile routes and refined the account interface. Password changes were connected to logout and login navigation.
+
+---
+
+## Courier Home Page — Frontend Implementation
+
+### Date/Time:
+
+2026-09-30
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement the courier home page with errand cards, search, reward and expiry information, detail previews and responsive styling.
+
+### Output Summary:
+
+Implemented the courier home page using sample errands. Added search filtering, pickup and destination information, reward and expiry displays, detail dialogs and an ineligible state for the user's own requests. Added routing and frontend tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+This contribution implemented the frontend preview.
+
+---
+
+## Credit Service — Accounts, Balances and Provisioning
+
+### Date/Time:
+
+2026-10-16 to 2026-10-18
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement credit account creation, initial credit allocation and authenticated balance retrieval.
+
+### Output Summary:
+
+Implemented credit account persistence and the own-balance API. Added registration event publication and consumption, account initialization and duplicate-event handling. 
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Enabled automatic credit account creation and initial credit allocation when users register. Provided an authenticated API for retrieving each user's own balance and prevented duplicate registration events from allocating credits more than once.
+
+---
+
+## Credit Service — Reward Reservation, Payment and Release
+
+### Date/Time:
+
+2026-10-16 to 2026-10-19
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement reward reservation, payment on errand completion and reservation release on cancellation or expiry. Update balance retrieval and add tests for repeated operations, concurrent processing and failed transactions.
+
+### Output Summary:
+
+Implemented the reservation endpoint with RESERVED and INSUFFICIENT_BALANCE responses. Updated balance retrieval to include reserved and available credits. Added completion, cancellation and expiry handling, requester-to-courier credit transfers, reservation state updates and transaction recording. Added operation matching, duplicate-operation handling and automated tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Enabled credits to be reserved for an errand, transferred to the courier on completion, or released to the requester on cancellation or expiry. Updated balance retrieval to reflect reserved credits and added handling to prevent repeated operations from moving credits twice.
+
+---
+
+## Admin Dispute Resolution — Participant Responses
+
+### Date/Time:
+
+2026-11-06 to 2026-11-09
+
+### Tool:
+
+Codex
+
+### Prompt/Command:
+
+Implement the first two requested improvements: allow the other participant to submit a short response with their identity and timestamp, and display the complaint and response together on the existing admin order detail page.
+
+### Output Summary:
+
+Implemented response submission, persistence and frontend controls for the other participant while the dispute was open. Updated the admin order detail page to display the complaint and response together, including their authors and timestamps, alongside the order timeline and credit status. Extended backend and frontend tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+The dispute implementation and its tests received further integration updates after the credit event changes.
