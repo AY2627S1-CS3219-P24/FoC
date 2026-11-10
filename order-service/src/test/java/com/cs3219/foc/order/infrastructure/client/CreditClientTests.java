@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,7 +61,8 @@ class CreditClientTests {
                         "http://unused/api",
                         "http://unused/api",
                         "http://127.0.0.1:" + server.getAddress().getPort() + "/api"),
-                new AuthenticationContextService());
+                new AuthenticationContextService(),
+                RestClient.builder());
         var jwt = Jwt.withTokenValue("current-access-token")
                 .header("alg", "none")
                 .subject(UUID.randomUUID().toString())

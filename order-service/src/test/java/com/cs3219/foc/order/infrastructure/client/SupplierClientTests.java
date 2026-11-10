@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.client.RestClient;
 
 class SupplierClientTests {
     @Test
@@ -44,7 +45,8 @@ class SupplierClientTests {
                             "http://127.0.0.1:" + server.getAddress().getPort() + "/api",
                             "http://unused/api",
                             "http://unused/api"),
-                    new AuthenticationContextService());
+                    new AuthenticationContextService(),
+                    RestClient.builder());
             assertThat(client.listActive()).extracting("id").containsExactly(active);
             assertThat(token.get()).isEqualTo("Bearer current-token");
         } finally {
