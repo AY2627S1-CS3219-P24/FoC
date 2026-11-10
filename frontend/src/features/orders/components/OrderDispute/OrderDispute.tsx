@@ -30,7 +30,9 @@ export const OrderDispute = ({
   const [response, setResponse] = useState('')
   const [explanation, setExplanation] = useState('')
   const [decision, setDecision] = useState<DisputeDecision>(
-    order.status === 'PICKED_UP' ? 'PAY_COURIER' : 'RELEASE_CREDITS',
+    ['PICKED_UP', 'DELIVERED'].includes(order.status)
+      ? 'PAY_COURIER'
+      : 'RELEASE_CREDITS',
   )
   const [confirm, setConfirm] = useState(false)
   const lock = useRef(false)
@@ -38,7 +40,7 @@ export const OrderDispute = ({
   const participant =
     order.requester.id === userId || order.courier?.id === userId
   const eligible =
-    ['ACCEPTED', 'PICKED_UP'].includes(order.status) &&
+    ['ACCEPTED', 'PICKED_UP', 'DELIVERED'].includes(order.status) &&
     order.creditState === 'RESERVED'
   const canResolve =
     admin && !participant && eligible && dispute?.status === 'OPEN'
@@ -50,7 +52,7 @@ export const OrderDispute = ({
     !dispute.response
   const validDecision =
     decision !== 'PAY_COURIER' ||
-    (order.status === 'PICKED_UP' && !!order.courier)
+    (['PICKED_UP', 'DELIVERED'].includes(order.status) && !!order.courier)
   const submitReport = async () => {
     if (lock.current || !complaint.trim()) return
     lock.current = true

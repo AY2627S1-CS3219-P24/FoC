@@ -32,6 +32,7 @@ locals {
       port       = 8082
       cpu        = 512
       memory     = 640
+      bucket_env = "FOC_ORDER_BUCKET"
     }
 
     credit = {

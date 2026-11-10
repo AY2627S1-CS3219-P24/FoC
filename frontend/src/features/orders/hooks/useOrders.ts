@@ -4,6 +4,7 @@ import { useSession } from '#/features/auth/hooks/useSession'
 import { creditQueryKeys } from '#/features/credits/constants/creditQueryKeys'
 import { errandQueryKeys } from '../constants/errandQueryKeys'
 import {
+  getDeliveryPhotos,
   getOrder,
   listAvailableOrders,
   listMyOrders,
@@ -21,7 +22,9 @@ export const orderQueryOptions = {
 }
 export const detailInterval = (order?: Errand) =>
   !order ||
-  ['CREATING', 'OPEN', 'ACCEPTED', 'PICKED_UP'].includes(order.status) ||
+  ['CREATING', 'OPEN', 'ACCEPTED', 'PICKED_UP', 'DELIVERED'].includes(
+    order.status,
+  ) ||
   ['SETTLEMENT_PENDING', 'RELEASE_PENDING'].includes(order.creditState ?? '')
     ? 5_000
     : false
@@ -87,4 +90,16 @@ export const useOrder = (id: string) => {
     ...query,
     userId,
   }
+}
+// the photo links will expire after 10 minutes, so they will be fetched again
+export const useDeliveryPhotos = (order: Errand) => {
+  const { userId } = useSession()
+  return useQuery({
+    queryKey: errandQueryKeys.deliveryPhotos(userId, order.id),
+    queryFn: ({ signal }) => getDeliveryPhotos(order.id, signal),
+    enabled: !!userId && order.hasDeliveryPhoto,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    retry: false,
+  })
 }

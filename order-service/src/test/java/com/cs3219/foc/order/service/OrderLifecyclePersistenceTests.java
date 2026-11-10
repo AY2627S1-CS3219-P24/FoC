@@ -5,12 +5,15 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.cs3219.foc.order.config.DeliveryPhotoStorageProperties;
 import com.cs3219.foc.order.config.OrderProperties;
 import com.cs3219.foc.order.exception.CreditAccountPendingException;
+import com.cs3219.foc.order.exception.DeliveryPhotoException;
 import com.cs3219.foc.order.exception.OrderConflictException;
 import com.cs3219.foc.order.exception.OrderCreationAttemptException;
 import com.cs3219.foc.order.exception.OrderNotFoundException;
 import com.cs3219.foc.order.infrastructure.client.*;
+import com.cs3219.foc.order.infrastructure.storage.DeliveryPhotoStorage;
 import com.cs3219.foc.order.integration.AbstractIntegrationTest;
 import com.cs3219.foc.order.mapper.ErrandMapper;
 import com.cs3219.foc.order.model.dto.*;
@@ -38,7 +41,9 @@ import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.orm.jpa.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -52,6 +57,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @DataJpaTest
@@ -64,6 +70,15 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
     private OrderService service;
+
+    @Autowired
+    private DeliveryService delivery;
+
+    @Autowired
+    private DeliveryPhotoProcessor photoProcessor;
+
+    @Autowired
+    private DeliveryPhotoStorage photoStorage;
 
     @Autowired
     private DataSource dataSource;
@@ -92,10 +107,12 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE order_disputes, errands, event_publication");
+        jdbc.execute("TRUNCATE order_disputes, errands, delivery_photos, event_publication");
         clock.time.set(START);
         facts.events.clear();
-        reset(suppliers, users, credit);
+        reset(suppliers, users, credit, photoProcessor, photoStorage);
+        when(photoProcessor.toJpeg(any())).thenReturn(new byte[] {1, 2, 3});
+        when(photoStorage.readUrl(any(), any())).thenReturn("https://photos.test/handover.jpg");
         doAnswer(call -> {
                     assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                             .isFalse();
@@ -132,6 +149,19 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                 .toList();
         SecurityContextHolder.getContext()
                 .setAuthentication(new UsernamePasswordAuthenticationToken(id.toString(), "n/a", authorities));
+    }
+
+    // the current courier deliver the item with a photo
+    private void deliver(UUID id) {
+        deliverPhoto(id);
+    }
+
+    private ErrandActionResponse deliverPhoto(UUID id) {
+        return delivery.deliver(id, List.of(photo()));
+    }
+
+    private static MockMultipartFile photo() {
+        return new MockMultipartFile("photo", "handover.jpg", "image/jpeg", new byte[] {9});
     }
 
     private CreateErrandRequest request() {
@@ -248,6 +278,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
             as(courier);
             service.accept(id);
             service.pickUp(id);
+            deliver(id);
             as(requester);
             service.complete(id);
         } else {
@@ -481,6 +512,11 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         assertThatThrownBy(() -> service.pickUp(id)).isInstanceOf(AccessDeniedException.class);
         as(courier);
         service.pickUp(id);
+        as(requester);
+        // Picked up is not enough: the courier has to deliver it (with a photo) first.
+        assertThatThrownBy(() -> service.complete(id)).isInstanceOf(OrderConflictException.class);
+        as(courier);
+        deliver(id);
         assertThatThrownBy(() -> service.complete(id)).isInstanceOf(AccessDeniedException.class);
         as(requester);
         service.complete(id);
@@ -514,6 +550,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         as(UUID.randomUUID());
         assertThat(service.accept(completedId).errandId()).isEqualTo(completedId);
         assertThat(service.pickUp(completedId).status().name()).isEqualTo("PICKED_UP");
+        deliver(completedId);
         as(requester);
         var completed = service.complete(completedId);
         assertThat(completed.status().name()).isEqualTo("COMPLETED");
@@ -535,6 +572,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         as(UUID.randomUUID());
         service.accept(id);
         service.pickUp(id);
+        deliver(id);
         var barrier = new CyclicBarrier(2);
         try (var executor = Executors.newFixedThreadPool(2)) {
             Callable<Void> complete = () -> {
@@ -790,7 +828,17 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"OPEN", "ACCEPTED", "PICKED_UP", "COMPLETED", "CANCELLED", "EXPIRED", "CREATE_FAILED"})
+    @ValueSource(
+            strings = {
+                "OPEN",
+                "ACCEPTED",
+                "PICKED_UP",
+                "DELIVERED",
+                "COMPLETED",
+                "CANCELLED",
+                "EXPIRED",
+                "CREATE_FAILED"
+            })
     void retryCreationReturnsAlreadyResolvedOrdersWithoutAnotherReservation(String state) {
         UUID id = service.create(request()).errandId();
         jdbc.update("UPDATE errands SET status=? WHERE id=?", state, id);
@@ -921,6 +969,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                     service.accept(id);
                     if (targetStatus.equals("COMPLETED")) {
                         service.pickUp(id);
+                        deliver(id);
                         as(requester);
                         service.complete(id);
                     }
@@ -948,6 +997,122 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                 releaseFirst.countDown();
             }
         }
+    }
+
+    @Test
+    void onlyTheCourierCanDeliverAndOnlyAfterPickup() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(OrderConflictException.class);
+        service.pickUp(id);
+        as(requester);
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(AccessDeniedException.class);
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(photoStorage);
+
+        as(courier);
+        clock.time.set(START.plusSeconds(30));
+        assertThat(deliverPhoto(id).status().name()).isEqualTo("DELIVERED");
+        var key = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage).putJpeg(key.capture(), eq(new byte[] {1, 2, 3}));
+        assertThat(key.getValue()).startsWith("delivery-photos/" + id + "/").endsWith(".jpg");
+        assertThat(jdbc.queryForList("SELECT photo_key FROM delivery_photos WHERE errand_id=?", String.class, id))
+                .containsExactly(key.getValue());
+        var dto = service.get(id);
+        assertThat(dto.hasDeliveryPhoto()).isTrue();
+        assertThat(dto.deliveredAt()).isEqualTo(OffsetDateTime.ofInstant(START.plusSeconds(30), ZoneOffset.UTC));
+        // delivering twice is refused, more photos are added separately
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(OrderConflictException.class);
+        verify(photoStorage, times(1)).putJpeg(any(), any());
+    }
+
+    @Test
+    void courierSubmitsAllPhotosTogetherAndCannotChangeThemAfterwards() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        service.pickUp(id);
+        List<MultipartFile> tooMany = Collections.nCopies(DeliveryService.MAX_PHOTOS + 1, photo());
+        for (List<MultipartFile> refused : List.of(List.<MultipartFile>of(), tooMany)) {
+            assertThatThrownBy(() -> delivery.deliver(id, refused))
+                    .isInstanceOfSatisfying(
+                            DeliveryPhotoException.class,
+                            e -> assertThat(e.getStatus().value()).isEqualTo(400));
+        }
+        verifyNoInteractions(photoStorage);
+
+        var keys = ArgumentCaptor.forClass(String.class);
+        delivery.deliver(id, Collections.nCopies(DeliveryService.MAX_PHOTOS, photo()));
+        verify(photoStorage, times(DeliveryService.MAX_PHOTOS)).putJpeg(keys.capture(), any());
+        // listed the photos in the order of when courier chose them
+        assertThat(jdbc.queryForList(
+                        "SELECT photo_key FROM delivery_photos WHERE errand_id=? ORDER BY created_at",
+                        String.class,
+                        id))
+                .containsExactlyElementsOf(keys.getAllValues());
+        assertThat(delivery.photos(id)).hasSize(DeliveryService.MAX_PHOTOS);
+        // once submitted, the photos are fixed
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(OrderConflictException.class);
+        assertThat(delivery.photos(id)).hasSize(DeliveryService.MAX_PHOTOS);
+    }
+
+    @Test
+    void aFailedSubmissionStoresNothingAndCleansUpUploadedPhotos() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        service.pickUp(id);
+        // one unusable photo will reject the entire submission before anything is uploaded
+        when(photoProcessor.toJpeg(any()))
+                .thenReturn(new byte[] {1})
+                .thenThrow(new DeliveryPhotoException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Not an image"));
+        assertThatThrownBy(() -> delivery.deliver(id, List.of(photo(), photo())))
+                .isInstanceOf(DeliveryPhotoException.class);
+        verifyNoInteractions(photoStorage);
+
+        // if the storage failing halfway, then the photo already stored will be remove again
+        doReturn(new byte[] {1}).when(photoProcessor).toJpeg(any());
+        doNothing()
+                .doThrow(new DeliveryPhotoException(HttpStatus.SERVICE_UNAVAILABLE, "S3 down"))
+                .when(photoStorage)
+                .putJpeg(any(), any());
+        assertThatThrownBy(() -> delivery.deliver(id, List.of(photo(), photo())))
+                .isInstanceOf(DeliveryPhotoException.class);
+        var stored = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage, times(2)).putJpeg(stored.capture(), any());
+        verify(photoStorage).delete(stored.getAllValues().getFirst());
+        assertThat(service.get(id).status().name()).isEqualTo("PICKED_UP");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM delivery_photos", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void deliveryPhotosAreVisibleToTheTwoPartiesAndAdminsOnly() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        service.pickUp(id);
+        assertThat(delivery.photos(id)).isEmpty();
+        deliver(id);
+
+        var photos = delivery.photos(id);
+        assertThat(photos).singleElement().satisfies(photo -> {
+            assertThat(photo.url()).isEqualTo("https://photos.test/handover.jpg");
+            assertThat(photo.expiresAt()).isEqualTo(OffsetDateTime.ofInstant(START.plusSeconds(600), ZoneOffset.UTC));
+        });
+        verify(photoStorage).readUrl(any(), eq(Duration.ofMinutes(10)));
+        as(requester);
+        assertThat(delivery.photos(id)).hasSize(1);
+        as(UUID.randomUUID(), "ADMIN");
+        assertThat(delivery.photos(id)).hasSize(1);
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> delivery.photos(id)).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -1006,6 +1171,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @EnableJpaRepositories(basePackageClasses = ErrandRepository.class)
     @Import({
         OrderService.class,
+        DeliveryService.class,
         OrderDisputeService.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
@@ -1036,6 +1202,21 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         @Bean
         UserClient userClient() {
             return mock(UserClient.class);
+        }
+
+        @Bean
+        DeliveryPhotoProcessor deliveryPhotoProcessor() {
+            return mock(DeliveryPhotoProcessor.class);
+        }
+
+        @Bean
+        DeliveryPhotoStorage deliveryPhotoStorage() {
+            return mock(DeliveryPhotoStorage.class);
+        }
+
+        @Bean
+        DeliveryPhotoStorageProperties deliveryPhotoStorageProperties() {
+            return new DeliveryPhotoStorageProperties("foc-test-order", Duration.ofMinutes(10));
         }
 
         @Bean

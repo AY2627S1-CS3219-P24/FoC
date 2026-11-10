@@ -29,6 +29,7 @@ variables {
   image_bucket_names = {
     user     = "foc-test-user"
     supplier = "foc-test-supplier"
+    order    = "foc-test-order"
   }
   name_prefix = "foc-test"
   domain_name = "foc.example.edu"
@@ -46,11 +47,16 @@ override_resource {
   override_during = plan
   values          = { arn = "arn:aws:s3:::foc-test-supplier", id = "foc-test-supplier" }
 }
+override_resource {
+  target          = module.images["order"].aws_s3_bucket.this[0]
+  override_during = plan
+  values          = { arn = "arn:aws:s3:::foc-test-order", id = "foc-test-order" }
+}
 
 run "service_buckets_and_permissions" {
   command = plan
   assert {
-    condition     = length(module.images) == 2 && module.images["user"].s3_bucket_id != module.images["supplier"].s3_bucket_id
+    condition     = length(module.images) == 3 && length(toset([for bucket in module.images : bucket.s3_bucket_id])) == 3
     error_message = "Each service must have a separate bucket."
   }
   assert {

@@ -107,6 +107,12 @@ server {
         proxy_pass http://user_backend;
     }
 
+    # Proof of delivery: up to 5 photos of up to 5 MB each, sent together.
+    location ~ ^/api/orders/[^/]+/deliver$ {
+        client_max_body_size 26m;
+        proxy_pass http://order_backend;
+    }
+
     location ~ ^/api/orders(/|$) {
         proxy_pass http://order_backend;
     }

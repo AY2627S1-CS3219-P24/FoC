@@ -1,6 +1,6 @@
 variable "image_bucket_names" {
   description = "Globally unique image bucket names keyed by owning service."
-  type        = object({ user = string, supplier = string })
+  type        = object({ user = string, supplier = string, order = string })
 }
 
 variable "name_prefix" {

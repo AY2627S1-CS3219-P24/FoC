@@ -1,8 +1,10 @@
 spring:
   servlet:
     multipart:
+      # One file: an AI voice recording up to 8 MB (delivery photos are held to 5 MB in code).
+      # One request: up to 5 delivery photos sent together.
       max-file-size: 8MB
-      max-request-size: 10MB
+      max-request-size: 26MB
   jackson:
     deserialization:
       accept-float-as-int: false
@@ -10,6 +12,10 @@ spring:
     name: order-service
   cloud:
     aws:
+      s3:
+        region: ${AWS_REGION:ap-southeast-1}
+        endpoint: ${FOC_S3_ENDPOINT:}
+        path-style-access-enabled: ${FOC_S3_PATH_STYLE:false}
       sqs:
         queue-not-found-strategy: fail
         listener:
@@ -44,6 +50,10 @@ server:
   servlet:
     context-path: /api
   port: 8082
+storage:
+  delivery-photos:
+    bucket: ${FOC_ORDER_BUCKET:foc-dev-order}
+    read-url-ttl: 10m
 orders:
   ai:
     enabled: ${FOC_ORDER_AI_ENABLED:false}

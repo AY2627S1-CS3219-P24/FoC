@@ -4,7 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.FilePayload;
+import com.microsoft.playwright.options.FormData;
 import com.microsoft.playwright.options.RequestOptions;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -12,6 +18,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.regex.Pattern;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -183,6 +190,33 @@ abstract class AbstractEndToEndTest {
                 .as("%s %s: %s", method, path, response.text())
                 .isEqualTo(expected);
         return response.text().isEmpty() ? null : json.readTree(response.text());
+    }
+
+    /** The courier marks the errand delivered, submitting two small PNGs together as proof. */
+    protected JsonNode deliver(UUID errand, String token, int expected) {
+        var form = FormData.create();
+        for (var name : List.of("handover.png", "item.png")) {
+            form.append("photos", new FilePayload(name, "image/png", png()));
+        }
+        var path = "/api/orders/" + errand + "/deliver";
+        var response = api.fetch(
+                path,
+                RequestOptions.create()
+                        .setMethod("POST")
+                        .setHeader("Authorization", "Bearer " + token)
+                        .setMultipart(form));
+        assertThat(response.status()).as("POST %s: %s", path, response.text()).isEqualTo(expected);
+        return response.text().isEmpty() ? null : json.readTree(response.text());
+    }
+
+    private static byte[] png() {
+        var png = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "png", png);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return png.toByteArray();
     }
 
     protected TestUser register(String name) {

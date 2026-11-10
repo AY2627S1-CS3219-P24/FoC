@@ -29,6 +29,7 @@ services:
       FOC_NAME_PREFIX: foc-prod
       FOC_USER_BUCKET: ${FOC_USER_BUCKET:-foc-prod-user}
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET:-foc-prod-supplier}
+      FOC_ORDER_BUCKET: ${FOC_ORDER_BUCKET:-foc-prod-order}
     volumes:
       - floci_data:/app/data
       - ./infra/docker/floci/init-resources.sh:/etc/localstack/init/ready.d/10-foc-resources.sh:ro

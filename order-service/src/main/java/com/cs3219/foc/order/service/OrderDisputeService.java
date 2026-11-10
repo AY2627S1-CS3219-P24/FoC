@@ -50,9 +50,10 @@ public class OrderDisputeService {
         }
         var existing = disputes.findByOrderId(orderId);
         if (existing.isPresent()) return OrderDisputeDto.from(existing.get());
-        if (!Set.of(ACCEPTED, PICKED_UP).contains(order.getStatus())
+        if (!Set.of(ACCEPTED, PICKED_UP, DELIVERED).contains(order.getStatus())
                 || order.getCreditState() != CreditState.RESERVED) {
-            throw new OrderConflictException("Only accepted or picked-up orders with reserved credits can be disputed");
+            throw new OrderConflictException(
+                    "Only accepted, picked-up or delivered orders with reserved credits can be disputed");
         }
         var dispute = new OrderDispute();
         dispute.setId(UUID.randomUUID());
@@ -125,13 +126,13 @@ public class OrderDisputeService {
             }
             return OrderDisputeDto.from(dispute);
         }
-        if (!Set.of(ACCEPTED, PICKED_UP).contains(order.getStatus())
+        if (!Set.of(ACCEPTED, PICKED_UP, DELIVERED).contains(order.getStatus())
                 || order.getCreditState() != CreditState.RESERVED) {
             throw new OrderConflictException("The order is no longer eligible for dispute resolution");
         }
         if (request.decision() == DisputeDecision.PAY_COURIER
-                && (order.getStatus() != PICKED_UP || order.getCourierId() == null)) {
-            throw new OrderConflictException("Payment requires a picked-up order and assigned courier");
+                && (!Set.of(PICKED_UP, DELIVERED).contains(order.getStatus()) || order.getCourierId() == null)) {
+            throw new OrderConflictException("Payment requires a picked-up or delivered order and assigned courier");
         }
         var timestamp = now();
         dispute.setDecision(request.decision());

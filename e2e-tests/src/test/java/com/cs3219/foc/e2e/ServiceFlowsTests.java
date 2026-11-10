@@ -185,6 +185,16 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 409);
             request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
+            // The requester can only confirm after the courier has delivered it with a photo.
+            request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 409);
+            deliver(id, requester.token(), 403);
+            assertThat(deliver(id, courier.token(), 200).get("status").asString())
+                    .isEqualTo("DELIVERED");
+            // Both photos were submitted together; after that they are fixed.
+            var photos = request("GET", "/api/orders/" + id + "/delivery-photos", requester.token(), null, 200);
+            assertThat(photos.size()).isEqualTo(2);
+            assertThat(photos.get(0).get("url").asString()).contains("delivery-photos/" + id + "/");
+            deliver(id, courier.token(), 409);
             request("POST", "/api/orders/" + id + "/complete", courier.token(), null, 403);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 200);
             awaitOrder(id, "COMPLETED", "SETTLED");
@@ -348,6 +358,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         var id = create(requester, supplier, 5);
         request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
         request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
+        deliver(id, courier.token(), 200);
         publisherAvailable("order", false);
         request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 200);
         awaitFailedPublication("orders", "order-completed", id);
@@ -585,6 +596,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         var id = create(requester, supplier, amount);
         request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
         request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
+        deliver(id, courier.token(), 200);
         request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 200);
         awaitOrder(id, "COMPLETED", "SETTLED");
         return id;

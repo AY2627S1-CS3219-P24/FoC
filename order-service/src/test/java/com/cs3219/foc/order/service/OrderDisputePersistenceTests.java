@@ -26,6 +26,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -43,6 +44,9 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
 
     @Autowired
     private OrderDisputeService disputes;
+
+    @Autowired
+    private DeliveryService delivery;
 
     @Autowired
     private CreditClient credit;
@@ -65,7 +69,7 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
 
     @BeforeEach
     void prepare() {
-        new JdbcTemplate(dataSource).execute("TRUNCATE order_disputes, errands, event_publication");
+        new JdbcTemplate(dataSource).execute("TRUNCATE order_disputes, errands, delivery_photos, event_publication");
         facts.events.clear();
         reset(credit, suppliers, users);
         when(credit.reserve(any())).thenReturn(new CreditReservationResponse("RESERVED"));
@@ -98,6 +102,35 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         orders.accept(id);
         if (pickedUp) orders.pickUp(id);
         return id;
+    }
+
+    /** The courier hands the item over with a photo. */
+    private void deliver(UUID id) {
+        as(courier, "USER");
+        delivery.deliver(id, List.of(new MockMultipartFile("photos", "handover.jpg", "image/jpeg", new byte[] {9})));
+    }
+
+    @Test
+    void deliveredOrdersCanBeDisputedAndTheCourierPaid() {
+        var id = accepted(true);
+        deliver(id);
+        // e.g. the photo shows the wrong item
+        var dispute = report(id);
+        assertThat(dispute.status()).isEqualTo(DisputeStatus.OPEN);
+        resolve(dispute, DisputeDecision.PAY_COURIER);
+        as(requester, "USER");
+        assertThat(orders.get(id).status().name()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void deliveryIsPausedWhileADisputeIsOpen() {
+        var id = accepted(true);
+        var dispute = report(id);
+        assertThatThrownBy(() -> deliver(id)).isInstanceOf(OrderConflictException.class);
+        resolve(dispute, DisputeDecision.DISMISS);
+        deliver(id);
+        as(requester, "USER");
+        assertThat(orders.get(id).status().name()).isEqualTo("DELIVERED");
     }
 
     private OrderDisputeDto report(UUID id) {
@@ -169,6 +202,7 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         assertThat(facts.events).isEmpty();
         as(courier, "USER");
         orders.pickUp(id);
+        deliver(id);
         as(requester, "USER");
         orders.complete(id);
         assertThat(orders.get(id).status().name()).isEqualTo("COMPLETED");

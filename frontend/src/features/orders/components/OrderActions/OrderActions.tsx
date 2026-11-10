@@ -3,10 +3,11 @@ import { useRef, useState } from 'react'
 import { Button } from '@base-ui/react/button'
 import { Dialog } from '@base-ui/react/dialog'
 import { isCancel } from 'axios'
-import { availableOrderActions } from '../../utils/orderPermissions'
+import { availableOrderActions, canDeliver } from '../../utils/orderPermissions'
 import { useOrderActions } from '../../hooks/useOrderActions'
 import { orderErrorMessage } from '../../utils/orderErrors'
 import type { Errand, OrderAction } from '../../types/errand.types'
+import { DeliverOrder } from '../DeliverOrder/DeliverOrder'
 import styles from '../../styles/order.module.scss'
 import dialog from './OrderActions.module.scss'
 
@@ -55,6 +56,7 @@ export const OrderActions = ({
     !message &&
     !action.error &&
     order.status !== 'PICKED_UP' &&
+    order.status !== 'DELIVERED' &&
     order.status !== 'ACCEPTED'
   )
     return null
@@ -65,11 +67,20 @@ export const OrderActions = ({
           {order.courier?.name ?? 'Your Courier'} is collecting your item.
         </p>
       )}
-      {order.status === 'PICKED_UP' && (
+      {order.status === 'PICKED_UP' && order.requester.id === userId && (
+        <p className={styles.muted}>
+          {order.courier?.name ?? 'Your Courier'} has your item and is on the
+          way.
+        </p>
+      )}
+      {canDeliver(order, userId) && (
+        <DeliverOrder order={order} onDelivered={setMessage} />
+      )}
+      {order.status === 'DELIVERED' && (
         <p className={styles.muted}>
           {order.requester.id === userId
-            ? 'Confirm only after you receive your item. Credit settlement starts after confirmation.'
-            : `${order.requester.name ?? 'The Requester'} confirms receipt after delivery.`}
+            ? 'Check the delivery photo. Confirm only after you receive your item. Credit settlement starts after confirmation.'
+            : `Delivered. Waiting for ${order.requester.name ?? 'the Requester'} to confirm receipt.`}
         </p>
       )}
       {message && <p role="status">{message}</p>}

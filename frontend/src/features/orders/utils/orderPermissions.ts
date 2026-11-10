@@ -23,7 +23,10 @@ export const availableOrderActions = (
         : ['accept']
   if (order.status === 'ACCEPTED' && order.courier?.id === userId)
     return ['pickup']
-  if (order.status === 'PICKED_UP' && order.requester.id === userId)
+  // the requester can only confirm after the courier has delivered it with photo
+  if (order.status === 'DELIVERED' && order.requester.id === userId)
     return ['complete']
   return []
 }
+export const canDeliver = (order: Errand, userId: string) =>
+  order.status === 'PICKED_UP' && order.courier?.id === userId

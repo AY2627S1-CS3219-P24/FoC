@@ -36,7 +36,7 @@ The deployment region is fixed to `ap-southeast-1` in Terraform and the workflow
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `image_bucket_names` |  | Object containing globally unique `user` and `supplier` bucket names. |
+| `image_bucket_names` |  | Object containing globally unique `user`, `supplier` and `order` bucket names. |
 | `name_prefix` | `foc-prod` | Environment prefix for AWS resource names. |
 | `domain_name` |  | Public hostname for the gateway and its TLS certificate. |
 | `acme_email` |  | Email address for certificate registration and budget alerts. |

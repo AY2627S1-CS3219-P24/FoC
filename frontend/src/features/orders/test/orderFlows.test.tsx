@@ -82,6 +82,8 @@ vi.mock('#/features/users/hooks/useUserQuery', () => ({
 }))
 vi.mock('../api/orders.api', () => ({
   getOrder: vi.fn(),
+  getDeliveryPhotos: vi.fn(),
+  deliverOrder: vi.fn(),
   listMyOrders: vi.fn(),
   listRequesterOrders: vi.fn(),
   listAvailableOrders: vi.fn(),
@@ -370,9 +372,60 @@ it('never offers creation retry metadata to a courier', async () => {
     screen.queryByRole('button', { name: 'Retry original request' }),
   ).not.toBeInTheDocument()
 })
+it('keeps the requester waiting while the item is on the way', async () => {
+  vi.mocked(api.getOrder).mockResolvedValue(
+    orderFixture({
+      status: 'PICKED_UP',
+      courier: { id: 'courier', name: 'Sam' },
+    }),
+  )
+  setup(<OrderDetailPage />)
+  await screen.findByText('Sam has your item and is on the way.')
+  expect(
+    screen.queryByRole('button', { name: 'Confirm received' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('region', { name: 'Proof of delivery' }),
+  ).not.toBeInTheDocument()
+  expect(api.getDeliveryPhotos).not.toHaveBeenCalled()
+})
+it('shows the delivery photo before the requester confirms receipt', async () => {
+  vi.mocked(api.getOrder).mockResolvedValue(
+    orderFixture({
+      status: 'DELIVERED',
+      courier: { id: 'courier', name: 'Sam' },
+      deliveredAt: '2030-01-01T00:30:00Z',
+      hasDeliveryPhoto: true,
+    }),
+  )
+  vi.mocked(api.getDeliveryPhotos).mockResolvedValue([
+    {
+      id: 'p1',
+      url: 'https://photos.test/one.jpg',
+      expiresAt: '2030-01-01T00:40:00Z',
+    },
+    {
+      id: 'p2',
+      url: 'https://photos.test/two.jpg',
+      expiresAt: '2030-01-01T00:40:00Z',
+    },
+  ])
+  setup(<OrderDetailPage />)
+  expect(
+    await screen.findByRole('img', { name: 'Delivery photo 1' }),
+  ).toHaveAttribute('src', 'https://photos.test/one.jpg')
+  expect(screen.getByRole('img', { name: 'Delivery photo 2' })).toHaveAttribute(
+    'src',
+    'https://photos.test/two.jpg',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Confirm received' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText(/Check the delivery photo/)).toBeInTheDocument()
+})
 it('refetches full detail after completion instead of replacing it with the action summary', async () => {
   const picked = orderFixture({
-    status: 'PICKED_UP',
+    status: 'DELIVERED',
     courier: { id: 'courier', name: 'Sam' },
   })
   vi.mocked(api.getOrder).mockResolvedValue(picked)

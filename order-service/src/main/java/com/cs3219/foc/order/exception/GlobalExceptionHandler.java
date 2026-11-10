@@ -2,6 +2,7 @@ package com.cs3219.foc.order.exception;
 
 import com.cs3219.foc.order.model.dto.ErrorResponse;
 import com.cs3219.foc.order.model.dto.ErrorResponseWithFieldErrors;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.TreeMap;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
@@ -25,12 +27,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ErrandAiException.class)
     ResponseEntity<ErrorResponse> ai(ErrandAiException e) {
         return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(e.getCode(), e.getMessage()));
-    }
-
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    ResponseEntity<ErrorResponse> audioTooLarge() {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(new ErrorResponse("AI_AUDIO_TOO_LARGE", "Recording exceeds the audio size limit."));
     }
 
     @ExceptionHandler(OrderCreationAttemptException.class)
@@ -48,6 +44,31 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> accountPending(CreditAccountPendingException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("CREDIT_ACCOUNT_PENDING", e.getMessage()));
+    }
+
+    @ExceptionHandler(DeliveryPhotoException.class)
+    ResponseEntity<ErrorResponse> deliveryPhoto(DeliveryPhotoException e) {
+        if (e.getStatus().is5xxServerError()) log.error("Delivery photo failed", e);
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse("DELIVERY_PHOTO_INVALID", e.getMessage()));
+    }
+
+    /** One handler for both kinds of upload (Spring allows only one): AI voice recordings and delivery photos. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ErrorResponse> uploadTooLarge(HttpServletRequest request) {
+        if (request.getRequestURI().endsWith("/orders/ai/transcriptions")) {
+            return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                    .body(new ErrorResponse("AI_AUDIO_TOO_LARGE", "Recording exceeds the audio size limit."));
+        }
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                .body(new ErrorResponse(
+                        "DELIVERY_PHOTO_INVALID", "Each photo must be at most 5 MB, and at most 5 photos"));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorResponseWithFieldErrors missingPart(MissingServletRequestPartException e) {
+        return new ErrorResponseWithFieldErrors(
+                "VALIDATION_FAILED", "Add at least one delivery photo", Map.of(e.getRequestPartName(), "Required"));
     }
 
     @ExceptionHandler(OrderNotFoundException.class)

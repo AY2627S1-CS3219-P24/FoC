@@ -1,6 +1,7 @@
 import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
+import { DeliveryPhotos } from '../../components/DeliveryPhotos/DeliveryPhotos'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
 import { OrderDispute } from '../../components/OrderDispute/OrderDispute'
 import {
@@ -60,6 +61,7 @@ export const AdminOrderDetailPage = () => {
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
             <OrderTimeline order={order} />
+            <DeliveryPhotos order={order} />
           </div>
           {query.userId && (
             <OrderDispute
