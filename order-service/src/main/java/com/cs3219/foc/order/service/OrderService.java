@@ -327,6 +327,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
             confirmSettlement(errand, p.operationId(), SETTLEMENT_PENDING, SETTLED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "PAID");
         });
     }
 
@@ -335,6 +336,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
             recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
         });
     }
 
@@ -343,6 +345,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
             confirmSettlement(errand, p.operationId(), RELEASE_PENDING, RELEASED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "REFUNDED");
         });
     }
 
@@ -351,6 +354,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
             recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
         });
     }
 

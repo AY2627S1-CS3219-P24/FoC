@@ -110,22 +110,6 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         return disputes.resolve(dispute.id(), new ResolveDisputeRequest(decision, "Reviewed the order and complaint"));
     }
 
-    private CreditSettlementResultEvent result(OrderDisputeDto dispute, String outcome) {
-        boolean payment = dispute.decision() == DisputeDecision.PAY_COURIER;
-        return new CreditSettlementResultEvent(
-                UUID.randomUUID(),
-                1,
-                OffsetDateTime.now(),
-                new CreditSettlementResultEvent.Payload(
-                        dispute.settlementOperationId(),
-                        dispute.orderId(),
-                        requester,
-                        5,
-                        outcome,
-                        payment ? "PAYOUT" : "REFUND",
-                        payment ? courier : null));
-    }
-
     @Test
     void openOrderViewerCannotSeeADisputeReportedDuringTheDetailLookup() {
         as(requester, "USER");
@@ -289,13 +273,19 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         assertThat(event.eventId()).isEqualTo(processing.settlementOperationId());
         assertThat(event.payload().requesterId()).isEqualTo(requester);
         assertThat(event.payload().courierId()).isEqualTo(courier);
-        orders.handleSettlementResult(result(processing, "PAID"));
+        var result = new CreditPaidEvent(
+                UUID.randomUUID(),
+                1,
+                OffsetDateTime.now(),
+                new CreditPaidEvent.Payload(processing.settlementOperationId(), id, requester, 5, courier));
+        orders.confirmPayment(result);
         var finished = orders.get(id);
         assertThat(finished.creditState().name()).isEqualTo("SETTLED");
         assertThat(finished.dispute().status()).isEqualTo(DisputeStatus.RESOLVED);
+        assertThat(finished.dispute().settlementOutcome()).isEqualTo("PAID");
         assertThat(finished.dispute().adminId()).isEqualTo(admin);
         assertThat(finished.dispute().resolvedAt()).isNotNull();
-        orders.handleSettlementResult(result(processing, "PAID"));
+        orders.confirmPayment(result);
         assertThat(orders.get(id).dispute()).isEqualTo(finished.dispute());
         assertThatThrownBy(() -> resolve(dispute, DisputeDecision.RELEASE_CREDITS))
                 .isInstanceOf(OrderConflictException.class);
@@ -319,22 +309,58 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
         var event = (ErrandCancelledEvent) facts.events.getFirst();
         assertThat(event.payload().requesterId()).isEqualTo(requester);
         assertThat(event.payload().amount()).isEqualTo(5);
-        orders.handleSettlementResult(result(processing, "REFUNDED"));
+        var result = new CreditRefundedEvent(
+                UUID.randomUUID(),
+                1,
+                OffsetDateTime.now(),
+                new CreditRefundedEvent.Payload(processing.settlementOperationId(), id, requester, 5));
+        orders.confirmRefund(result);
         assertThat(orders.get(id).creditState().name()).isEqualTo("RELEASED");
-        assertThat(orders.get(id).dispute().status()).isEqualTo(DisputeStatus.RESOLVED);
+        var finished = orders.get(id).dispute();
+        assertThat(finished.status()).isEqualTo(DisputeStatus.RESOLVED);
+        assertThat(finished.settlementOutcome()).isEqualTo("REFUNDED");
+        orders.confirmRefund(result);
+        assertThat(orders.get(id).dispute()).isEqualTo(finished);
     }
 
-    @Test
-    void reportedSettlementConflictLeavesTheOriginalDecisionForInvestigation() {
-        var processing = resolve(report(accepted(true)), DisputeDecision.RELEASE_CREDITS);
-        orders.handleSettlementResult(result(processing, "TERMINAL_CONFLICT"));
+    @ParameterizedTest
+    @EnumSource(
+            value = DisputeDecision.class,
+            names = {"PAY_COURIER", "RELEASE_CREDITS"})
+    void reportedSettlementConflictLeavesTheOriginalDecisionForInvestigation(DisputeDecision decision) {
+        var processing = resolve(report(accepted(true)), decision);
+        if (decision == DisputeDecision.PAY_COURIER) {
+            orders.recordPaymentDeclined(new CreditPaymentDeclinedEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(),
+                    new CreditPaymentDeclinedEvent.Payload(
+                            processing.settlementOperationId(),
+                            processing.orderId(),
+                            requester,
+                            5,
+                            courier,
+                            "TERMINAL_CONFLICT")));
+        } else {
+            orders.recordRefundDeclined(new CreditRefundDeclinedEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(),
+                    new CreditRefundDeclinedEvent.Payload(
+                            processing.settlementOperationId(),
+                            processing.orderId(),
+                            requester,
+                            5,
+                            "TERMINAL_CONFLICT")));
+        }
         var dispute = disputes.forOrder(processing.orderId());
         assertThat(dispute.status()).isEqualTo(DisputeStatus.NEEDS_ATTENTION);
-        assertThat(dispute.decision()).isEqualTo(DisputeDecision.RELEASE_CREDITS);
+        assertThat(dispute.decision()).isEqualTo(decision);
         assertThat(dispute.settlementOutcome()).isEqualTo("TERMINAL_CONFLICT");
         assertThat(dispute.resolvedAt()).isNull();
-        assertThatThrownBy(() -> resolve(dispute, DisputeDecision.PAY_COURIER))
-                .isInstanceOf(OrderConflictException.class);
+        var otherDecision =
+                decision == DisputeDecision.PAY_COURIER ? DisputeDecision.RELEASE_CREDITS : DisputeDecision.PAY_COURIER;
+        assertThatThrownBy(() -> resolve(dispute, otherDecision)).isInstanceOf(OrderConflictException.class);
     }
 
     @Test
