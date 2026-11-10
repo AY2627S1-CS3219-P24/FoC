@@ -1,5 +1,17 @@
 name: foc
 
+x-java-environment: &java-environment
+  SPRING_PROFILES_ACTIVE: prod
+  AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+x-java-healthcheck: &java-healthcheck
+  interval: 10s
+  timeout: 3s
+  retries: 12
+  start_period: 40s
+
 services:
   postgres:
     restart: unless-stopped
@@ -23,8 +35,7 @@ services:
       context: .
       target: user-service
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      <<: *java-environment
       FOC_USER_BUCKET: ${FOC_USER_BUCKET}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -32,9 +43,7 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM}
       FOC_FRONTEND_URL: ${FOC_FRONTEND_URL:-https://localhost}
-      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_user
-      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
-      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_user
       EVENTS_MESSAGING_TOPIC_ARN: ${USER_EVENTS_TOPIC_ARN}
     secrets:
       - jwt_private_key
@@ -43,11 +52,8 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
+      <<: *java-healthcheck
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/api/actuator/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 40s
 
   admin-init:
     extends:
@@ -68,25 +74,19 @@ services:
       context: .
       target: supplier-service
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      <<: *java-environment
       FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
       FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET}
       EVENTS_MESSAGING_TOPIC_ARN: ${SUPPLIER_EVENTS_TOPIC_ARN}
-      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_supplier
-      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
-      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_supplier
     depends_on:
       postgres:
         condition: service_healthy
       user-service:
         condition: service_healthy
     healthcheck:
+      <<: *java-healthcheck
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8081/api/actuator/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 40s
 
   supplier-seed:
     extends:
@@ -104,13 +104,10 @@ services:
       context: .
       target: order-service
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      <<: *java-environment
       FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
       FOC_ORDER_BUCKET: ${FOC_ORDER_BUCKET}
-      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_order
-      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
-      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_order
       EVENTS_MESSAGING_TOPIC_ARN: ${ORDER_EVENTS_TOPIC_ARN}
       EVENTS_MESSAGING_QUEUE_NAME: ${ORDER_EVENTS_QUEUE_NAME}
       FOC_ORDER_AI_ENABLED: ${FOC_ORDER_AI_ENABLED:-false}
@@ -123,11 +120,8 @@ services:
       user-service:
         condition: service_healthy
     healthcheck:
+      <<: *java-healthcheck
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8082/api/actuator/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 40s
 
   credit-service:
     restart: unless-stopped
@@ -135,12 +129,9 @@ services:
       context: .
       target: credit-service
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      <<: *java-environment
       FOC_JWKS_URI: http://user-service:8080/api/.well-known/jwks.json
-      FOC_DATABASE_URL: jdbc:postgresql://postgres:5432/foc_credit
-      FOC_DATABASE_USERNAME: ${POSTGRES_USER}
-      FOC_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_credit
       EVENTS_MESSAGING_TOPIC_ARN: ${CREDIT_EVENTS_TOPIC_ARN}
       EVENTS_MESSAGING_QUEUE_NAME: ${CREDIT_EVENTS_QUEUE_NAME}
     depends_on:
@@ -149,11 +140,8 @@ services:
       user-service:
         condition: service_healthy
     healthcheck:
+      <<: *java-healthcheck
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8083/api/actuator/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 40s
 
   realtime-service:
     restart: unless-stopped

@@ -1,8 +1,5 @@
 spring:
   datasource:
-    url: ${FOC_DATABASE_URL}
-    username: ${FOC_DATABASE_USERNAME}
-    password: ${FOC_DATABASE_PASSWORD}
     hikari:
       maximum-pool-size: 5
       minimum-idle: 1

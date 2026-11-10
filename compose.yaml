@@ -73,19 +73,23 @@ services:
   supplier-seed:
     profiles: ["setup"]
     restart: "no"
-    image: postgres:18-alpine
+    build:
+      context: .
+      target: supplier-service
     environment:
-      PGHOST: postgres
-      PGPORT: 5432
-      PGDATABASE: foc_supplier
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./infra/docker/postgres/seed-suppliers.sh:/scripts/seed-suppliers.sh:ro
-      - ./data/csv:/seed:ro
-    command: ["/bin/sh", "/scripts/seed-suppliers.sh", "/seed"]
+      SPRING_PROFILES_ACTIVE: dev,supplier-seed
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/foc_supplier
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SPRING_CLOUD_AWS_SNS_ENDPOINT: http://floci:4566
+      SPRING_CLOUD_AWS_S3_ENDPOINT: http://floci:4566
+      FOC_S3_ENDPOINT: http://floci:4566
+      FOC_SUPPLIER_BUCKET: ${FOC_SUPPLIER_BUCKET:-foc-dev-supplier}
     depends_on:
       postgres:
+        condition: service_healthy
+      floci:
         condition: service_healthy
 
 volumes:

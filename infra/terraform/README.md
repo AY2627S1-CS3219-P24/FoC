@@ -12,14 +12,15 @@ Local development uses [Compose](../../compose.yaml) and does not need Terraform
 
 ## Configuration
 
-Use Terraform **1.16.1**, AWS provider **6.65.0**, and the committed provider lock
-file.
+Use the Terraform version in [`.terraform-version`](../../.terraform-version) and
+the committed AWS provider lock file.
 
 | File | Purpose |
 | --- | --- |
-| [terraform.tfvars](environments/prod/terraform.tfvars) | Production domain, email, AMI, instance sizes, bucket names, and event routes. |
+| [terraform.tfvars](environments/prod/terraform.tfvars) | Production domain, email addresses, AMI, instance sizes, and bucket names. |
 | [variables.tf](environments/prod/variables.tf) | Input descriptions and defaults. |
-| [locals.tf](environments/prod/locals.tf) | Service ports, memory, CPU, and runtime capabilities. |
+| [locals.tf](environments/prod/locals.tf) | Event routes and the derived publisher and consumer lists. |
+| [service-config.tf](environments/prod/service-config.tf) | Service ports, resources, environment variables, secret bindings, and volumes. |
 | [backend.tf](environments/prod/backend.tf) | S3 state key, region, and locking. |
 
 `core_ami_id` pins an ECS-optimized AL2023 x86_64 image in the deployment region.
@@ -82,7 +83,9 @@ ECS task registration, launch, and status APIs.
 Edit `terraform.tfvars`: set the domain, email addresses, globally unique image
 bucket names, and AMI ID. Use `start_services = false` for the initial creation.
 
-Create these SSM **SecureString** parameters, prefixed with `<name_prefix>-`:
+Create these SSM **SecureString** parameters, prefixed with `<name_prefix>-`.
+Terraform derives the required list from service bindings; the infrastructure
+workflow checks it against SSM before approval:
 
 | Suffix | Value |
 | --- | --- |
@@ -110,6 +113,8 @@ Run these GitHub Actions workflows from `main`, in order:
 7. **Seed Suppliers**: load the catalog from the Supplier Service image.
 8. Check HTTPS and application behavior as described below.
 
+Both setup task definitions derive their settings from the owning service and
+use its selected release image. They run once without service restart policies.
 Admin initialization preserves an existing admin's password and fails if the
 configured email belongs to a non-admin. Supplier seeding skips existing supplier
 IDs. Both tasks use the staged service image and run Flyway migrations.
@@ -118,8 +123,8 @@ With AWS credentials and an initialized Terraform backend, the same setup tasks
 can be launched from the repository root:
 
 ```sh
-bash .github/scripts/init-admin.sh
-bash .github/scripts/seed-suppliers.sh
+bash .github/scripts/run-setup-task.sh admin-init
+bash .github/scripts/run-setup-task.sh supplier-seed
 ```
 
 ## Deploying changes
@@ -127,7 +132,7 @@ bash .github/scripts/seed-suppliers.sh
 | Change | Action |
 | --- | --- |
 | Application release | Run **Deploy Production** from `main`; select one service or `all`. |
-| Frontend or nginx release | Select `gateway` in **Deploy Production**, or use **Deploy Frontend**. |
+| Frontend or nginx release | Select `gateway` in **Deploy Production**. |
 | Terraform change | Run **Update infrastructure** and review its saved plan before approval. |
 | Task memory, environment, or secret binding | Apply infrastructure, then deploy the affected services. |
 | Start or stop the app | Run **Start or stop services** with `start` or `stop`. |
@@ -138,7 +143,9 @@ revisions. An apply or restart alone does not activate new task settings.
 Releases use immutable commit-SHA image tags. Rerunning a failed workflow retries
 that commit and reuses its images; a new workflow run deploys the latest `main`.
 Stopped services stay stopped, with the release staged for their next start.
-Workflows share a production lock to prevent overlapping changes.
+Workflows share a production lock to prevent overlapping changes. The infrastructure
+workflow also refuses to remove a queue that contains visible, in-flight or delayed
+messages; inspect the queue rather than purging it to bypass the check.
 
 CARTO configuration is compiled into the frontend. After changing
 `VITE_CARTO_API_KEY`, create a new commit and deploy the gateway. An existing image
@@ -206,6 +213,7 @@ restoring the host configuration can cause another outage.
 | Task fails to start or deployment rolls back | ECS service events and the service's CloudWatch logs. |
 | New task settings have no effect | Deploy the service after applying Terraform. |
 | HTTPS or JWT verification fails | Public DNS, the JWKS endpoint, and `renew-certificate.service`. |
+| Grafana receives no metrics | Exporter logs, the OTLP `/v1/metrics` URL, and a `Basic` authorization header. After changing SSM values, redeploy the Spring services. |
 | Host does not register with ECS | `/var/log/host-bootstrap.log`, `/var/log/cloud-init-output.log`, and the systemd units below. |
 | Admin or supplier setup fails | `/ecs/<name_prefix>/database-bootstrap`; the launcher prints the task ARN and log stream. |
 
@@ -223,6 +231,7 @@ Successful issuance or renewal copies the certificate, reloads nginx, and saves
 an archive to S3. A replacement host restores that archive during preparation.
 
 ## Monitoring
+
 
 Application logs are retained for seven days under `/ecs/<name_prefix>/<service>`.
 The four Spring services send metrics to Grafana Cloud once a minute. Container
