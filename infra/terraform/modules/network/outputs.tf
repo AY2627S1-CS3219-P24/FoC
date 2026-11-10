@@ -36,9 +36,9 @@ output "elastic_ip" {
   value       = aws_eip.gateway.public_ip
 }
 
-output "service_discovery_namespace_name" {
-  description = "Private DNS namespace used by the gateway proxy."
-  value       = aws_service_discovery_private_dns_namespace.app.name
+output "service_connect_namespace_arn" {
+  description = "Cloud Map namespace ARN for ECS Service Connect."
+  value       = aws_service_discovery_private_dns_namespace.app.arn
 }
 
 output "service_discovery_service_arns" {

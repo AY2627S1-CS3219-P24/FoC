@@ -83,8 +83,8 @@ variable "eip_allocation_id" {
   type        = string
 }
 
-variable "service_discovery_namespace_name" {
-  description = "Private Cloud Map DNS namespace name."
+variable "service_connect_namespace_arn" {
+  description = "Cloud Map namespace ARN for ECS Service Connect."
   type        = string
 }
 

@@ -54,20 +54,20 @@ variable "base_services" {
 }
 
 variables {
-  region                           = "ap-southeast-1"
-  name_prefix                      = "foc-test"
-  domain_name                      = "foc.example.edu"
-  acme_email                       = "team@example.edu"
-  mail_from                        = "noreply@mail.example.edu"
-  core_ami_id                      = "ami-0123456789abcdef0"
-  core_instance_type               = "t3a.medium"
-  public_subnet_id                 = "subnet-public"
-  compute_security_group_id        = "sg-compute"
-  eip_allocation_id                = "eipalloc-test"
-  service_discovery_namespace_name = "foc-test.local"
-  database_host                    = "database.example"
-  database_master_secret_arn       = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:foc-test"
-  database_bootstrap_sql           = "select 1"
+  region                        = "ap-southeast-1"
+  name_prefix                   = "foc-test"
+  domain_name                   = "foc.example.edu"
+  acme_email                    = "team@example.edu"
+  mail_from                     = "noreply@mail.example.edu"
+  core_ami_id                   = "ami-0123456789abcdef0"
+  core_instance_type            = "t3a.medium"
+  public_subnet_id              = "subnet-public"
+  compute_security_group_id     = "sg-compute"
+  eip_allocation_id             = "eipalloc-test"
+  service_connect_namespace_arn = "arn:aws:servicediscovery:ap-southeast-1:123456789012:namespace/ns-test"
+  database_host                 = "database.example"
+  database_master_secret_arn    = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:foc-test"
+  database_bootstrap_sql        = "select 1"
   image_bucket_names = {
     user     = "foc-test-user"
     supplier = "foc-test-supplier"
@@ -161,16 +161,36 @@ run "service_credentials_and_messaging_permissions" {
         "${name}/${item.name}=${item.value}" if endswith(item.name, "_SERVICE_URL")
       ]
       ])) == toset([
-      "order/FOC_CREDIT_SERVICE_URL=https://foc.example.edu/api",
-      "order/FOC_SUPPLIER_SERVICE_URL=https://foc.example.edu/api",
-      "order/FOC_USER_SERVICE_URL=https://foc.example.edu/api",
+      "order/FOC_CREDIT_SERVICE_URL=http://credit:8083/api",
+      "order/FOC_SUPPLIER_SERVICE_URL=http://supplier:8081/api",
+      "order/FOC_USER_SERVICE_URL=http://user:8080/api",
     ])
-    error_message = "Before Service Connect, only order calls other services, through the gateway, because Java clients cannot resolve Cloud Map SRV records."
+    error_message = "Order must call backend services through their Service Connect names and container ports."
   }
 
   assert {
-    condition     = alltrue([for service in aws_ecs_service.app : length(service.service_connect_configuration) == 0])
-    error_message = "Service Connect must stay off until every service runs a task definition with named ports and task memory."
+    condition = alltrue([
+      for name, service in aws_ecs_service.app :
+      one(service.service_connect_configuration).enabled
+      && one(service.service_connect_configuration).namespace == var.service_connect_namespace_arn
+      && one(one(service.service_connect_configuration).service).port_name == name
+      && one(one(service.service_connect_configuration).service).discovery_name == name
+      && one(one(one(service.service_connect_configuration).service).client_alias).dns_name == name
+      && one(one(one(service.service_connect_configuration).service).client_alias).port == var.services[name].port
+      && one(one(service.service_connect_configuration).log_configuration).options["awslogs-stream-prefix"] == "service-connect"
+      && one(service.service_registries).registry_arn == var.service_discovery_service_arns[name]
+    ])
+    error_message = "Every backend must expose its named port through Service Connect and retain SRV registration during migration."
+  }
+
+  assert {
+    condition = (
+      one(aws_ecs_service.gateway.service_connect_configuration).enabled
+      && one(aws_ecs_service.gateway.service_connect_configuration).namespace == var.service_connect_namespace_arn
+      && length(one(aws_ecs_service.gateway.service_connect_configuration).service) == 0
+      && one(one(aws_ecs_service.gateway.service_connect_configuration).log_configuration).options["awslogs-stream-prefix"] == "service-connect"
+    )
+    error_message = "The gateway must join the namespace as a client with proxy logs enabled."
   }
 
   assert {
@@ -180,20 +200,20 @@ run "service_credentials_and_messaging_permissions" {
       && jsondecode(task.container_definitions)[0].portMappings[0].name == name
       && !contains(keys(jsondecode(task.container_definitions)[0].portMappings[0]), "appProtocol")
     ]) && tonumber(aws_ecs_task_definition.gateway.memory) == 192
-    error_message = "Task definitions must name a TCP port and reserve task memory for the Service Connect proxy before it is enabled."
+    error_message = "Task definitions must name TCP ports and reserve memory for the Service Connect proxy."
   }
 
   assert {
     condition = toset([
       for item in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].environment : "${item.name}=${item.value}"
       ]) == toset([
-      "FOC_USER_UPSTREAM=foc-test.local service=user",
-      "FOC_SUPPLIER_UPSTREAM=foc-test.local service=supplier",
-      "FOC_ORDER_UPSTREAM=foc-test.local service=order",
-      "FOC_CREDIT_UPSTREAM=foc-test.local service=credit",
-      "FOC_REALTIME_UPSTREAM=foc-test.local service=realtime",
+      "FOC_USER_UPSTREAM=user:8080",
+      "FOC_SUPPLIER_UPSTREAM=supplier:8081",
+      "FOC_ORDER_UPSTREAM=order:8082",
+      "FOC_CREDIT_UPSTREAM=credit:8083",
+      "FOC_REALTIME_UPSTREAM=realtime:8084",
     ])
-    error_message = "Before Service Connect, the gateway must re-resolve the Cloud Map SRV records."
+    error_message = "The gateway must use Service Connect names without DNS re-resolution."
   }
 
   assert {

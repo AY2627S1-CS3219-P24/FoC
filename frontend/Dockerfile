@@ -15,11 +15,11 @@ RUN apk add --no-cache curl openssl \
     && rm -rf /usr/share/nginx/html/*
 
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-    FOC_USER_UPSTREAM=user-service:8080 \
-    FOC_SUPPLIER_UPSTREAM=supplier-service:8081 \
-    FOC_ORDER_UPSTREAM=order-service:8082 \
-    FOC_CREDIT_UPSTREAM=credit-service:8083 \
-    FOC_REALTIME_UPSTREAM=realtime-service:8084
+    FOC_USER_UPSTREAM="user-service:8080 resolve" \
+    FOC_SUPPLIER_UPSTREAM="supplier-service:8081 resolve" \
+    FOC_ORDER_UPSTREAM="order-service:8082 resolve" \
+    FOC_CREDIT_UPSTREAM="credit-service:8083 resolve" \
+    FOC_REALTIME_UPSTREAM="realtime-service:8084 resolve"
 
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 COPY infra/docker/nginx/default.conf.template /etc/nginx/templates/default.conf.template
