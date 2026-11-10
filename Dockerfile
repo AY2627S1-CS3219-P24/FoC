@@ -19,7 +19,7 @@ FROM eclipse-temurin:25-jre-alpine AS runtime
 WORKDIR /app
 RUN apk add --no-cache curl \
     && addgroup -S -g 10001 app && adduser -S -u 10001 app -G app
-RUN curl -fsS https://truststore.pki.rds.amazonaws.com/ap-southeast-1/ap-southeast-1-bundle.pem -o /app/rds-ca.pem
+RUN curl -fsS https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /app/rds-ca.pem
 USER app
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 

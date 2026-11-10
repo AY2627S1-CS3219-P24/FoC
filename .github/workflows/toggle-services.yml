@@ -28,11 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v5
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/production-context
         with:
-          role-to-assume: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
-          aws-region: ap-southeast-1
+          role: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
+          state-bucket: ${{ vars.TF_STATE_BUCKET }}
       - name: Set task counts and wait for services
         env:
           ACTION: ${{ inputs.action }}

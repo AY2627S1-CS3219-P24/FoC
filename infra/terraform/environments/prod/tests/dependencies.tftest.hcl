@@ -42,14 +42,14 @@ run "ecs_identity_is_known_while_network_changes_are_pending" {
   command = plan
 
   assert {
-    condition     = output.deployment.admin_task_definition.taskRoleArn == "arn:aws:iam::123456789012:role/foc-test-user-task"
+    condition     = output.deployment.setup_tasks["admin-init"].task_definition.taskRoleArn == "arn:aws:iam::123456789012:role/foc-test-user-task"
     error_message = "ECS account and partition lookups must remain known during planning."
   }
 
   assert {
     condition = one([
-      for secret in output.deployment.admin_task_definition.containerDefinitions[0].secrets : secret.valueFrom
-      if secret.name == "FOC_DATABASE_PASSWORD"
+      for secret in output.deployment.setup_tasks["admin-init"].task_definition.containerDefinitions[0].secrets : secret.valueFrom
+      if secret.name == "SPRING_DATASOURCE_PASSWORD"
     ]) == "arn:aws:ssm:ap-southeast-1:123456789012:parameter/foc-test-database-user"
     error_message = "ECS parameter ARNs must not become unknown because networking has pending changes."
   }

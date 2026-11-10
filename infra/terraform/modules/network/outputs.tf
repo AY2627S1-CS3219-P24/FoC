@@ -40,8 +40,3 @@ output "service_connect_namespace_arn" {
   description = "Cloud Map namespace ARN for ECS Service Connect."
   value       = aws_service_discovery_private_dns_namespace.app.arn
 }
-
-output "service_discovery_service_arns" {
-  description = "Cloud Map service ARNs keyed by application service."
-  value       = { for name, service in aws_service_discovery_service.backend : name => service.arn }
-}

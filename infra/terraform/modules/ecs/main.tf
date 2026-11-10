@@ -67,7 +67,7 @@ resource "aws_ecs_task_definition" "database_bootstrap" {
     entryPoint = ["/bin/sh", "-ec"]
 
     command = [join("\n", [
-      "wget -q -O /tmp/rds-ca.pem https://truststore.pki.rds.amazonaws.com/${var.region}/${var.region}-bundle.pem",
+      "wget -q -O /tmp/rds-ca.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
       "exec psql -X --set=ON_ERROR_STOP=on --set=VERBOSITY=terse <<'SQL'",
       var.database_bootstrap_sql,
       "SQL"

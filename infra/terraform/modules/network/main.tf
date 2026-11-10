@@ -50,19 +50,6 @@ resource "aws_service_discovery_private_dns_namespace" "app" {
   vpc  = aws_vpc.app.id
 }
 
-resource "aws_service_discovery_service" "backend" {
-  for_each = var.service_names
-  name     = "_${each.key}._tcp"
-  dns_config {
-    namespace_id   = aws_service_discovery_private_dns_namespace.app.id
-    routing_policy = "MULTIVALUE"
-    dns_records {
-      type = "SRV"
-      ttl  = 5
-    }
-  }
-}
-
 resource "aws_security_group" "compute" {
   name_prefix = "${var.name_prefix}-compute-"
   description = "Public gateway; ECS bridge ports only between ECS hosts. No SSH."

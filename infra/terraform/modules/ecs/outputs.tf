@@ -13,14 +13,19 @@ output "bootstrap_log_group" {
   value       = aws_cloudwatch_log_group.database_bootstrap.name
 }
 
-output "admin_task_definition" {
-  description = "Non-secret admin setup task template; the launcher supplies the release image."
-  value       = local.admin_task_definition
+output "execution_role_arn" {
+  description = "Shared application execution role."
+  value       = aws_iam_role.execution.arn
 }
 
-output "supplier_seed_task_definition" {
-  description = "Non-secret supplier seed task template; the launcher supplies the release image."
-  value       = local.supplier_seed_task_definition
+output "bootstrap_execution_role_arn" {
+  description = "Execution role for database and setup tasks."
+  value       = aws_iam_role.bootstrap_execution.arn
+}
+
+output "task_role_arns" {
+  description = "Task role ARNs keyed by service."
+  value       = local.task_role_arns
 }
 
 output "task_definition_arns" {

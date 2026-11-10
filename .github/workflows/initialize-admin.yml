@@ -22,23 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - uses: hashicorp/setup-terraform@v4
+      - uses: ./.github/actions/production-context
         with:
-          terraform_version: "1.16.1"
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
-          aws-region: ap-southeast-1
-      - name: Initialize existing remote state
-        working-directory: infra/terraform/environments/prod
-        run: |
-          set -euo pipefail
-
-          : "${TF_STATE_BUCKET:?Set the TF_STATE_BUCKET repository variable to the Terraform state bucket}"
-          terraform init -input=false -lockfile=readonly -backend-config="bucket=${TF_STATE_BUCKET}"
+          role: ${{ vars.AWS_INFRASTRUCTURE_ROLE }}
+          state-bucket: ${{ vars.TF_STATE_BUCKET }}
       - name: Initialize admin through User Service
-        run: bash .github/scripts/init-admin.sh
+        run: bash .github/scripts/run-setup-task.sh admin-init
