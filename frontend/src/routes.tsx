@@ -49,6 +49,7 @@ import {
 } from '#/features/orders/utils/orderFilters'
 import { AdminOrderListPage } from '#/features/orders/pages/AdminOrderListPage/AdminOrderListPage'
 import { AdminOrderDetailPage } from '#/features/orders/pages/AdminOrderDetailPage/AdminOrderDetailPage'
+import { AdminDisputeLogPage } from '#/features/orders/pages/AdminDisputeLogPage/AdminDisputeLogPage'
 
 const rootRoute = createRootRouteWithContext<{ auth: AuthOperations }>()()
 
@@ -311,6 +312,15 @@ const adminOrderDetailRoute = createRoute({
   validateSearch: parseAdminOrderSearch,
 })
 
+const adminAuditLogRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: '/audit-log',
+  component: AdminDisputeLogPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: parsePage(search.page),
+  }),
+})
+
 const supplierListRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: '/suppliers',
@@ -371,6 +381,7 @@ export const routeTree = rootRoute.addChildren([
       adminIndexRoute,
       adminOrderListRoute,
       adminOrderDetailRoute,
+      adminAuditLogRoute,
       supplierListRoute,
       supplierCreateRoute,
       supplierEditRoute,

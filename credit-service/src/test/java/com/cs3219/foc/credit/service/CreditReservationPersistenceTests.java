@@ -39,7 +39,7 @@ class CreditReservationPersistenceTests extends AbstractIntegrationTest {
     private CreditReservationService reserve;
 
     @Autowired
-    private CreditSettlementService settlement;
+    private CreditRefundService refund;
 
     @Autowired
     private CreditAccountService creditAccountService;
@@ -176,7 +176,7 @@ class CreditReservationPersistenceTests extends AbstractIntegrationTest {
         reserve.reserve(user, second);
         reserve.reserve(user, request(90));
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(50, 50));
-        settlement.releaseReservedCredits(new ErrandCancelledEvent(
+        refund.releaseReservedCredits(new ErrandCancelledEvent(
                 UUID.randomUUID(),
                 1,
                 OffsetDateTime.now(),
@@ -193,7 +193,8 @@ class CreditReservationPersistenceTests extends AbstractIntegrationTest {
     @Import({
         CreditReservationService.class,
         CreditAccountService.class,
-        CreditSettlementService.class,
+        CreditRefundService.class,
+        CreditSettlementSupport.class,
         CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,

@@ -76,11 +76,11 @@ resource "aws_iam_role_policy" "secrets" {
     Statement = [{
       Effect = "Allow"
       Action = ["ssm:GetParameters"]
-      Resource = [
+      Resource = concat([
         "${local.parameter_arn}-database-*",
         "${local.parameter_arn}-mail-*",
         "${local.parameter_arn}-grafana-*"
-      ]
+      ], try(var.services["order"].ai_enabled, false) ? ["${local.parameter_arn}-openai-api-key"] : [])
     }]
   })
 }

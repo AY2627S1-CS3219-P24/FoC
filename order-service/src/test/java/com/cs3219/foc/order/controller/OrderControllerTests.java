@@ -17,6 +17,7 @@ import com.cs3219.foc.order.model.dto.PageDto;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
 import com.cs3219.foc.order.service.DeliveryService;
+import com.cs3219.foc.order.service.OrderDisputeService;
 import com.cs3219.foc.order.service.OrderService;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -54,12 +55,15 @@ class OrderControllerTests {
     @Autowired
     private DeliveryService delivery;
 
+    @Autowired
+    private OrderDisputeService disputes;
+
     private MockMvc mvc;
     private final UUID id = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        reset(service, delivery);
+        reset(service, delivery, disputes);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -317,11 +321,67 @@ class OrderControllerTests {
         mvc.perform(get("/orders/" + id + "/delivery-photos").with(jwt())).andExpect(status().isForbidden());
     }
 
+    @Test
+    void disputeRoutesRequireAuthenticationAndValidateBodies() throws Exception {
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\"Delivery issue\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/" + id + "/disputes")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"complaint\":\"Delivery issue\"}"))
+                .andExpect(status().isOk());
+        verify(disputes).report(eq(id), argThat(request -> request.complaint().equals("Delivery issue")));
+
+        when(disputes.list(any())).thenReturn(new PageDto<>(List.of(), 0, 0, 20));
+        mvc.perform(get("/orders/disputes").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(0));
+        verify(service, never()).get(any());
+        mvc.perform(post("/orders/disputes/" + id + "/resolve")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"DISMISS\",\"explanation\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/disputes/" + id + "/resolve")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"DISMISS\",\"explanation\":\"Reviewed\"}"))
+                .andExpect(status().isOk());
+        verify(disputes)
+                .resolve(eq(id), argThat(request -> request.explanation().equals("Reviewed")));
+    }
+
+    @Test
+    void disputeResponseRequiresAuthenticationAndValidBody() throws Exception {
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"My explanation\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\" \"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/disputes/" + id + "/response")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"My explanation\"}"))
+                .andExpect(status().isOk());
+        verify(disputes).respond(eq(id), argThat(request -> request.response().equals("My explanation")));
+    }
+
     @TestConfiguration
     @EnableWebMvc
     @EnableSpringDataWebSupport
     @EnableWebSecurity
-    @Import({OrderController.class, SecurityConfig.class, GlobalExceptionHandler.class})
+    @Import({OrderController.class, OrderDisputeController.class, SecurityConfig.class, GlobalExceptionHandler.class})
     static class TestConfig {
         @Bean
         OrderService orderService() {
@@ -331,6 +391,11 @@ class OrderControllerTests {
         @Bean
         DeliveryService deliveryService() {
             return mock(DeliveryService.class);
+        }
+
+        @Bean
+        OrderDisputeService orderDisputeService() {
+            return mock(OrderDisputeService.class);
         }
 
         @Bean

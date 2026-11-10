@@ -3,6 +3,7 @@ import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
 import { DeliveryPhotos } from '../../components/DeliveryPhotos/DeliveryPhotos'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
+import { OrderDispute } from '../../components/OrderDispute/OrderDispute'
 import {
   OrderFeedback,
   OrderNotice,
@@ -17,9 +18,19 @@ export const AdminOrderDetailPage = () => {
   const order = query.data
   return (
     <div className={styles.page}>
-      <Link className={styles.back} to="/admin/orders" search={search}>
-        ← Back to requested orders
-      </Link>
+      {search.auditPage !== undefined ? (
+        <Link
+          className={styles.back}
+          to="/admin/audit-log"
+          search={{ page: search.auditPage }}
+        >
+          ← Back to Audit log
+        </Link>
+      ) : (
+        <Link className={styles.back} to="/admin/orders" search={search}>
+          ← Back to requested orders
+        </Link>
+      )}
       <OrderFeedback
         error={query.error}
         loading={query.isPending}
@@ -43,12 +54,23 @@ export const AdminOrderDetailPage = () => {
             <h1 className={styles.pageTitle}>Errand details</h1>
             <OrderStatusBadge status={order.status} />
           </div>
-          <p className={styles.muted}>Errand #{order.id} · Read-only</p>
+          <p className={styles.muted}>
+            Errand #{order.id}
+            {!order.dispute && ' · Read-only'}
+          </p>
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
             <OrderTimeline order={order} />
             <DeliveryPhotos order={order} />
           </div>
+          {query.userId && (
+            <OrderDispute
+              key={`${query.userId}:${order.id}`}
+              order={order}
+              userId={query.userId}
+              admin
+            />
+          )}
         </>
       )}
     </div>

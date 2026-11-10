@@ -292,7 +292,8 @@ non-TLS access. Failed messages move to the DLQ after five receives.
 
 `event_subscriptions` in `terraform.tfvars` selects the event types. Production
 routes `UserCreatedEvent` from User to Credit, errand completion, cancellation,
-and expiry from Order to Credit, and `CreditSettlementResultEvent` from Credit
+and expiry from Order to Credit, and `CreditPaidEvent`, `CreditPaymentDeclinedEvent`, `CreditRefundedEvent`, and
+`CreditRefundDeclinedEvent` from Credit
 to Order. Subscriptions deliver raw JSON.
 
 Copy `deployment.topics` and `deployment.queue_names` into the topic and queue
@@ -308,7 +309,8 @@ The deployment and setup workflows share the production lock. Set up a new envir
 5. Update infrastructure again with `start_services` true. That apply changes desired counts; services keep the release image. After HTTPS is ready, log in with the configured admin email and password.
 6. Run **Seed Suppliers** from `main`. It uses the staged Supplier Service image, applies that service's Flyway migrations, and inserts catalog suppliers that are not already stored. Reruns do not modify suppliers that already exist.
 
-**Deploy Production** is manual and has no inputs. Run it from `main`; runs from
+**Deploy Production** is manual. Choose `all` (the default) or one service in the
+`service` dropdown to publish and deploy only that selection. Run it from `main`; runs from
 other branches are skipped. Every job uses the same `github.sha` captured for that
 run, even if `main` advances during the release. Lint, tests, and validation run
 in pull-request CI rather than deployment.
@@ -319,13 +321,18 @@ commit SHA as their immutable tag.
 
 Publication reuses existing commit tags and builds only missing images. Re-run a
 failed workflow to retry its original commit; start a new run to deploy the latest
-`main`. A new commit builds all six images, including configuration-only commits.
+`main`. A new commit builds missing images for the selected services, including configuration-only commits.
 A release with services disabled only stages task definitions; it does not
-validate running applications. A six-service matrix uses Amazon's ECS render and
+validate running applications. The selected service matrix uses Amazon's ECS render and
 deploy GitHub Actions to set the image and desired count. Active releases wait for
 deployment, and the deploy action reports a circuit-breaker rollback as failure.
 Disabled releases explicitly set zero desired tasks and skip the runtime wait.
 Each service records its registered task-definition ARN in the run summary.
+After applying Terraform changes to a service's environment or secret bindings,
+deploy that service to activate its updated task definition. For example, after
+creating `foc-prod-openai-api-key` and applying the order AI configuration, select
+`order`. A restart alone keeps the service's current task definition; Terraform
+ignores changes to the ECS service's task-definition assignment.
 Inspect service events before retrying a failed or partial release; services roll
 back individually, so a failed release can leave a mix of versions.
 

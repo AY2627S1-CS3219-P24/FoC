@@ -15,7 +15,8 @@ import com.cs3219.foc.order.infrastructure.storage.DeliveryPhotoStorage;
 import com.cs3219.foc.order.model.dto.CreditReservationResponse;
 import com.cs3219.foc.order.model.dto.SupplierPickupDto;
 import com.cs3219.foc.order.model.dto.UserBriefDto;
-import com.cs3219.foc.order.model.dto.event.CreditSettlementResultEvent;
+import com.cs3219.foc.order.model.dto.event.CreditPaidEvent;
+import com.cs3219.foc.order.model.dto.event.CreditRefundedEvent;
 import com.cs3219.foc.order.service.OrderService;
 import io.awspring.cloud.sns.core.SnsOperations;
 import java.awt.image.BufferedImage;
@@ -82,7 +83,7 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, delivery_photos, event_publication");
+        jdbc.execute("TRUNCATE order_disputes, errands, delivery_photos, event_publication");
         when(suppliers.get(any()))
                 .thenAnswer(call -> new SupplierPickupDto(call.getArgument(0), "Cafe", "COM1", "01", "Lobby", true));
         when(users.find(any())).thenAnswer(call -> ((Set<UUID>) call.getArgument(0))
@@ -136,18 +137,19 @@ class OrderCreationHttpTests extends AbstractIntegrationTest {
                     boolean paid = targetStatus.equals("COMPLETED");
                     UUID operation =
                             jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
-                    service.handleSettlementResult(new CreditSettlementResultEvent(
-                            UUID.randomUUID(),
-                            1,
-                            OffsetDateTime.now(),
-                            new CreditSettlementResultEvent.Payload(
-                                    operation,
-                                    id,
-                                    requester,
-                                    5,
-                                    paid ? "PAID" : "REFUNDED",
-                                    paid ? "PAYOUT" : "REFUND",
-                                    paid ? courier : null)));
+                    if (paid) {
+                        service.confirmPayment(new CreditPaidEvent(
+                                UUID.randomUUID(),
+                                1,
+                                OffsetDateTime.now(),
+                                new CreditPaidEvent.Payload(operation, id, requester, 5, courier)));
+                    } else {
+                        service.confirmRefund(new CreditRefundedEvent(
+                                UUID.randomUUID(),
+                                1,
+                                OffsetDateTime.now(),
+                                new CreditRefundedEvent.Payload(operation, id, requester, 5)));
+                    }
                 }
                 Map<String, Object> advanced = jdbc.queryForMap("SELECT * FROM errands WHERE id=?", id);
                 assertThat(advanced.get("status")).isEqualTo(targetStatus);

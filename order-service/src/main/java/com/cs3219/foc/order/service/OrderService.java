@@ -48,6 +48,7 @@ public class OrderService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final OrderProperties properties;
+    private final OrderDisputeService disputes;
     private final TransactionTemplate transactions;
 
     public OrderService(
@@ -60,6 +61,7 @@ public class OrderService {
             ApplicationEventPublisher events,
             Clock clock,
             OrderProperties properties,
+            OrderDisputeService disputes,
             PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.currentUserService = currentUserService;
@@ -70,6 +72,7 @@ public class OrderService {
         this.events = events;
         this.clock = clock;
         this.properties = properties;
+        this.disputes = disputes;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -219,13 +222,13 @@ public class OrderService {
         CurrentUser actor = currentUserService.requireCurrentUser();
         Errand errand =
                 transactions.execute(tx -> repository.findById(id).orElseThrow(() -> new OrderNotFoundException(id)));
-        if (!actor.hasRole("ADMIN")
-                && !actor.userId().equals(errand.getRequesterId())
-                && !actor.userId().equals(errand.getCourierId())
-                && !(errand.getStatus() == OPEN && now().isBefore(errand.getExpiresAt()))) {
+        boolean canViewDispute = actor.hasRole("ADMIN")
+                || actor.userId().equals(errand.getRequesterId())
+                || actor.userId().equals(errand.getCourierId());
+        if (!canViewDispute && !(errand.getStatus() == OPEN && now().isBefore(errand.getExpiresAt()))) {
             throw new AccessDeniedException("Order is not visible to this user");
         }
-        return dtos(List.of(errand), actor.userId()).getFirst();
+        return dtos(List.of(errand), actor.userId(), canViewDispute).getFirst();
     }
 
     public ErrandActionResponse accept(UUID id) {
@@ -256,6 +259,7 @@ public class OrderService {
                 throw new AccessDeniedException("Only the assigned courier can pick up");
             if (lockedErrand.getStatus() != ACCEPTED)
                 throw new OrderConflictException("Order must be accepted before pickup");
+            disputes.requireNoActiveDispute(id);
             var now = now();
             lockedErrand.setStatus(PICKED_UP);
             lockedErrand.setPickedUpAt(now);
@@ -274,6 +278,7 @@ public class OrderService {
             // the courier must confirm deliver with a photo
             if (lockedErrand.getStatus() != DELIVERED)
                 throw new OrderConflictException("Order must be delivered before completion");
+            disputes.requireNoActiveDispute(id);
             end(lockedErrand, COMPLETED, SETTLEMENT_PENDING);
             events.publishEvent(new ErrandCompletedEvent(
                     lockedErrand.getSettlementEventId(),
@@ -318,59 +323,85 @@ public class OrderService {
         }
     }
 
-    public void handleSettlementResult(CreditSettlementResultEvent event) {
-        var payload = event.payload();
+    public void confirmPayment(CreditPaidEvent event) {
+        var p = event.payload();
         transactions.executeWithoutResult(tx -> {
-            var errand = locked(payload.errandId());
-            checkResult(
-                    Objects.equals(errand.getSettlementEventId(), payload.operationId())
-                            && Objects.equals(errand.getRequesterId(), payload.requesterId())
-                            && errand.getCreditReward() == payload.amount(),
-                    errand,
-                    payload.operationId());
-            switch (errand.getStatus()) {
-                case COMPLETED -> handlePayoutResult(errand, payload);
-                case CANCELLED, EXPIRED -> handleRefundResult(errand, payload);
-                default -> checkResult(false, errand, payload.operationId());
-            }
+            var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
+            confirmSettlement(errand, p.operationId(), SETTLEMENT_PENDING, SETTLED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "PAID");
         });
     }
 
-    private void handlePayoutResult(Errand errand, CreditSettlementResultEvent.Payload payload) {
-        checkResult(
-                Objects.equals(payload.settlementType(), "PAYOUT")
-                        && Objects.equals(payload.courierId(), errand.getCourierId()),
-                errand,
-                payload.operationId());
-        confirmSettlement(errand, payload, "PAID", SETTLEMENT_PENDING, SETTLED);
+    public void recordPaymentDeclined(CreditPaymentDeclinedEvent event) {
+        var p = event.payload();
+        transactions.executeWithoutResult(tx -> {
+            var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
+            recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
+        });
     }
 
-    private void handleRefundResult(Errand errand, CreditSettlementResultEvent.Payload payload) {
+    public void confirmRefund(CreditRefundedEvent event) {
+        var p = event.payload();
+        transactions.executeWithoutResult(tx -> {
+            var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
+            confirmSettlement(errand, p.operationId(), RELEASE_PENDING, RELEASED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "REFUNDED");
+        });
+    }
+
+    public void recordRefundDeclined(CreditRefundDeclinedEvent event) {
+        var p = event.payload();
+        transactions.executeWithoutResult(tx -> {
+            var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
+            recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
+        });
+    }
+
+    private Errand paymentOrder(UUID operationId, UUID errandId, UUID requesterId, long amount, UUID courierId) {
+        var errand = settlementOrder(operationId, errandId, requesterId, amount);
         checkResult(
-                Objects.equals(payload.settlementType(), "REFUND") && payload.courierId() == null,
+                errand.getStatus() == COMPLETED && Objects.equals(courierId, errand.getCourierId()),
                 errand,
-                payload.operationId());
-        confirmSettlement(errand, payload, "REFUNDED", RELEASE_PENDING, RELEASED);
+                operationId);
+        return errand;
+    }
+
+    private Errand refundOrder(UUID operationId, UUID errandId, UUID requesterId, long amount) {
+        var errand = settlementOrder(operationId, errandId, requesterId, amount);
+        checkResult(errand.getStatus() == CANCELLED || errand.getStatus() == EXPIRED, errand, operationId);
+        return errand;
+    }
+
+    private Errand settlementOrder(UUID operationId, UUID errandId, UUID requesterId, long amount) {
+        var errand = locked(errandId);
+        checkResult(
+                Objects.equals(errand.getSettlementEventId(), operationId)
+                        && Objects.equals(errand.getRequesterId(), requesterId)
+                        && errand.getCreditReward() == amount,
+                errand,
+                operationId);
+        return errand;
+    }
+
+    private void recordCreditConflict(Errand errand, UUID operationId, String reason) {
+        checkResult(
+                Set.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")
+                        .contains(reason),
+                errand,
+                operationId);
+        log.error(
+                "Credit settlement conflict errandId={} operationId={} outcome={}",
+                errand.getId(),
+                operationId,
+                reason);
     }
 
     private void confirmSettlement(
-            Errand errand,
-            CreditSettlementResultEvent.Payload payload,
-            String expectedOutcome,
-            CreditState pendingState,
-            CreditState confirmedState) {
-        if (Set.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")
-                .contains(payload.outcome())) {
-            log.error(
-                    "Credit settlement conflict errandId={} operationId={} outcome={}",
-                    errand.getId(),
-                    payload.operationId(),
-                    payload.outcome());
-            return;
-        }
-        checkResult(Objects.equals(payload.outcome(), expectedOutcome), errand, payload.operationId());
+            Errand errand, UUID operationId, CreditState pendingState, CreditState confirmedState) {
         if (errand.getCreditState() == confirmedState) return;
-        checkResult(errand.getCreditState() == pendingState, errand, payload.operationId());
+        checkResult(errand.getCreditState() == pendingState, errand, operationId);
         errand.setCreditState(confirmedState);
         errand.setUpdatedAt(now());
         repository.saveAndFlush(errand);
@@ -442,10 +473,10 @@ public class OrderService {
     }
 
     private List<ErrandDto> dtos(List<Errand> errands) {
-        return dtos(errands, null);
+        return dtos(errands, null, false);
     }
 
-    private List<ErrandDto> dtos(List<Errand> errands, UUID detailViewer) {
+    private List<ErrandDto> dtos(List<Errand> errands, UUID detailViewer, boolean includeDispute) {
         Set<UUID> ids = errands.stream()
                 .flatMap(errand -> Stream.of(errand.getRequesterId(), errand.getCourierId()))
                 .filter(Objects::nonNull)
@@ -459,7 +490,8 @@ public class OrderService {
                                 ? null
                                 : names.getOrDefault(
                                         errand.getCourierId(), new UserBriefDto(errand.getCourierId(), null)),
-                        errand.getRequesterId().equals(detailViewer) ? errand.getCreateRequestId() : null))
+                        errand.getRequesterId().equals(detailViewer) ? errand.getCreateRequestId() : null,
+                        includeDispute ? disputes.forOrder(errand.getId()) : null))
                 .toList();
     }
 
