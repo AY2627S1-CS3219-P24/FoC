@@ -155,6 +155,12 @@
   gap: 20px;
   align-items: start;
 }
+.main {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
 .side {
   display: grid;
   gap: 16px;

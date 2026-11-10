@@ -10,12 +10,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cs3219.foc.order.config.SecurityConfig;
 import com.cs3219.foc.order.exception.*;
+import com.cs3219.foc.order.model.dto.ChatDto;
 import com.cs3219.foc.order.model.dto.CreateErrandResponse;
 import com.cs3219.foc.order.model.dto.DeliveryPhotoDto;
 import com.cs3219.foc.order.model.dto.ErrandActionResponse;
+import com.cs3219.foc.order.model.dto.ErrandMessageDto;
 import com.cs3219.foc.order.model.dto.PageDto;
+import com.cs3219.foc.order.model.dto.SendMessageRequest;
 import com.cs3219.foc.order.model.entity.CreditState;
 import com.cs3219.foc.order.model.entity.ErrandStatus;
+import com.cs3219.foc.order.service.ChatService;
 import com.cs3219.foc.order.service.DeliveryService;
 import com.cs3219.foc.order.service.OrderDisputeService;
 import com.cs3219.foc.order.service.OrderService;
@@ -56,6 +60,9 @@ class OrderControllerTests {
     private DeliveryService delivery;
 
     @Autowired
+    private ChatService chat;
+
+    @Autowired
     private OrderDisputeService disputes;
 
     private MockMvc mvc;
@@ -63,7 +70,7 @@ class OrderControllerTests {
 
     @BeforeEach
     void setUp() {
-        reset(service, delivery, disputes);
+        reset(service, delivery, chat, disputes);
         mvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(springSecurity())
                 .build();
@@ -322,6 +329,93 @@ class OrderControllerTests {
     }
 
     @Test
+    void chatMessagesCanBeReadAndSent() throws Exception {
+        var messageId = UUID.randomUUID();
+        var sender = UUID.randomUUID();
+        var sentAt = OffsetDateTime.parse("2030-01-01T00:10Z");
+        var message = new ErrandMessageDto(messageId, id, sender, "On my way", null, sentAt);
+        when(chat.chat(id)).thenReturn(new ChatDto(List.of(message), List.of(new ChatDto.Read(sender, sentAt))));
+        mvc.perform(get("/orders/" + id + "/messages").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.messages[0].body").value("On my way"))
+                .andExpect(jsonPath("$.messages[0].senderId").value(sender.toString()))
+                .andExpect(jsonPath("$.reads[0].userId").value(sender.toString()));
+
+        when(chat.send(eq(id), any())).thenReturn(message);
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"On my way"}
+                                """.formatted(messageId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(messageId.toString()));
+        verify(chat).send(id, new SendMessageRequest(messageId, "On my way"));
+
+        when(chat.send(eq(id), any())).thenThrow(new OrderConflictException("This chat is closed"));
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"Thanks"}
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void photosVideosAndReadReceiptsHaveTheirOwnEndpoints() throws Exception {
+        var messageId = UUID.randomUUID();
+        var photo = new ErrandMessageDto(
+                messageId,
+                id,
+                UUID.randomUUID(),
+                null,
+                new ErrandMessageDto.Attachment(
+                        "IMAGE", "https://photos.test/a.jpg", OffsetDateTime.parse("2030-01-01T00:20Z")),
+                OffsetDateTime.parse("2030-01-01T00:10Z"));
+        when(chat.sendAttachment(eq(id), eq(messageId), any())).thenReturn(photo);
+        mvc.perform(multipart("/orders/" + id + "/messages/attachments")
+                        .file(new MockMultipartFile("file", "a.png", "image/png", new byte[] {1}))
+                        .param("id", messageId.toString())
+                        .with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attachment.type").value("IMAGE"))
+                .andExpect(jsonPath("$.body").doesNotExist());
+
+        mvc.perform(post("/orders/" + id + "/messages/read")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"messageId":"%s"}
+                                """.formatted(messageId)))
+                .andExpect(status().isNoContent());
+        verify(chat).markRead(id, messageId);
+        mvc.perform(post("/orders/" + id + "/messages/read")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"body\":\"Hi\"}", "{\"id\":\"%s\",\"body\":\"   \"}"})
+    void invalidMessagesAreRejected(String body) throws Exception {
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.formatted(UUID.randomUUID())))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/orders/" + id + "/messages")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"id":"%s","body":"%s"}
+                                """.formatted(UUID.randomUUID(), "x".repeat(1001))))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(chat);
+    }
+
+    @Test
     void disputeRoutesRequireAuthenticationAndValidateBodies() throws Exception {
         mvc.perform(post("/orders/" + id + "/disputes")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -391,6 +485,11 @@ class OrderControllerTests {
         @Bean
         DeliveryService deliveryService() {
             return mock(DeliveryService.class);
+        }
+
+        @Bean
+        ChatService chatService() {
+            return mock(ChatService.class);
         }
 
         @Bean

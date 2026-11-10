@@ -39,3 +39,23 @@ it('does not reconnect when a pending refresh resolves after unmount cleanup', a
   expect(socket.connect).not.toHaveBeenCalled()
   expect(socket.auth).toEqual({ token: 'initial-token' })
 })
+
+it('leaves temporary connection failures to socket.io instead of refreshing the token', async () => {
+  const socket = {
+    active: true,
+    auth: { token: 'initial-token' },
+    on: vi.fn(),
+    off: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }
+  vi.mocked(io).mockReturnValue(socket as unknown as ReturnType<typeof io>)
+  vi.mocked(refreshAccessToken).mockClear()
+  connectRealtime(new AbortController().signal)
+  socket.connect.mockClear()
+
+  await socket.on.mock.calls[0][1]()
+
+  expect(refreshAccessToken).not.toHaveBeenCalled()
+  expect(socket.connect).not.toHaveBeenCalled()
+})

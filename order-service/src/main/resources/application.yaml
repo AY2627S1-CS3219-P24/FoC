@@ -1,9 +1,9 @@
 spring:
   servlet:
     multipart:
-      # One file: an AI voice recording up to 8 MB (delivery photos are held to 5 MB in code).
-      # One request: up to 5 delivery photos sent together.
-      max-file-size: 8MB
+      # One file: a chat video up to 20 MB (photos are held to 5 MB and AI voice
+      # recordings to their own limit in code). One request: up to 5 delivery photos.
+      max-file-size: 20MB
       max-request-size: 26MB
   jackson:
     deserialization:

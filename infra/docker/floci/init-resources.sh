@@ -96,11 +96,12 @@ credit_topic=$(topic_arn_for credit)
 supplier_topic=$(topic_arn_for supplier)
 allow_sns credit "[\"$user_topic\",\"$order_topic\"]"
 allow_sns order "[\"$credit_topic\"]"
-allow_sns realtime "[\"$supplier_topic\"]"
+allow_sns realtime "[\"$supplier_topic\",\"$order_topic\"]"
 subscribe supplier realtime '{\"eventType\":[\"SupplierChangedEvent\"]}'
+subscribe order realtime '{\"eventType\":[\"ErrandMessagePostedEvent\",\"ErrandChatReadEvent\"]}'
 subscribe user credit '{\"eventType\":[\"UserCreatedEvent\"]}'
 subscribe order credit '{\"eventType\":[\"ErrandCancelledEvent\",\"ErrandExpiredEvent\",\"ErrandCompletedEvent\"]}'
 subscribe credit order '{\"eventType\":[\"CreditPaidEvent\",\"CreditPaymentDeclinedEvent\",\"CreditRefundedEvent\",\"CreditRefundDeclinedEvent\"]}'
 
-rm -f /tmp/foc-queue-attributes.json /tmp/foc-redrive-allow.json /tmp/foc-queue-policy.json /tmp/foc-subscribe.json
+rm -f /tmp/foc-queue-attributes.json /tmp/foc-redrive-allow.json /tmp/foc-queue-policy.json /tmp/foc-subscribe.json /tmp/foc-filter.json
 touch /tmp/foc-resources-ready

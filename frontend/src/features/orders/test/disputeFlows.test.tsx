@@ -42,11 +42,19 @@ vi.mock('@tanstack/react-router', () => ({
     params?: { orderId: string }
   }) => <a href={to.replace('$orderId', params?.orderId ?? '')}>{children}</a>,
 }))
+// The errand page also shows the chat; it stays quiet here.
+vi.mock('#/lib/realtime', () => ({
+  connectRealtime: () => ({ on: vi.fn(), off: vi.fn() }),
+}))
 vi.mock('../api/orders.api', () => ({
   getOrder: vi.fn(),
   createOrder: vi.fn(),
   retryCreation: vi.fn(),
   actOnOrder: vi.fn(),
+  getChat: vi.fn(async () => ({ messages: [], reads: [] })),
+  sendMessage: vi.fn(),
+  sendChatFile: vi.fn(),
+  markChatRead: vi.fn(),
 }))
 vi.mock('../api/disputes.api', () => ({
   reportDispute: vi.fn(),

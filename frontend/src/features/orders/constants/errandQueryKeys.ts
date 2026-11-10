@@ -12,6 +12,8 @@ export const errandQueryKeys = {
     [...errandQueryKeys.lists(userId), 'admin', requesterId, page] as const,
   detail: (userId: string | undefined, id: string) =>
     [...errandQueryKeys.user(userId), 'detail', id] as const,
+  messages: (userId: string | undefined, id: string) =>
+    [...errandQueryKeys.detail(userId, id), 'messages'] as const,
   deliveryPhotos: (userId: string | undefined, id: string) =>
     [...errandQueryKeys.detail(userId, id), 'delivery-photos'] as const,
 }

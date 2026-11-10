@@ -44,6 +44,25 @@ export type Errand = {
 export type DeliveryPhoto = { id: string; url: string; expiresAt: string }
 // the courier can keep up to this many photos per delivery
 export const MAX_DELIVERY_PHOTOS = 5
+// one chat message between the requester and courier: text, a photo or a
+// video (body is null for a photo/video without text)
+export type ChatAttachment = {
+  type: 'IMAGE' | 'VIDEO'
+  url: string
+  expiresAt: string
+}
+export type ErrandMessage = {
+  id: string
+  errandId: string
+  senderId: string
+  body: string | null
+  attachment: ChatAttachment | null
+  sentAt: string
+}
+// the conversation, oldest first
+export type ChatRead = { userId: string; lastReadAt: string }
+export type Chat = { messages: Array<ErrandMessage>; reads: Array<ChatRead> }
+export const MAX_MESSAGE_LENGTH = 1000
 export type OrderErrorResponse = {
   code: string
   message: string
