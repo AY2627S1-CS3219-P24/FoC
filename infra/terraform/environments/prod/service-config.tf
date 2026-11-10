@@ -4,16 +4,19 @@ data "aws_partition" "current" {}
 locals {
   parameter_arn = "arn:${data.aws_partition.current.partition}:ssm:${local.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.name_prefix}"
   java_environment = {
-    SPRING_PROFILES_ACTIVE                 = "prod"
-    JAVA_TOOL_OPTIONS                      = "-XX:InitialRAMPercentage=20 -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
-    MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED = "true"
-    MANAGEMENT_OTLP_METRICS_EXPORT_STEP    = "1m"
-    FOC_JWKS_URI                           = "https://${var.domain_name}/api/.well-known/jwks.json"
-    FOC_FRONTEND_URL                       = "https://${var.domain_name}"
+    SPRING_PROFILES_ACTIVE                  = "prod"
+    JAVA_TOOL_OPTIONS                       = "-XX:InitialRAMPercentage=20 -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
+    MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED  = "true"
+    MANAGEMENT_OTLP_METRICS_EXPORT_STEP     = "1m"
+    MANAGEMENT_TRACING_SAMPLING_PROBABILITY = "1.0"
+    FOC_JWKS_URI                            = "https://${var.domain_name}/api/.well-known/jwks.json"
+    FOC_FRONTEND_URL                        = "https://${var.domain_name}"
   }
   java_secrets = {
-    MANAGEMENT_OTLP_METRICS_EXPORT_URL                   = "${local.parameter_arn}-grafana-otlp-url"
-    MANAGEMENT_OTLP_METRICS_EXPORT_HEADERS_AUTHORIZATION = "${local.parameter_arn}-grafana-otlp-authorization"
+    MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT              = "${local.parameter_arn}-grafana-otlp-traces-url"
+    MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_HEADERS_AUTHORIZATION = "${local.parameter_arn}-grafana-otlp-authorization"
+    MANAGEMENT_OTLP_METRICS_EXPORT_URL                                 = "${local.parameter_arn}-grafana-otlp-url"
+    MANAGEMENT_OTLP_METRICS_EXPORT_HEADERS_AUTHORIZATION               = "${local.parameter_arn}-grafana-otlp-authorization"
   }
   java_task = { cpu = 256, memory = 512, health_path = "/api/actuator/health" }
 

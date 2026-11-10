@@ -23,13 +23,14 @@ public class SupplierClient {
     private final AuthenticationContextService authenticationContextService;
 
     public SupplierClient(
-            ServiceClientProperties properties, AuthenticationContextService authenticationContextService) {
+            ServiceClientProperties properties,
+            AuthenticationContextService authenticationContextService,
+            RestClient.Builder builder) {
         this.authenticationContextService = authenticationContextService;
         var factory = new JdkClientHttpRequestFactory(
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
         factory.setReadTimeout(Duration.ofSeconds(5));
-        client = RestClient.builder()
-                .baseUrl(properties.supplierUrl())
+        client = builder.baseUrl(properties.supplierUrl())
                 .requestFactory(factory)
                 .build();
     }

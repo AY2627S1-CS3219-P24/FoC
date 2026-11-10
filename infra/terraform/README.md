@@ -93,7 +93,7 @@ workflow checks it against SSM before approval:
 | `mail-username`, `mail-password` | SMTP credentials. |
 | `initial-admin-email`, `initial-admin-password` | Initial administrator credentials; email must use `u.nus.edu` or `nus.edu.sg`. |
 | `openai-api-key` | OpenAI API key for order-service AI features. |
-| `grafana-otlp-url`, `grafana-otlp-authorization` | Grafana metrics endpoint and authorization header; see [Monitoring](#monitoring). |
+| `grafana-otlp-url`, `grafana-otlp-traces-url`, `grafana-otlp-authorization` | Grafana OTLP endpoints and authorization header; see [Monitoring](#monitoring). |
 
 **Set up databases** creates the service database-password parameters. Do not
 create or rotate those manually as part of initial setup.
@@ -238,11 +238,22 @@ The four Spring services send metrics to Grafana Cloud once a minute. Container
 Insights is disabled.
 
 To configure Grafana metrics, create a Grafana Cloud access-policy token with
-`metrics:write`. Set the two SSM parameters listed above:
+`metrics:write`. Set these SSM parameters:
 
 - `grafana-otlp-url`: the stack's OpenTelemetry endpoint ending in `/v1/metrics`.
+- `grafana-otlp-traces-url`: the same OTLP gateway ending in `/v1/traces`.
 - `grafana-otlp-authorization`: `Basic ` followed by the base64 encoding of
-  `<instance id>:<token>`, with no trailing newline.
+  `<instance id>:<token>`, with no trailing newline. The token needs `metrics:write` and
+  `traces:write`.
+
+The four Spring services export HTTP traces directly to Grafana Cloud. Production
+samples every request for this low-traffic deployment. Lower
+`MANAGEMENT_TRACING_SAMPLING_PROBABILITY` in `service-config.tf` if traffic grows.
+Order uses Spring-configured HTTP clients so calls to supplier, user and credit
+share the incoming trace. This does not instrument the Node realtime service,
+OpenAI SDK calls or SNS/SQS message processing. Setup tasks disable tracing.
+After applying infrastructure and deploying the four services, make an API
+request and use Grafana **Explore → Tempo** to search by service name.
 
 For ECS, EC2, and RDS metrics, add a Grafana CloudWatch data source. Put Grafana's
 AWS account ID and external ID in `grafana_cloudwatch_reader`, apply Terraform,
@@ -250,7 +261,11 @@ and use `deployment.grafana_cloudwatch_role_arn` as the data source's role ARN.
 The role can read account CloudWatch metrics; log access is limited to this
 application's log groups.
 
-Import [foc-overview.json](grafana/foc-overview.json) and select the Prometheus and
+For Spring service metrics, import [foc-services.json](grafana/foc-services.json)
+through **Dashboards → New → Import** and select the Grafana Cloud Prometheus data
+source. It includes a service filter and refreshes every minute.
+
+For the infrastructure overview, import [foc-overview.json](grafana/foc-overview.json) and select the Prometheus and
 CloudWatch data sources. Use manual refresh or an interval of at least one minute.
 
 ## Local checks

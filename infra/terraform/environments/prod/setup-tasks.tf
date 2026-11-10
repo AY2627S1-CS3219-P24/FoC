@@ -19,6 +19,7 @@ locals {
       environment = [for name, value in merge(local.services.user.environment, {
         SPRING_PROFILES_ACTIVE                 = "prod,admin-init"
         MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED = "false"
+        MANAGEMENT_TRACING_ENABLED             = "false"
         INITIAL_ADMIN_NAME                     = "System Administrator"
       }) : { name = name, value = value }]
       secrets = [
@@ -51,6 +52,7 @@ locals {
       environment = [for name, value in merge(local.services.supplier.environment, {
         SPRING_PROFILES_ACTIVE                 = "prod,supplier-seed"
         MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED = "false"
+        MANAGEMENT_TRACING_ENABLED             = "false"
       }) : { name = name, value = value }]
       secrets = [{ name = "SPRING_DATASOURCE_PASSWORD", valueFrom = "${local.parameter_arn}-database-supplier" }]
       logConfiguration = {

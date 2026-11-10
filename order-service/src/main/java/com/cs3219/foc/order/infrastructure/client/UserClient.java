@@ -19,15 +19,15 @@ public class UserClient {
     private final RestClient client;
     private final AuthenticationContextService authenticationContextService;
 
-    public UserClient(ServiceClientProperties properties, AuthenticationContextService authenticationContextService) {
+    public UserClient(
+            ServiceClientProperties properties,
+            AuthenticationContextService authenticationContextService,
+            RestClient.Builder builder) {
         this.authenticationContextService = authenticationContextService;
         var factory = new JdkClientHttpRequestFactory(
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
         factory.setReadTimeout(Duration.ofSeconds(5));
-        client = RestClient.builder()
-                .baseUrl(properties.userUrl())
-                .requestFactory(factory)
-                .build();
+        client = builder.baseUrl(properties.userUrl()).requestFactory(factory).build();
     }
 
     public Map<UUID, UserBriefDto> find(Set<UUID> ids) {
