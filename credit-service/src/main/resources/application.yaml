@@ -46,3 +46,7 @@ management:
     metrics:
       export:
         enabled: false
+
+logging:
+  level:
+    org.springframework.modulith.events.core.DefaultEventPublicationRegistry: WARN

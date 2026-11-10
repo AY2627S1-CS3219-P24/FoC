@@ -73,3 +73,7 @@ storage:
     bucket: ${FOC_USER_BUCKET:foc-dev-user}
   avatars:
     read-url-ttl: 10m
+
+logging:
+  level:
+    org.springframework.modulith.events.core.DefaultEventPublicationRegistry: WARN
