@@ -186,6 +186,7 @@ jobs:
           service: ${{ matrix.service }}
           desired-count: ${{ steps.deployment.outputs.desired_count }}
           wait-for-service-stability: ${{ steps.deployment.outputs.desired_count != '0' }}
+          wait-max-delay-seconds: 15
 
       - name: Record release revision
         env:
