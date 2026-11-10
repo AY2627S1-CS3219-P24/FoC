@@ -29,7 +29,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 class SqsCreditEventConsumerTests {
     private final UserCreatedConsumer userCreatedConsumer = mock(UserCreatedConsumer.class);
-    private final ErrandSettlementConsumer errandSettlementConsumer = mock(ErrandSettlementConsumer.class);
+    private final ErrandPaymentConsumer errandPaymentConsumer = mock(ErrandPaymentConsumer.class);
+    private final ErrandRefundConsumer errandRefundConsumer = mock(ErrandRefundConsumer.class);
     private static final ObjectMapper objectMapper = JsonMapper.builder().build();
     private final LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
     private SqsCreditEventConsumer consumer;
@@ -38,7 +39,11 @@ class SqsCreditEventConsumerTests {
     void setUp() {
         validator.afterPropertiesSet();
         consumer = new SqsCreditEventConsumer(
-                objectMapper, new EventValidator(validator), userCreatedConsumer, errandSettlementConsumer);
+                objectMapper,
+                new EventValidator(validator),
+                userCreatedConsumer,
+                errandPaymentConsumer,
+                errandRefundConsumer);
     }
 
     @AfterEach
@@ -82,7 +87,7 @@ class SqsCreditEventConsumerTests {
         var body = contract(null);
         var event = objectMapper.readValue(body, ErrandCancelledEvent.class);
         consumer.consume(ErrandCancelledEvent.TYPE, body);
-        verify(errandSettlementConsumer).releaseReservedCredits(event);
+        verify(errandRefundConsumer).releaseReservedCredits(event);
     }
 
     @Test
@@ -90,7 +95,7 @@ class SqsCreditEventConsumerTests {
         var body = contract(null);
         var event = objectMapper.readValue(body, ErrandExpiredEvent.class);
         consumer.consume(ErrandExpiredEvent.TYPE, body);
-        verify(errandSettlementConsumer).releaseReservedCredits(event);
+        verify(errandRefundConsumer).releaseReservedCredits(event);
     }
 
     @Test
@@ -98,7 +103,7 @@ class SqsCreditEventConsumerTests {
         var body = contract(UUID.randomUUID());
         var event = objectMapper.readValue(body, ErrandCompletedEvent.class);
         consumer.consume(ErrandCompletedEvent.TYPE, body);
-        verify(errandSettlementConsumer).transferReservedCredits(event);
+        verify(errandPaymentConsumer).transferReservedCredits(event);
     }
 
     @Test
@@ -106,7 +111,7 @@ class SqsCreditEventConsumerTests {
         var body = contract(null);
         var event = objectMapper.readValue(body, ErrandCancelledEvent.class);
         var failure = new IllegalStateException("database unavailable");
-        doThrow(failure).when(errandSettlementConsumer).releaseReservedCredits(event);
+        doThrow(failure).when(errandRefundConsumer).releaseReservedCredits(event);
         assertThatThrownBy(() -> consumer.consume(ErrandCancelledEvent.TYPE, body))
                 .isSameAs(failure);
     }
@@ -126,7 +131,7 @@ class SqsCreditEventConsumerTests {
                             .extracting(FieldError::getField)
                             .contains(field);
                 });
-        verifyNoInteractions(userCreatedConsumer, errandSettlementConsumer);
+        verifyNoInteractions(userCreatedConsumer, errandPaymentConsumer, errandRefundConsumer);
     }
 
     private static Stream<Arguments> invalidEvents() {
@@ -192,7 +197,7 @@ class SqsCreditEventConsumerTests {
         payload.putNull("amount");
         assertThatThrownBy(() -> consumer.consume(eventType, event.toString()))
                 .isInstanceOf(MismatchedInputException.class);
-        verifyNoInteractions(userCreatedConsumer, errandSettlementConsumer);
+        verifyNoInteractions(userCreatedConsumer, errandPaymentConsumer, errandRefundConsumer);
     }
 
     @ParameterizedTest
@@ -206,6 +211,6 @@ class SqsCreditEventConsumerTests {
             })
     void unreadableEventDoesNotReachHandlers(String body) {
         assertThatThrownBy(() -> consumer.consume(UserCreatedEvent.TYPE, body)).isInstanceOf(RuntimeException.class);
-        verifyNoInteractions(userCreatedConsumer, errandSettlementConsumer);
+        verifyNoInteractions(userCreatedConsumer, errandPaymentConsumer, errandRefundConsumer);
     }
 }

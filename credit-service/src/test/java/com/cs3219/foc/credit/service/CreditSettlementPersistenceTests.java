@@ -40,7 +40,10 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
     private CreditReservationService reserve;
 
     @Autowired
-    private CreditSettlementService settlement;
+    private CreditPaymentService payment;
+
+    @Autowired
+    private CreditRefundService refund;
 
     @Autowired
     private CreditAccountService creditAccountService;
@@ -97,12 +100,35 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         results.events.clear();
     }
 
+    record Confirmation(UUID eventId, UUID operationId, String outcome) {}
+
     static class Results {
-        final CopyOnWriteArrayList<CreditSettlementResultEvent> events = new CopyOnWriteArrayList<>();
+        final CopyOnWriteArrayList<Confirmation> events = new CopyOnWriteArrayList<>();
 
         @EventListener
-        public void on(CreditSettlementResultEvent event) {
-            events.add(event);
+        public void paid(CreditPaidEvent event) {
+            events.add(new Confirmation(event.eventId(), event.payload().operationId(), "PAID"));
+        }
+
+        @EventListener
+        public void paymentDeclined(CreditPaymentDeclinedEvent event) {
+            events.add(new Confirmation(
+                    event.eventId(),
+                    event.payload().operationId(),
+                    event.payload().reason()));
+        }
+
+        @EventListener
+        public void refunded(CreditRefundedEvent event) {
+            events.add(new Confirmation(event.eventId(), event.payload().operationId(), "REFUNDED"));
+        }
+
+        @EventListener
+        public void refundDeclined(CreditRefundDeclinedEvent event) {
+            events.add(new Confirmation(
+                    event.eventId(),
+                    event.payload().operationId(),
+                    event.payload().reason()));
         }
     }
 
@@ -137,7 +163,7 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
     }
 
     private String outcome() {
-        return results.events.getLast().payload().outcome();
+        return results.events.getLast().outcome();
     }
 
     @Test
@@ -145,10 +171,8 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var user = fund(100);
         var r = reserved(user, 80);
         var cancel = cancelled(user, r);
-        concurrent(
-                () -> settlement.releaseReservedCredits(cancel),
-                () -> settlement.releaseReservedCredits(expired(user, r)));
-        settlement.releaseReservedCredits(cancel);
+        concurrent(() -> refund.releaseReservedCredits(cancel), () -> refund.releaseReservedCredits(expired(user, r)));
+        refund.releaseReservedCredits(cancel);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
         assertThat(jdbc.queryForList("SELECT transaction_type FROM credit_transaction_log", String.class))
@@ -163,15 +187,15 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var other = fund(0);
         var r = reserved(user, 80);
         var paid = completed(user, r, courier);
-        settlement.transferReservedCredits(paid);
-        settlement.transferReservedCredits(paid);
+        payment.transferReservedCredits(paid);
+        payment.transferReservedCredits(paid);
         assertThat(outcome()).isEqualTo("PAID");
-        assertThat(results.events.getLast().payload().operationId()).isEqualTo(paid.eventId());
-        settlement.transferReservedCredits(completed(user, r, courier));
+        assertThat(results.events.getLast().operationId()).isEqualTo(paid.eventId());
+        payment.transferReservedCredits(completed(user, r, courier));
         assertThat(outcome()).isEqualTo("PAID");
-        settlement.transferReservedCredits(completed(user, r, other));
+        payment.transferReservedCredits(completed(user, r, other));
         assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
-        settlement.releaseReservedCredits(cancelled(user, r));
+        refund.releaseReservedCredits(cancelled(user, r));
         assertThat(outcome()).isEqualTo("TERMINAL_CONFLICT");
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
         assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(87, 0));
@@ -185,13 +209,13 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var courier = UUID.randomUUID();
         var r = reserved(user, 80);
         var paid = completed(user, r, courier);
-        assertThatThrownBy(() -> settlement.transferReservedCredits(paid))
+        assertThatThrownBy(() -> payment.transferReservedCredits(paid))
                 .isInstanceOf(CreditAccountPendingException.class);
         assertThat(results.events).isEmpty();
         assertThat(count("credit_transaction_log")).isEqualTo(1);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         creditAccountService.initializeAccount(courier);
-        settlement.transferReservedCredits(paid);
+        payment.transferReservedCredits(paid);
         assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(95, 0));
     }
 
@@ -200,13 +224,13 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var user = fund(100);
         var r = request(80);
         var cancel = cancelled(user, r);
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> refund.releaseReservedCredits(cancel)).isInstanceOf(IllegalStateException.class);
         reserve.reserve(user, r);
-        settlement.releaseReservedCredits(cancel);
+        refund.releaseReservedCredits(cancel);
         assertThat(outcome()).isEqualTo("REFUNDED");
         var rejected = request(200);
         reserve.reserve(user, rejected);
-        settlement.releaseReservedCredits(cancelled(user, rejected));
+        refund.releaseReservedCredits(cancelled(user, rejected));
         assertThat(outcome()).isEqualTo("NO_RESERVATION");
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
@@ -218,12 +242,12 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var r = reserved(user, 80);
         for (long amount : new long[] {70, 0, -1}) {
             var wrongAmount = new ReserveCreditRequest(r.operationId(), r.errandId(), amount);
-            settlement.releaseReservedCredits(cancelled(user, wrongAmount));
+            refund.releaseReservedCredits(cancelled(user, wrongAmount));
             assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
-            settlement.transferReservedCredits(completed(user, wrongAmount, UUID.randomUUID()));
+            payment.transferReservedCredits(completed(user, wrongAmount, UUID.randomUUID()));
             assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
         }
-        settlement.releaseReservedCredits(cancelled(UUID.randomUUID(), r));
+        refund.releaseReservedCredits(cancelled(UUID.randomUUID(), r));
         assertThat(outcome()).isEqualTo("RESERVATION_MISMATCH");
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
         assertThat(count("credit_transaction_log")).isEqualTo(1);
@@ -240,17 +264,16 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
                 corrected.occurredAt(),
                 new ErrandCancelledEvent.Payload(r.errandId(), user, 70));
 
-        settlement.releaseReservedCredits(rejected);
+        refund.releaseReservedCredits(rejected);
         var rejectedResult = results.events.getLast();
-        assertThat(rejectedResult.payload().outcome()).isEqualTo("RESERVATION_MISMATCH");
+        assertThat(rejectedResult.outcome()).isEqualTo("RESERVATION_MISMATCH");
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
 
-        settlement.releaseReservedCredits(corrected);
+        refund.releaseReservedCredits(corrected);
         var correctedResult = results.events.getLast();
-        assertThat(correctedResult.payload().outcome()).isEqualTo("REFUNDED");
-        assertThat(correctedResult.payload().operationId()).isEqualTo(corrected.eventId());
-        assertThat(correctedResult.payload().operationId())
-                .isEqualTo(rejectedResult.payload().operationId());
+        assertThat(correctedResult.outcome()).isEqualTo("REFUNDED");
+        assertThat(correctedResult.operationId()).isEqualTo(corrected.eventId());
+        assertThat(correctedResult.operationId()).isEqualTo(rejectedResult.operationId());
         assertThat(correctedResult.eventId()).isNotEqualTo(rejectedResult.eventId());
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(2);
@@ -262,17 +285,16 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var r = reserved(user, 40);
         var second = reserved(user, 40);
         var cancel = cancelled(user, r);
-        settlement.releaseReservedCredits(cancel);
+        refund.releaseReservedCredits(cancel);
         var changed = new ErrandCancelledEvent(
                 cancel.eventId(),
                 1,
                 cancel.occurredAt(),
                 new ErrandCancelledEvent.Payload(second.errandId(), user, 40));
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(changed))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> refund.releaseReservedCredits(changed)).isInstanceOf(IllegalArgumentException.class);
         var changedAmount = new ErrandCancelledEvent(
                 cancel.eventId(), 1, cancel.occurredAt(), new ErrandCancelledEvent.Payload(r.errandId(), user, 30));
-        assertThatThrownBy(() -> settlement.releaseReservedCredits(changedAmount))
+        assertThatThrownBy(() -> refund.releaseReservedCredits(changedAmount))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(60, 40));
     }
@@ -285,7 +307,7 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         jdbc.execute("ALTER TABLE credit_accounts ADD CONSTRAINT fail_recipient CHECK(user_id <> '" + courier
                 + "'::uuid OR total_balance=0)");
         try {
-            assertThatThrownBy(() -> settlement.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> payment.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
             assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
             assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(0, 0));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
@@ -293,7 +315,7 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         } finally {
             jdbc.execute("ALTER TABLE credit_accounts DROP CONSTRAINT fail_recipient");
         }
-        settlement.transferReservedCredits(paid);
+        payment.transferReservedCredits(paid);
         assertThat(outcome()).isEqualTo("PAID");
     }
 
@@ -303,14 +325,14 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var cancel = cancelled(user, reserved(user, 80));
         jdbc.execute("ALTER TABLE credit_transaction_log ADD CONSTRAINT fail_refund CHECK(transaction_type='RESERVE')");
         try {
-            assertThatThrownBy(() -> settlement.releaseReservedCredits(cancel)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> refund.releaseReservedCredits(cancel)).isInstanceOf(RuntimeException.class);
             assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
             assertThat(results.events).isEmpty();
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_refund");
         }
-        settlement.releaseReservedCredits(cancel);
+        refund.releaseReservedCredits(cancel);
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(100, 0));
     }
 
@@ -322,7 +344,7 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         jdbc.execute(
                 "ALTER TABLE credit_transaction_log ADD CONSTRAINT fail_payment CHECK(transaction_type='RESERVE')");
         try {
-            assertThatThrownBy(() -> settlement.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(() -> payment.transferReservedCredits(paid)).isInstanceOf(RuntimeException.class);
             assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 80));
             assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(0, 0));
             assertThat(count("credit_transaction_log")).isEqualTo(1);
@@ -330,7 +352,7 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         } finally {
             jdbc.execute("ALTER TABLE credit_transaction_log DROP CONSTRAINT fail_payment");
         }
-        settlement.transferReservedCredits(paid);
+        payment.transferReservedCredits(paid);
         assertThat(outcome()).isEqualTo("PAID");
         assertThat(creditAccountService.getBalance(user)).isEqualTo(new CreditBalanceResponse(20, 0));
         assertThat(creditAccountService.getBalance(courier)).isEqualTo(new CreditBalanceResponse(80, 0));
@@ -343,10 +365,9 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var courier = fund(0);
         var r = reserved(user, 80);
         concurrent(
-                () -> settlement.releaseReservedCredits(cancelled(user, r)),
-                () -> settlement.transferReservedCredits(completed(user, r, courier)));
-        assertThat(results.events.stream().map(e -> e.payload().outcome()).toList())
-                .contains("TERMINAL_CONFLICT");
+                () -> refund.releaseReservedCredits(cancelled(user, r)),
+                () -> payment.transferReservedCredits(completed(user, r, courier)));
+        assertThat(results.events.stream().map(e -> e.outcome()).toList()).contains("TERMINAL_CONFLICT");
         assertThat(creditAccountService.getBalance(user).reservedBalance()).isZero();
         assertThat(creditAccountService.getBalance(user).availableBalance()
                         + creditAccountService.getBalance(courier).availableBalance())
@@ -361,8 +382,8 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
         var r = reserved(a, 80);
         var s = reserved(b, 30);
         concurrent(
-                () -> settlement.transferReservedCredits(completed(a, r, b)),
-                () -> settlement.transferReservedCredits(completed(b, s, a)));
+                () -> payment.transferReservedCredits(completed(a, r, b)),
+                () -> payment.transferReservedCredits(completed(b, s, a)));
         assertThat(creditAccountService.getBalance(a)).isEqualTo(new CreditBalanceResponse(50, 0));
         assertThat(creditAccountService.getBalance(b)).isEqualTo(new CreditBalanceResponse(150, 0));
         assertThat(count("credit_transaction_log")).isEqualTo(4);
@@ -375,7 +396,9 @@ class CreditSettlementPersistenceTests extends AbstractIntegrationTest {
     @Import({
         CreditReservationService.class,
         CreditAccountService.class,
-        CreditSettlementService.class,
+        CreditPaymentService.class,
+        CreditRefundService.class,
+        CreditSettlementSupport.class,
         CreditTransactionLogListener.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
