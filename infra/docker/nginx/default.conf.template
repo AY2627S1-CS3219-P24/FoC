@@ -3,31 +3,31 @@ resolver_timeout 2s;
 
 upstream user_backend {
     zone user_backend 64k;
-    server ${FOC_USER_UPSTREAM} resolve;
+    server ${FOC_USER_UPSTREAM};
     keepalive 8;
 }
 
 upstream supplier_backend {
     zone supplier_backend 64k;
-    server ${FOC_SUPPLIER_UPSTREAM} resolve;
+    server ${FOC_SUPPLIER_UPSTREAM};
     keepalive 8;
 }
 
 upstream order_backend {
     zone order_backend 64k;
-    server ${FOC_ORDER_UPSTREAM} resolve;
+    server ${FOC_ORDER_UPSTREAM};
     keepalive 8;
 }
 
 upstream credit_backend {
     zone credit_backend 64k;
-    server ${FOC_CREDIT_UPSTREAM} resolve;
+    server ${FOC_CREDIT_UPSTREAM};
     keepalive 8;
 }
 
 upstream realtime_backend {
     zone realtime_backend 64k;
-    server ${FOC_REALTIME_UPSTREAM} resolve;
+    server ${FOC_REALTIME_UPSTREAM};
     keepalive 8;
 }
 

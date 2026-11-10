@@ -31,9 +31,11 @@ use **Start or stop services**; Terraform and deployment preserve the live count
 Keep realtime at one task: its shared SQS queue does not broadcast events to
 multiple Socket.IO instances.
 
-The gateway resolves backend Cloud Map SRV records. Order's HTTP clients call
-other services through the public HTTPS gateway using `FOC_*_SERVICE_URL`.
-Supplier, order, and credit also fetch JWT verification keys through that gateway.
+ECS Service Connect routes internal requests by service name and container port
+(for example, `supplier:8081`). The gateway is a client; each backend exposes one
+TCP endpoint. Every task reserves 64 MiB for its proxy. Proxy logs use the
+`service-connect/` stream prefix in the service's CloudWatch log group.
+JWT verification keys are still fetched through the public HTTPS gateway.
 
 ## First deployment
 

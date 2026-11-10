@@ -75,7 +75,7 @@ locals {
   service_client_environment = {
     order = {
       for target in ["credit", "supplier", "user"] :
-      "FOC_${upper(target)}_SERVICE_URL" => "https://${var.domain_name}/api"
+      "FOC_${upper(target)}_SERVICE_URL" => "http://${target}:${var.services[target].port}/api"
     }
   }
 
@@ -214,6 +214,29 @@ resource "aws_ecs_service" "app" {
     container_port = each.value.port
   }
 
+  service_connect_configuration {
+    enabled   = true
+    namespace = var.service_connect_namespace_arn
+
+    service {
+      port_name      = each.key
+      discovery_name = each.key
+      client_alias {
+        port     = each.value.port
+        dns_name = each.key
+      }
+    }
+
+    log_configuration {
+      log_driver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.app[each.key].name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "service-connect"
+      }
+    }
+  }
+
   depends_on = [aws_ecs_cluster_capacity_providers.app, aws_iam_role_policy.secrets, aws_iam_role_policy.messaging]
 
   lifecycle { ignore_changes = [task_definition, desired_count] }
@@ -250,11 +273,7 @@ resource "aws_ecs_task_definition" "gateway" {
       { sourceVolume = "acme", containerPath = "/var/www/acme", readOnly = true }
     ],
     environment = [
-      { name = "FOC_USER_UPSTREAM", value = "${var.service_discovery_namespace_name} service=user" },
-      { name = "FOC_SUPPLIER_UPSTREAM", value = "${var.service_discovery_namespace_name} service=supplier" },
-      { name = "FOC_ORDER_UPSTREAM", value = "${var.service_discovery_namespace_name} service=order" },
-      { name = "FOC_CREDIT_UPSTREAM", value = "${var.service_discovery_namespace_name} service=credit" },
-      { name = "FOC_REALTIME_UPSTREAM", value = "${var.service_discovery_namespace_name} service=realtime" }
+      for name, service in var.services : { name = "FOC_${upper(name)}_UPSTREAM", value = "${name}:${service.port}" }
     ],
     healthCheck = {
       command     = ["CMD-SHELL", "curl -fsS http://localhost/healthz >/dev/null || exit 1"]
@@ -295,6 +314,20 @@ resource "aws_ecs_service" "gateway" {
     weight            = 1
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.app]
+  service_connect_configuration {
+    enabled   = true
+    namespace = var.service_connect_namespace_arn
+
+    log_configuration {
+      log_driver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.app["gateway"].name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "service-connect"
+      }
+    }
+  }
+
+  depends_on = [aws_ecs_service.app]
   lifecycle { ignore_changes = [task_definition, desired_count] }
 }
