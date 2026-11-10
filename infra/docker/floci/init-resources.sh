@@ -86,7 +86,8 @@ subscribe() {
   }
 }
 EOF
-  aws_local sns subscribe --cli-input-json file:///tmp/foc-subscribe.json >/dev/null
+  subscription_arn=$(aws_local sns subscribe --cli-input-json file:///tmp/foc-subscribe.json --query 'SubscriptionArn' --output text)
+  aws_local sns set-subscription-attributes --subscription-arn "$subscription_arn" --attribute-name FilterPolicy --attribute-value "$(printf '%s' "$filter" | sed 's/\\"/"/g')" >/dev/null
 }
 
 user_topic=$(topic_arn_for user)
@@ -99,7 +100,7 @@ allow_sns realtime "[\"$supplier_topic\"]"
 subscribe supplier realtime '{\"eventType\":[\"SupplierChangedEvent\"]}'
 subscribe user credit '{\"eventType\":[\"UserCreatedEvent\"]}'
 subscribe order credit '{\"eventType\":[\"ErrandCancelledEvent\",\"ErrandExpiredEvent\",\"ErrandCompletedEvent\"]}'
-subscribe credit order '{\"eventType\":[\"CreditSettlementResultEvent\"]}'
+subscribe credit order '{\"eventType\":[\"CreditPaidEvent\",\"CreditPaymentDeclinedEvent\",\"CreditRefundedEvent\",\"CreditRefundDeclinedEvent\"]}'
 
 rm -f /tmp/foc-queue-attributes.json /tmp/foc-redrive-allow.json /tmp/foc-queue-policy.json /tmp/foc-subscribe.json
 touch /tmp/foc-resources-ready

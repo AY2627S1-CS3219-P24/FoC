@@ -30,6 +30,6 @@ event_subscriptions = {
   credit_settlement_result = {
     publisher   = "credit"
     consumer    = "order"
-    event_types = ["CreditSettlementResultEvent"]
+    event_types = ["CreditPaidEvent", "CreditPaymentDeclinedEvent", "CreditRefundedEvent", "CreditRefundDeclinedEvent"]
   }
 }

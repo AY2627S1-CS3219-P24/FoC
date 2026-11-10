@@ -15,6 +15,7 @@ import { AdminOrderDetailPage } from '../pages/AdminOrderDetailPage/AdminOrderDe
 import { AdminOrderListPage } from '../pages/AdminOrderListPage/AdminOrderListPage'
 import { orderFixture } from './orderFixtures'
 import * as api from '../api/orders.api'
+import { getErrandAiCapabilities } from '../api/errandAi.api'
 import { loadCreation } from '../utils/creationRequest'
 import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 
@@ -27,6 +28,9 @@ const state = vi.hoisted(() => ({
     posted: false,
     requesterId: 'requester',
   },
+}))
+vi.mock('../api/errandAi.api', () => ({
+  getErrandAiCapabilities: vi.fn(),
 }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => state.navigate,
@@ -102,6 +106,10 @@ const setup = (element: ReactNode) => {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(getErrandAiCapabilities).mockResolvedValue({
+    chatEnabled: false,
+    voiceEnabled: false,
+  })
   state.navigate.mockReset().mockResolvedValue(undefined)
   localStorage.clear()
   setAccessToken(token('requester'))

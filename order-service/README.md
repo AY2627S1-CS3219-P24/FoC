@@ -200,8 +200,8 @@ sequenceDiagram
         Order->>MQ: ErrandCompletedEvent
         MQ->>Credit: Deliver completion fact
         Credit->>Credit: Transaction: pay Courier, write ledger and register result
-        Credit->>MQ: CreditSettlementResultEvent
-        MQ->>Order: PAYOUT / PAID result
+        Credit->>MQ: CreditPaidEvent
+        MQ->>Order: Payment confirmed
         Order->>DB: Lock, match expected operation, set SETTLED and commit
     else Already COMPLETED
         Order-->>Requester: 200 current action result without a new event
@@ -230,7 +230,7 @@ sequenceDiagram
         Order->>MQ: ErrandCancelledEvent
         MQ->>Credit: Deliver cancellation fact
         Credit->>Credit: Transaction: release reservation, write ledger and register result
-        Credit->>MQ: CreditSettlementResultEvent
+        Credit->>MQ: CreditRefundedEvent
         MQ->>Order: REFUND / REFUNDED result
         Order->>DB: Lock, match expected operation, set RELEASED and commit
     else Already CANCELLED
@@ -261,7 +261,7 @@ sequenceDiagram
         Order->>MQ: ErrandExpiredEvent
         MQ->>Credit: Deliver expiry fact
         Credit->>Credit: Release reservation and register result in one transaction
-        Credit->>MQ: CreditSettlementResultEvent
+        Credit->>MQ: CreditRefundedEvent
         MQ->>Order: REFUND / REFUNDED result
         Order->>DB: Match result, set RELEASED and commit
     else Already changed
@@ -381,7 +381,7 @@ sequenceDiagram
     Order->>MQ: ErrandExpiredEvent
     MQ->>Credit: Release successful reservation
     Credit->>Credit: Commit release, ledger and result registration
-    Credit->>MQ: CreditSettlementResultEvent
+    Credit->>MQ: CreditRefundedEvent
     MQ->>Order: REFUND / REFUNDED
     Order->>DB: Match result and commit RELEASED
 ```
@@ -779,16 +779,19 @@ All four contracts use a JSON envelope containing `eventId`, `schemaVersion`, `o
 | `ErrandCompletedEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount`, `courierId` |
 | `ErrandCancelledEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount` |
 | `ErrandExpiredEvent` | Order → Credit | `Order SNS topic → Credit SQS queue` | `errandId`, `requesterId`, `amount` |
-| `CreditSettlementResultEvent` | Credit → Order | `Credit SNS topic → Order SQS queue` | `operationId`, `errandId`, `requesterId`, `amount`, `outcome`, `settlementType`, `courierId` |
+| `CreditPaidEvent` | Credit → Order | `Credit SNS topic → Order SQS queue` | `operationId`, `errandId`, `requesterId`, `amount`, `courierId` |
+| `CreditPaymentDeclinedEvent` | Credit → Order | Same topic and queue | Payment fields plus `reason` |
+| `CreditRefundedEvent` | Credit → Order | Same topic and queue | `operationId`, `errandId`, `requesterId`, `amount` |
+| `CreditRefundDeclinedEvent` | Credit → Order | Same topic and queue | Refund fields plus `reason` |
 
 | Consumer | Queue |
 | --- | --- |
 | Credit completion/cancellation/expiry | `${name_prefix}-credit-events` |
-| Order settlement result | `${name_prefix}-order-events` |
+| Order payment and refund events | `${name_prefix}-order-events` |
 
 Terminal order events record completed lifecycle changes. Creation reservation uses HTTP and has no integration event contract.
 
-### 10.2 Completion and settlement result
+### 10.2 Completion and payment confirmation
 
 The terminal event ID is saved as `settlement_event_id`:
 
@@ -806,7 +809,7 @@ The terminal event ID is saved as `settlement_event_id`:
 }
 ```
 
-Credit reports the original terminal event ID in `payload.operationId`:
+`CreditPaidEvent` reports the original terminal event ID in `payload.operationId`:
 
 ```json
 {
@@ -818,14 +821,12 @@ Credit reports the original terminal event ID in `payload.operationId`:
     "errandId": "0e139207-2076-444b-94a9-a7a57fbcda71",
     "requesterId": "11111111-1111-4111-8111-111111111111",
     "amount": 5,
-    "outcome": "PAID",
-    "settlementType": "PAYOUT",
     "courierId": "33333333-3333-4333-8333-333333333333"
   }
 }
 ```
 
-Payment success requires `PAYOUT / PAID` and the expected Courier. Release success requires `REFUND / REFUNDED` and null Courier. Conflict outcomes are `RESERVATION_MISMATCH`, `NO_RESERVATION` and `TERMINAL_CONFLICT`. The result envelope's event ID is never used as the original operation ID.
+`CreditPaidEvent` confirms payment and must match the expected Courier. `CreditRefundedEvent` confirms release and has no Courier field. `CreditPaymentDeclinedEvent` and `CreditRefundDeclinedEvent` carry a `reason`: `RESERVATION_MISMATCH`, `NO_RESERVATION` or `TERMINAL_CONFLICT`. The envelope's event ID is never used as the original operation ID.
 
 ## 11. Code organization
 
@@ -862,7 +863,10 @@ order-service/
     │   │           ├── ErrandCompletedEvent.java
     │   │           ├── ErrandCancelledEvent.java
     │   │           ├── ErrandExpiredEvent.java
-    │   │           └── CreditSettlementResultEvent.java
+    │   │           ├── CreditPaidEvent.java
+    │   │           ├── CreditPaymentDeclinedEvent.java
+    │   │           ├── CreditRefundedEvent.java
+    │   │           └── CreditRefundDeclinedEvent.java
     │   ├── mapper/
     │   │   └── ErrandMapper.java
     │   ├── infrastructure/
@@ -874,7 +878,7 @@ order-service/
     │   │       ├── producer/
     │   │       │   └── SnsErrandEventPublisher.java
     │   │       └── consumer/
-    │   │           └── CreditSettlementResultConsumer.java
+    │   │           └── SqsCreditEventConsumer.java
     │   ├── scheduler/
     │   │   ├── ErrandExpiryJob.java
     │   │   └── EventPublicationRecoveryJob.java
@@ -916,7 +920,7 @@ order-service/
 | Exceptions | Domain errors, account-readiness rejection and HTTP error translation |
 | Flyway migrations | Business schema, constraints, indexes and framework publication registry |
 
-Credit's reservation controller delegates to `CreditReservationService`; its result publisher sends settlement results. User's `/api/users/brief` returns only ID/name for authenticated callers. These integrations keep account ownership, financial effects and user data within their owning services.
+Credit's reservation controller delegates to `CreditReservationService`; its payment and refund publishers send the corresponding event contracts. User's `/api/users/brief` returns only ID/name for authenticated callers. These integrations keep account ownership, financial effects and user data within their owning services.
 
 ## 12. Runtime configuration
 
