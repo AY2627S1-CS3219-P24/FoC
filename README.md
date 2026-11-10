@@ -32,6 +32,25 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 ### Additional Features (N2H)
 
+- **AI-Assisted Errand Creation:** Prepare and refine errand drafts through
+  multi-turn interaction using text or voice input. Users can review and
+  edit the generated details before submitting an errand.
+
+- **Cloud Deployment and DevOps:** Access the application online through
+  HTTPS. Containerized services run on AWS, with Terraform-managed
+  infrastructure and GitHub Actions workflows for building and deploying
+  application images.
+
+- **Real-time Errand Chat:** Requesters and their assigned couriers can
+  exchange text messages, photos, and videos within an errand, with
+  real-time updates and read receipts. Chat history remains available
+  after the errand ends.
+
+- **Admin Dispute Resolution:** Order participants can report disputes
+  and respond to complaints while normal order progression is paused
+  and credits remain reserved. Administrators can review cases, dismiss
+  disputes, or initiate payment to the courier or release of reserved
+  credits to the requester.
 
 
 ### Technology Stack
@@ -76,7 +95,7 @@ database migrations, and tests.
 ├── supplier-service/  # Suppliers, pickup information, and supplier images
 ├── order-service/     # Errand lifecycle and AI-assisted drafting
 ├── credit-service/    # Credit accounts, reservations, payments, and refunds
-├── realtime-service/  # Socket.IO delivery of supplier updates
+├── realtime-service/  # Socket.IO updates for supplier changes and errand chat
 ├── infra/             # Terraform, gateway configuration, and local infrastructure
 ├── e2e-tests/         # Cross-service and browser tests
 ├── data/csv/          # Supplier seed data
