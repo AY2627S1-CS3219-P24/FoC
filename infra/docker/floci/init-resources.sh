@@ -16,10 +16,11 @@ for bucket in "${FOC_USER_BUCKET:-foc-dev-user}" "${FOC_SUPPLIER_BUCKET:-foc-dev
 done
 
 # Match the production topic/queue naming, delivery settings, and subscriptions.
-for service in user supplier order credit realtime; do
-  if [ "$service" != realtime ]; then
-    aws_local sns create-topic --name "$prefix-$service-events" >/dev/null
-  fi
+for service in user supplier order credit; do
+  aws_local sns create-topic --name "$prefix-$service-events" >/dev/null
+done
+
+for service in order credit realtime; do
 
   dlq_url=$(aws_local sqs create-queue --queue-name "$prefix-$service-dlq" --query QueueUrl --output text)
   aws_local sqs set-queue-attributes --queue-url "$dlq_url" --attributes MessageRetentionPeriod=1209600,SqsManagedSseEnabled=true >/dev/null

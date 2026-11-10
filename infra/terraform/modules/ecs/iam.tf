@@ -74,13 +74,9 @@ resource "aws_iam_role_policy" "secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Action = ["ssm:GetParameters"]
-      Resource = concat([
-        "${local.parameter_arn}-database-*",
-        "${local.parameter_arn}-mail-*",
-        "${local.parameter_arn}-grafana-*"
-      ], try(var.services["order"].ai_enabled, false) ? ["${local.parameter_arn}-openai-api-key"] : [])
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters"]
+      Resource = var.execution_parameter_arns
     }]
   })
 }

@@ -15,7 +15,7 @@ variable "domain_name" {
 }
 
 variable "acme_email" {
-  description = "Email address for certificate registration and budget alerts."
+  description = "Email address for certificate registration."
   type        = string
 }
 
@@ -40,12 +40,6 @@ variable "db_instance_class" {
   description = "RDS PostgreSQL instance class."
   type        = string
   default     = "db.t4g.micro"
-}
-
-variable "event_subscriptions" {
-  description = "SNS-to-SQS routes and allowed event types."
-  type        = map(object({ publisher = string, consumer = string, event_types = set(string) }))
-  default     = {}
 }
 
 variable "grafana_cloudwatch_reader" {

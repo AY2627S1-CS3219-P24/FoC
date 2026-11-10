@@ -39,8 +39,7 @@ run "database_and_internal_traffic_stay_private" {
   }
 
   variables {
-    name_prefix   = "foc-test"
-    service_names = ["user", "supplier", "order", "credit"]
+    name_prefix = "foc-test"
   }
 
   assert {

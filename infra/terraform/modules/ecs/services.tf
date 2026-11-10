@@ -1,129 +1,5 @@
 locals {
-  runtime_settings = {
-    java = {
-      environment = {
-        SPRING_PROFILES_ACTIVE                 = "prod"
-        JAVA_TOOL_OPTIONS                      = "-XX:InitialRAMPercentage=20 -XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
-        MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED = "true"
-        MANAGEMENT_OTLP_METRICS_EXPORT_STEP    = "1m"
-        FOC_JWKS_URI                           = "https://${var.domain_name}/api/.well-known/jwks.json"
-        FOC_FRONTEND_URL                       = "https://${var.domain_name}"
-      }
-      secrets = {
-        MANAGEMENT_OTLP_METRICS_EXPORT_URL                   = "${local.parameter_arn}-grafana-otlp-url"
-        MANAGEMENT_OTLP_METRICS_EXPORT_HEADERS_AUTHORIZATION = "${local.parameter_arn}-grafana-otlp-authorization"
-      }
-      health_path = "/api/actuator/health"
-    }
-    node = {
-      environment = {
-        NODE_ENV = "production"
-        JWKS_URL = "https://${var.domain_name}/api/.well-known/jwks.json"
-      }
-      secrets     = {}
-      health_path = "/health"
-    }
-  }
-
-  runtime_environment = {
-    for name, service in var.services : name => {
-      java = merge(local.runtime_settings.java.environment, { OTEL_SERVICE_NAME = name })
-      node = local.runtime_settings.node.environment
-    }[service.runtime]
-  }
-
-  database_environment = {
-    for name, service in local.database_services : name => {
-      FOC_DATABASE_URL      = "jdbc:postgresql://${var.database_host}:5432/${service.database}?sslmode=verify-full&sslrootcert=/app/rds-ca.pem"
-      FOC_DATABASE_USERNAME = service.username
-    }
-  }
-
-  publisher_environment = {
-    for name, arn in var.topic_arns : name => { EVENTS_MESSAGING_TOPIC_ARN = arn }
-  }
-
-  consumer_environment = {
-    for name, url in var.queue_urls : name => {
-      java = { EVENTS_MESSAGING_QUEUE_NAME = "${var.name_prefix}-${name}-events" }
-      node = { SQS_QUEUE_URL = url }
-    }[var.services[name].runtime]
-  }
-
-  bucket_environment = {
-    for name, service in var.services : name => {
-      (service.bucket_env) = var.image_bucket_names[name]
-    } if service.bucket_env != null
-  }
-
-  mail_environment = {
-    for name, service in var.services : name => { MAIL_FROM = var.mail_from } if service.mail
-  }
-
-  ai_environment = {
-    for name, service in var.services : name => merge(
-      { FOC_ORDER_AI_ENABLED = tostring(service.ai_enabled) },
-      { for key, value in {
-        FOC_ORDER_AI_MODEL               = service.ai_model
-        FOC_ORDER_AI_TRANSCRIPTION_MODEL = service.ai_transcription_model
-      } : key => value if value != null }
-    ) if name == "order"
-  }
-
   service_connect_proxy_memory = 64
-
-  service_client_environment = {
-    order = {
-      for target in ["credit", "supplier", "user"] :
-      "FOC_${upper(target)}_SERVICE_URL" => "http://${target}:${var.services[target].port}/api"
-    }
-  }
-
-  capability_environments = [
-    local.service_client_environment,
-    local.ai_environment,
-    local.database_environment,
-    local.publisher_environment,
-    local.consumer_environment,
-    local.bucket_environment,
-    local.mail_environment
-  ]
-
-  service_environment = {
-    for name in keys(var.services) : name => merge(
-      { AWS_REGION = var.region },
-      local.runtime_environment[name],
-      [for environment in local.capability_environments : environment[name] if contains(keys(environment), name)]...
-    )
-  }
-
-  database_secrets = {
-    for name in keys(local.database_services) : name => {
-      FOC_DATABASE_PASSWORD = "${local.parameter_arn}-database-${name}"
-    }
-  }
-
-  mail_secrets = {
-    for name, service in var.services : name => {
-      MAIL_USERNAME = "${local.parameter_arn}-mail-username"
-      MAIL_PASSWORD = "${local.parameter_arn}-mail-password"
-    } if service.mail
-  }
-
-  ai_secrets = {
-    for name, service in var.services : name => {
-      OPENAI_API_KEY = "${local.parameter_arn}-openai-api-key"
-    } if name == "order" && service.ai_enabled
-  }
-
-  capability_secrets = [local.database_secrets, local.mail_secrets, local.ai_secrets]
-
-  service_secrets = {
-    for name, service in var.services : name => merge(
-      local.runtime_settings[service.runtime].secrets,
-      [for secrets in local.capability_secrets : secrets[name] if contains(keys(secrets), name)]...
-    )
-  }
 }
 
 # Container limits leave room for the ECS agent and OS on the core host.
@@ -146,10 +22,10 @@ resource "aws_ecs_task_definition" "app" {
   }
 
   dynamic "volume" {
-    for_each = each.value.jwt ? ["jwt"] : []
+    for_each = each.value.volumes
     content {
-      name      = volume.value
-      host_path = "/var/lib/runtime/jwt"
+      name      = volume.key
+      host_path = volume.value.host_path
     }
   }
 
@@ -165,11 +41,11 @@ resource "aws_ecs_task_definition" "app" {
     startTimeout           = 30
     stopTimeout            = 30
     portMappings           = [{ name = each.key, containerPort = each.value.port, hostPort = 0, protocol = "tcp" }]
-    mountPoints            = each.value.jwt ? [{ sourceVolume = "jwt", containerPath = "/run/secrets", readOnly = true }] : []
-    environment            = [for name, value in local.service_environment[each.key] : { name = name, value = value }]
-    secrets                = [for name, arn in local.service_secrets[each.key] : { name = name, valueFrom = arn }]
+    mountPoints            = [for name, path in each.value.volumes : { sourceVolume = name, containerPath = path.container_path, readOnly = path.read_only }]
+    environment            = [for name, value in each.value.environment : { name = name, value = value }]
+    secrets                = [for name, arn in each.value.secrets : { name = name, valueFrom = arn }]
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -fsS http://localhost:${each.value.port}${local.runtime_settings[each.value.runtime].health_path} || exit 1"]
+      command     = ["CMD-SHELL", "curl -fsS http://localhost:${each.value.port}${each.value.health_path} || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -206,12 +82,6 @@ resource "aws_ecs_service" "app" {
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.host.name
     weight            = 1
-  }
-
-  service_registries {
-    registry_arn   = var.service_discovery_service_arns[each.key]
-    container_name = each.key
-    container_port = each.value.port
   }
 
   service_connect_configuration {

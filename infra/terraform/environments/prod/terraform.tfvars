@@ -13,30 +13,3 @@ start_services     = true
 core_ami_id        = "ami-0bc28c835804b16d5"
 core_instance_type = "t3a.medium"
 db_instance_class  = "db.t4g.micro"
-event_subscriptions = {
-  supplier_changed = {
-    publisher   = "supplier"
-    consumer    = "realtime"
-    event_types = ["SupplierChangedEvent"]
-  }
-  errand_message_posted = {
-    publisher   = "order"
-    consumer    = "realtime"
-    event_types = ["ErrandMessagePostedEvent", "ErrandChatReadEvent"]
-  }
-  user_created = {
-    publisher   = "user"
-    consumer    = "credit"
-    event_types = ["UserCreatedEvent"]
-  }
-  errand_settlement = {
-    publisher   = "order"
-    consumer    = "credit"
-    event_types = ["ErrandCancelledEvent", "ErrandExpiredEvent", "ErrandCompletedEvent"]
-  }
-  credit_settlement_result = {
-    publisher   = "credit"
-    consumer    = "order"
-    event_types = ["CreditPaidEvent", "CreditPaymentDeclinedEvent", "CreditRefundedEvent", "CreditRefundDeclinedEvent"]
-  }
-}

@@ -18,11 +18,6 @@ variable "acme_email" {
   type        = string
 }
 
-variable "mail_from" {
-  description = "Sender address for account emails."
-  type        = string
-}
-
 variable "start_services" {
   description = "Whether to run application services."
   type        = bool
@@ -36,31 +31,26 @@ variable "core_instance_type" {
 variable "services" {
   description = "Service definitions and ECS task settings."
   type = map(object({
-    port                   = number
-    cpu                    = number
-    memory                 = number
-    runtime                = string
-    database               = optional(string)
-    username               = optional(string)
-    jwt                    = optional(bool, false)
-    mail                   = optional(bool, false)
-    bucket_env             = optional(string)
-    ai_enabled             = optional(bool, false)
-    ai_model               = optional(string)
-    ai_transcription_model = optional(string)
+    port        = number
+    cpu         = number
+    memory      = number
+    database    = optional(string)
+    username    = optional(string)
+    health_path = string
+    environment = map(string)
+    secrets     = optional(map(string), {})
+    volumes = optional(map(object({
+      host_path      = string
+      container_path = string
+      read_only      = optional(bool, true)
+    })), {})
   }))
   validation {
     condition = alltrue([
-      for service in values(var.services) : contains(["java", "node"], service.runtime)
-      && ((service.database == null) == (service.username == null))
+      for service in values(var.services) : (service.database == null) == (service.username == null)
     ])
-    error_message = "Services must use the java or node runtime; database and username must be set together."
+    error_message = "Database and username must be set together."
   }
-}
-
-variable "image_bucket_names" {
-  description = "Existing image bucket names keyed by owning service."
-  type        = map(string)
 }
 
 variable "image_bucket_policy_arns" {
@@ -86,11 +76,6 @@ variable "eip_allocation_id" {
 variable "service_connect_namespace_arn" {
   description = "Cloud Map namespace ARN for ECS Service Connect."
   type        = string
-}
-
-variable "service_discovery_service_arns" {
-  description = "Cloud Map service ARNs keyed by service name."
-  type        = map(string)
 }
 
 variable "topic_arns" {
@@ -130,15 +115,6 @@ variable "grafana_cloudwatch_reader" {
   sensitive   = true
 }
 
-variable "queue_urls" {
-  description = "SQS queue URLs keyed by consuming service."
-  type        = map(string)
-  validation {
-    condition     = toset(keys(var.queue_urls)) == toset(keys(var.queue_arns))
-    error_message = "Queue URLs and ARNs must describe the same consuming services."
-  }
-}
-
 variable "core_ami_id" {
   description = "Pinned ECS-optimized AL2023 x86_64 AMI ID for the core host in the deployment region."
   type        = string
@@ -147,4 +123,9 @@ variable "core_ami_id" {
     condition     = can(regex("^ami-[0-9a-f]{17}$", var.core_ami_id))
     error_message = "Provide an explicit AMI ID, not an SSM recommended-image alias."
   }
+}
+
+variable "execution_parameter_arns" {
+  description = "SSM resources the shared execution role may read."
+  type        = set(string)
 }
