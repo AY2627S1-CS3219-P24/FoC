@@ -10,6 +10,7 @@ domain_name        = "cs3219-p24.mooo.com"
 acme_email         = "kristupas.arifovas@gmail.com"
 mail_from          = "kristupas.arifovas@gmail.com"
 start_services     = true
+core_ami_id        = "ami-0bc28c835804b16d5"
 core_instance_type = "t3a.medium"
 db_instance_class  = "db.t4g.micro"
 event_subscriptions = {

@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
 
           prefix=$(sed -n 's/^name_prefix[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' terraform.tfvars)
-          for parameter in jwt-private-key jwt-public-key mail-username mail-password initial-admin-email initial-admin-password grafana-otlp-url grafana-otlp-authorization; do
+          for parameter in openai-api-key jwt-private-key jwt-public-key mail-username mail-password initial-admin-email initial-admin-password grafana-otlp-url grafana-otlp-authorization; do
             type=$(aws ssm describe-parameters --parameter-filters "Key=Name,Option=Equals,Values=$prefix-$parameter" --query 'Parameters[0].Type' --output text)
             if [ "$type" != SecureString ]; then
               echo "Create $prefix-$parameter as a SecureString before setup." >&2

@@ -69,6 +69,11 @@ Requires=host-prepare.service
 After=host-prepare.service
 UNIT
 
+cat > /usr/local/bin/deploy-certificate <<'DEPLOY'
+${deploy_certificate}
+DEPLOY
+chmod 700 /usr/local/bin/deploy-certificate
+
 cat > /usr/local/bin/renew-certificate <<'RENEW'
 ${renew_certificate}
 RENEW
@@ -77,9 +82,12 @@ chmod 700 /usr/local/bin/renew-certificate
 cat > /etc/systemd/system/renew-certificate.service <<'UNIT'
 [Unit]
 After=ecs.service
+StartLimitIntervalSec=0
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/renew-certificate
+Restart=on-failure
+RestartSec=5min
 UNIT
 
 cat > /etc/systemd/system/renew-certificate.timer <<'UNIT'
@@ -87,7 +95,7 @@ cat > /etc/systemd/system/renew-certificate.timer <<'UNIT'
 Description=Issue or renew the TLS certificate
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=5min
+OnUnitActiveSec=12h
 RandomizedDelaySec=60
 [Install]
 WantedBy=timers.target

@@ -26,6 +26,7 @@ mock_provider "aws" {
 }
 
 variables {
+  core_ami_id = "ami-0123456789abcdef0"
   image_bucket_names = {
     user     = "foc-test-user"
     supplier = "foc-test-supplier"
