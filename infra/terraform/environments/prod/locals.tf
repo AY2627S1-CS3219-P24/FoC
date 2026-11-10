@@ -25,7 +25,7 @@ locals {
     }
 
     order = {
-      ai_enabled = false
+      ai_enabled = true
       runtime    = "java"
       database   = "foc_order"
       username   = "foc_order"
