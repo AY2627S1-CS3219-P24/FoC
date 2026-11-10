@@ -8,7 +8,7 @@ locals {
       username   = "foc_user"
       port       = 8080
       cpu        = 256
-      memory     = 768
+      memory     = 512
       jwt        = true
       mail       = true
       bucket_env = "FOC_USER_BUCKET"
@@ -20,7 +20,7 @@ locals {
       username   = "foc_supplier"
       port       = 8081
       cpu        = 256
-      memory     = 640
+      memory     = 512
       bucket_env = "FOC_SUPPLIER_BUCKET"
     }
 
@@ -31,7 +31,7 @@ locals {
       username   = "foc_order"
       port       = 8082
       cpu        = 512
-      memory     = 640
+      memory     = 512
       bucket_env = "FOC_ORDER_BUCKET"
     }
 

@@ -83,6 +83,7 @@ module "ecs" {
   acme_email                       = var.acme_email
   mail_from                        = var.mail_from
   start_services                   = var.start_services
+  core_ami_id                      = var.core_ami_id
   core_instance_type               = var.core_instance_type
   services                         = local.services
   image_bucket_names               = var.image_bucket_names

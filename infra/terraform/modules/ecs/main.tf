@@ -10,10 +10,6 @@ data "aws_caller_identity" "current" {}
 
 data "aws_partition" "current" {}
 
-data "aws_ssm_parameter" "ecs_ami" {
-  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
-}
-
 resource "aws_ecs_cluster" "app" {
   name = var.name_prefix
 
@@ -150,7 +146,7 @@ resource "aws_s3_bucket_policy" "configuration" {
 
 resource "aws_launch_template" "host" {
   name_prefix   = "${var.name_prefix}-core-"
-  image_id      = data.aws_ssm_parameter.ecs_ami.value
+  image_id      = var.core_ami_id
   instance_type = var.core_instance_type
 
   iam_instance_profile { name = aws_iam_instance_profile.host.name }
@@ -181,6 +177,12 @@ resource "aws_launch_template" "host" {
       region               = var.region
       parameter_prefix     = var.name_prefix
       eip_allocation       = var.eip_allocation_id
+      configuration_bucket = aws_s3_bucket.configuration.id
+    })
+
+    deploy_certificate = templatefile("${path.module}/templates/deploy_certificate.sh.tftpl", {
+      region               = var.region
+      domain               = var.domain_name
       configuration_bucket = aws_s3_bucket.configuration.id
     })
 

@@ -19,11 +19,6 @@ mock_provider "aws" {
       dns_suffix = "amazonaws.com"
     }
   }
-  mock_data "aws_ssm_parameter" {
-    defaults = {
-      value = "ami-0123456789abcdef0"
-    }
-  }
 }
 
 variable "start_services" {
@@ -37,17 +32,17 @@ variable "base_services" {
     realtime = { port = 8084, cpu = 128, memory = 256, runtime = "node" }
     user = {
       runtime = "java"
-      port    = 8080, cpu = 256, memory = 768, database = "foc_user", username = "foc_user"
+      port    = 8080, cpu = 256, memory = 512, database = "foc_user", username = "foc_user"
       jwt     = true, mail = true, bucket_env = "FOC_USER_BUCKET"
     }
     supplier = {
       runtime = "java"
-      port    = 8081, cpu = 256, memory = 640, database = "foc_supplier", username = "foc_supplier"
+      port    = 8081, cpu = 256, memory = 512, database = "foc_supplier", username = "foc_supplier"
       jwt     = false, mail = false, bucket_env = "FOC_SUPPLIER_BUCKET"
     }
     order = {
       runtime = "java"
-      port    = 8082, cpu = 512, memory = 640, database = "foc_order", username = "foc_order"
+      port    = 8082, cpu = 512, memory = 512, database = "foc_order", username = "foc_order"
       jwt     = false, mail = false, bucket_env = "FOC_ORDER_BUCKET"
     }
     credit = {
@@ -64,6 +59,7 @@ variables {
   domain_name                      = "foc.example.edu"
   acme_email                       = "team@example.edu"
   mail_from                        = "noreply@mail.example.edu"
+  core_ami_id                      = "ami-0123456789abcdef0"
   core_instance_type               = "t3a.medium"
   public_subnet_id                 = "subnet-public"
   compute_security_group_id        = "sg-compute"
@@ -122,6 +118,20 @@ run "service_credentials_and_messaging_permissions" {
   }
 
   assert {
+    condition     = aws_launch_template.host.image_id == var.core_ami_id
+    error_message = "The host must use the explicitly pinned AMI."
+  }
+
+  assert {
+    condition = (
+      strcontains(base64decode(aws_launch_template.host.user_data), "OnUnitActiveSec=12h")
+      && strcontains(base64decode(aws_launch_template.host.user_data), "--deploy-hook /usr/local/bin/deploy-certificate")
+      && strcontains(base64decode(aws_launch_template.host.user_data), "RestartSec=5min")
+    )
+    error_message = "Certificate checks must use the deploy hook, run twice daily and retry bootstrap failures."
+  }
+
+  assert {
     condition = alltrue(flatten([
       for name, task in aws_ecs_task_definition.app : [
         for secret in jsondecode(task.container_definitions)[0].secrets : secret.name != "OPENAI_API_KEY"
@@ -143,6 +153,47 @@ run "service_credentials_and_messaging_permissions" {
       ]
     ])) == toset(["order/FOC_ORDER_AI_ENABLED=false"])
     error_message = "With models omitted, order must receive only the AI switch so Spring can supply both defaults."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for name, task in aws_ecs_task_definition.app : [for item in jsondecode(task.container_definitions)[0].environment :
+        "${name}/${item.name}=${item.value}" if endswith(item.name, "_SERVICE_URL")
+      ]
+      ])) == toset([
+      "order/FOC_CREDIT_SERVICE_URL=https://foc.example.edu/api",
+      "order/FOC_SUPPLIER_SERVICE_URL=https://foc.example.edu/api",
+      "order/FOC_USER_SERVICE_URL=https://foc.example.edu/api",
+    ])
+    error_message = "Before Service Connect, only order calls other services, through the gateway, because Java clients cannot resolve Cloud Map SRV records."
+  }
+
+  assert {
+    condition     = alltrue([for service in aws_ecs_service.app : length(service.service_connect_configuration) == 0])
+    error_message = "Service Connect must stay off until every service runs a task definition with named ports and task memory."
+  }
+
+  assert {
+    condition = alltrue([
+      for name, task in aws_ecs_task_definition.app :
+      tonumber(task.memory) == var.services[name].memory + 64
+      && jsondecode(task.container_definitions)[0].portMappings[0].name == name
+      && !contains(keys(jsondecode(task.container_definitions)[0].portMappings[0]), "appProtocol")
+    ]) && tonumber(aws_ecs_task_definition.gateway.memory) == 192
+    error_message = "Task definitions must name a TCP port and reserve task memory for the Service Connect proxy before it is enabled."
+  }
+
+  assert {
+    condition = toset([
+      for item in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].environment : "${item.name}=${item.value}"
+      ]) == toset([
+      "FOC_USER_UPSTREAM=foc-test.local service=user",
+      "FOC_SUPPLIER_UPSTREAM=foc-test.local service=supplier",
+      "FOC_ORDER_UPSTREAM=foc-test.local service=order",
+      "FOC_CREDIT_UPSTREAM=foc-test.local service=credit",
+      "FOC_REALTIME_UPSTREAM=foc-test.local service=realtime",
+    ])
+    error_message = "Before Service Connect, the gateway must re-resolve the Cloud Map SRV records."
   }
 
   assert {

@@ -38,3 +38,6 @@ event_subscriptions = {
   }
 }
 grafana_cloudwatch_reader = null
+
+# Set to the existing ECS host AMI in ap-southeast-1 before planning.
+# core_ami_id = "ami-..."

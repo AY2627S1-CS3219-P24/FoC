@@ -108,9 +108,14 @@ jobs:
           jq -r --arg service "$SERVICE" --arg sha "$RELEASE_SHA" '
             "cluster=\(.cluster)",
             "task_definition=\(.task_definitions[$service])",
-            "image=\(.repositories[$service]):\($sha)",
-            "desired_count=\(.desired_count)"
+            "image=\(.repositories[$service]):\($sha)"
           ' "$RUNNER_TEMP/deployment.json" >> "$GITHUB_OUTPUT"
+
+          cluster=$(jq -er '.cluster' "$RUNNER_TEMP/deployment.json")
+          desired_count=$(aws ecs describe-services --cluster "$cluster" --services gateway \
+            --query 'services[0].desiredCount' --output text)
+          [[ "$desired_count" =~ ^[0-9]+$ ]] || { echo 'Could not read the live service task count.' >&2; exit 1; }
+          echo "desired_count=$desired_count" >> "$GITHUB_OUTPUT"
 
       - name: Set release image
         id: task
@@ -128,7 +133,7 @@ jobs:
           cluster: ${{ steps.deployment.outputs.cluster }}
           service: gateway
           desired-count: ${{ steps.deployment.outputs.desired_count }}
-          wait-for-service-stability: ${{ steps.deployment.outputs.desired_count == '1' }}
+          wait-for-service-stability: ${{ steps.deployment.outputs.desired_count != '0' }}
 
       - name: Record release revision
         env:

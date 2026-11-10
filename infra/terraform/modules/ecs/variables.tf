@@ -138,3 +138,13 @@ variable "queue_urls" {
     error_message = "Queue URLs and ARNs must describe the same consuming services."
   }
 }
+
+variable "core_ami_id" {
+  description = "Pinned ECS-optimized AL2023 x86_64 AMI ID for the core host in the deployment region."
+  type        = string
+
+  validation {
+    condition     = can(regex("^ami-[0-9a-f]{17}$", var.core_ami_id))
+    error_message = "Provide an explicit AMI ID, not an SSM recommended-image alias."
+  }
+}

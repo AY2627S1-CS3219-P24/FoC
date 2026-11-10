@@ -70,7 +70,17 @@ locals {
     ) if name == "order"
   }
 
+  service_connect_proxy_memory = 64
+
+  service_client_environment = {
+    order = {
+      for target in ["credit", "supplier", "user"] :
+      "FOC_${upper(target)}_SERVICE_URL" => "https://${var.domain_name}/api"
+    }
+  }
+
   capability_environments = [
+    local.service_client_environment,
     local.ai_environment,
     local.database_environment,
     local.publisher_environment,
@@ -128,6 +138,7 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task[each.key].arn
   skip_destroy             = true
+  memory                   = each.value.memory + local.service_connect_proxy_memory
 
   runtime_platform {
     cpu_architecture        = "X86_64"
@@ -153,7 +164,7 @@ resource "aws_ecs_task_definition" "app" {
     versionConsistency     = "disabled"
     startTimeout           = 30
     stopTimeout            = 30
-    portMappings           = [{ containerPort = each.value.port, hostPort = 0, protocol = "tcp" }]
+    portMappings           = [{ name = each.key, containerPort = each.value.port, hostPort = 0, protocol = "tcp" }]
     mountPoints            = each.value.jwt ? [{ sourceVolume = "jwt", containerPath = "/run/secrets", readOnly = true }] : []
     environment            = [for name, value in local.service_environment[each.key] : { name = name, value = value }]
     secrets                = [for name, arn in local.service_secrets[each.key] : { name = name, valueFrom = arn }]
@@ -205,7 +216,7 @@ resource "aws_ecs_service" "app" {
 
   depends_on = [aws_ecs_cluster_capacity_providers.app, aws_iam_role_policy.secrets, aws_iam_role_policy.messaging]
 
-  lifecycle { ignore_changes = [task_definition] }
+  lifecycle { ignore_changes = [task_definition, desired_count] }
 }
 
 resource "aws_ecs_task_definition" "gateway" {
@@ -215,6 +226,7 @@ resource "aws_ecs_task_definition" "gateway" {
   requires_compatibilities = ["EC2"]
   network_mode             = "bridge"
   execution_role_arn       = aws_iam_role.execution.arn
+  memory                   = 128 + local.service_connect_proxy_memory
 
   volume {
     name      = "tls"
@@ -284,5 +296,5 @@ resource "aws_ecs_service" "gateway" {
   }
 
   depends_on = [aws_ecs_cluster_capacity_providers.app]
-  lifecycle { ignore_changes = [task_definition] }
+  lifecycle { ignore_changes = [task_definition, desired_count] }
 }
