@@ -6,6 +6,7 @@ import { setAccessToken } from '#/features/auth/lib/accessTokenStore'
 import { connectRealtime } from '#/lib/realtime'
 import * as api from '../api/orders.api'
 import { ErrandChat, timeLabel } from '../components/ErrandChat/ErrandChat'
+import { chatRefetchInterval, keepLinks } from '../hooks/useErrandChat'
 import { orderFixture } from './orderFixtures'
 import type { Chat, Errand, ErrandMessage } from '../types/errand.types'
 
@@ -314,6 +315,62 @@ it('sends photos and videos, previewing them while they upload', async () => {
     ),
   )
   expect(screen.queryByText('Sending…')).not.toBeInTheDocument()
+})
+
+it('keeps renewing photo and video links after the chat has closed', () => {
+  const photo = message('m1', 'courier', null, 1, {
+    type: 'IMAGE',
+    url: 'https://files.test/a.jpg',
+    expiresAt: '2099-01-01T00:00:00Z',
+  })
+  const text = message('m2', 'courier', 'Thanks', 2)
+  // Open: a slow safety net for missed messages.
+  expect(chatRefetchInterval(true, chat([text]))).toBe(30_000)
+  // Closed: only while there are links that will expire.
+  expect(chatRefetchInterval(false, chat([text]))).toBe(false)
+  expect(chatRefetchInterval(false, chat([text, photo]))).toBe(60_000)
+  expect(chatRefetchInterval(false, undefined)).toBe(false)
+})
+
+it('swaps a file link only when it is close to expiring', () => {
+  const link = (url: string, minutesLeft: number) =>
+    message('m1', 'courier', null, 1, {
+      type: 'VIDEO',
+      url,
+      expiresAt: new Date(Date.now() + minutesLeft * 60_000).toISOString(),
+    })
+  const fresh = chat([link('https://files.test/new.mp4', 10)])
+  // Still valid for a while: kept, so the video does not reload.
+  expect(
+    keepLinks(chat([link('https://files.test/old.mp4', 5)]), fresh),
+  ).toEqual({
+    ...fresh,
+    messages: [link('https://files.test/old.mp4', 5)],
+  })
+  // About to expire: replaced by the new link.
+  expect(
+    keepLinks(chat([link('https://files.test/old.mp4', 1)]), fresh),
+  ).toEqual(fresh)
+  expect(keepLinks(undefined, fresh)).toBe(fresh)
+})
+
+it('does not reload a photo when the conversation is fetched again', async () => {
+  const photo = (url: string) =>
+    message('m1', 'courier', null, 1, {
+      type: 'IMAGE',
+      url,
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    })
+  vi.mocked(api.getChat)
+    .mockResolvedValueOnce(chat([photo('https://files.test/first.jpg')]))
+    .mockResolvedValue(chat([photo('https://files.test/second.jpg')]))
+  const { client } = setup(accepted({ status: 'COMPLETED' }))
+  const img = await screen.findByRole('img', { name: 'Photo' })
+  await act(() => client.refetchQueries())
+  expect(api.getChat).toHaveBeenCalledTimes(2)
+  // Let the panel re-render with the refetched conversation.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(img).toHaveAttribute('src', 'https://files.test/first.jpg')
 })
 
 it('plays videos in the conversation', async () => {

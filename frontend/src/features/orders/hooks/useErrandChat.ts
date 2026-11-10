@@ -40,6 +40,29 @@ const keepLink = (previous: ErrandMessage | undefined, next: ErrandMessage) =>
     ? { ...next, attachment: previous.attachment }
     : next
 
+// A fetched conversation keeps the still-valid links it already had, so a
+// refetch does not reload every photo and video
+export const keepLinks = (previous: unknown, next: unknown) => {
+  const old = previous as Chat | undefined
+  const fresh = next as Chat
+  if (!old) return fresh
+  const byId = new Map(old.messages.map((message) => [message.id, message]))
+  return {
+    ...fresh,
+    messages: fresh.messages.map((message) =>
+      keepLink(byId.get(message.id), message),
+    ),
+  }
+}
+
+// How often to fetch the conversation again. Open: in case a message was
+// missed. Closed: only to renew photo/video links before they expire (they
+// last 10 minutes and are swapped when under 2 minutes are left).
+export const chatRefetchInterval = (open: boolean, chat?: Chat) => {
+  if (open) return 30_000
+  return chat?.messages.some((message) => message.attachment) ? 60_000 : false
+}
+
 // Adds messages to the cached conversation, once each, oldest first
 export const addMessages = (
   client: QueryClient,
@@ -126,7 +149,8 @@ export const useErrandChat = (order: Errand, viewing: boolean) => {
     queryKey: errandQueryKeys.messages(userId, order.id),
     queryFn: ({ signal }) => getChat(order.id, signal),
     enabled: readable && !!order.courier,
-    refetchInterval: open ? 30_000 : false, // in case msg was missed
+    refetchInterval: (query) => chatRefetchInterval(open, query.state.data),
+    structuralSharing: keepLinks,
     refetchOnWindowFocus: 'always',
     retry: false,
   })
