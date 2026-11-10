@@ -75,6 +75,9 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     private DeliveryService delivery;
 
     @Autowired
+    private ChatService chat;
+
+    @Autowired
     private DeliveryPhotoProcessor photoProcessor;
 
     @Autowired
@@ -107,7 +110,8 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE order_disputes, errands, delivery_photos, event_publication");
+        jdbc.execute(
+                "TRUNCATE order_disputes, errands, delivery_photos, errand_messages, errand_chat_reads, event_publication");
         clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit, photoProcessor, photoStorage);
@@ -1115,6 +1119,214 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         assertThatThrownBy(() -> delivery.photos(id)).isInstanceOf(AccessDeniedException.class);
     }
 
+    private ErrandMessageDto say(UUID errand, String body) {
+        return chat.send(errand, new SendMessageRequest(UUID.randomUUID(), body));
+    }
+
+    @Test
+    void chatOpensWhenACourierAcceptsAndBecomesReadOnlyAfterConfirmation() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        // No courier yet: nobody to talk to.
+        assertThatThrownBy(() -> say(id, "Hello?")).isInstanceOf(AccessDeniedException.class);
+        as(courier);
+        service.accept(id);
+
+        as(requester);
+        clock.time.set(START.plusSeconds(10));
+        var first = say(id, "  Less ice please  ");
+        assertThat(first.body()).isEqualTo("Less ice please");
+        assertThat(first.senderId()).isEqualTo(requester);
+        as(courier);
+        clock.time.set(START.plusSeconds(20));
+        say(id, "Got it!");
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> chat.chat(id)).isInstanceOf(AccessDeniedException.class);
+        // Admins can read the conversation but not take part.
+        as(UUID.randomUUID(), "ADMIN");
+        assertThat(chat.chat(id).messages())
+                .extracting(ErrandMessageDto::body)
+                .containsExactly("Less ice please", "Got it!");
+        assertThatThrownBy(() -> say(id, "Hi")).isInstanceOf(AccessDeniedException.class);
+
+        // Each message is announced to both people.
+        var posted = facts.events.stream()
+                .filter(ErrandMessagePostedEvent.class::isInstance)
+                .map(ErrandMessagePostedEvent.class::cast)
+                .toList();
+        assertThat(posted).hasSize(2);
+        assertThat(posted.getFirst().payload())
+                .isEqualTo(new ErrandMessagePostedEvent.Payload(
+                        first.id(),
+                        id,
+                        requester,
+                        List.of(requester, courier),
+                        "Less ice please",
+                        null,
+                        first.sentAt()));
+
+        // Still open while the item is on the way and after delivery.
+        as(courier);
+        service.pickUp(id);
+        say(id, "On my way");
+        deliver(id);
+        say(id, "Left it at the door");
+        as(requester);
+        service.complete(id);
+        assertThatThrownBy(() -> say(id, "Thanks!")).isInstanceOf(OrderConflictException.class);
+        assertThat(chat.chat(id).messages()).hasSize(4);
+    }
+
+    @Test
+    void retryingTheSameMessageStoresAndAnnouncesItOnce() {
+        var id = open();
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        as(requester);
+        var request = new SendMessageRequest(UUID.randomUUID(), "Are you there?");
+        var sent = chat.send(id, request);
+        assertThat(chat.send(id, request)).isEqualTo(sent);
+        assertThat(chat.chat(id).messages()).hasSize(1);
+        assertThat(count(ErrandMessagePostedEvent.class)).isEqualTo(1);
+        // Someone else cannot reuse that id.
+        as(courier);
+        assertThatThrownBy(() -> chat.send(id, new SendMessageRequest(request.id(), "Mine")))
+                .isInstanceOf(OrderConflictException.class);
+    }
+
+    /** An accepted errand between the requester and a new courier; returns the courier. */
+    private UUID acceptedChat(UUID id) {
+        var courier = UUID.randomUUID();
+        as(courier);
+        service.accept(id);
+        return courier;
+    }
+
+    private static MockMultipartFile file(String name, String type, byte[] content) {
+        return new MockMultipartFile("file", name, type, content);
+    }
+
+    // The first bytes of an MP4 or MOV file: a box size, "ftyp", then the brand.
+    private static byte[] mp4(String brand) {
+        var bytes = Arrays.copyOf(new byte[] {0, 0, 0, 32, 'f', 't', 'y', 'p'}, 64);
+        for (int i = 0; i < 4; i++) bytes[8 + i] = (byte) brand.charAt(i);
+        return bytes;
+    }
+
+    @Test
+    void photosAndVideosCanBeSentAndAreStoredPrivately() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(courier);
+        clock.time.set(START.plusSeconds(10));
+        var photo = chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9}));
+        assertThat(photo.body()).isNull();
+        assertThat(photo.attachment().type()).isEqualTo("IMAGE");
+        assertThat(photo.attachment().url()).isEqualTo("https://photos.test/handover.jpg");
+        var stored = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage).put(stored.capture(), eq(new byte[] {1, 2, 3}), eq("image/jpeg"));
+        assertThat(stored.getValue()).startsWith("chat/" + id + "/").endsWith(".jpg");
+
+        clock.time.set(START.plusSeconds(20));
+        var video = chat.sendAttachment(id, UUID.randomUUID(), file("clip.mov", "video/quicktime", mp4("qt  ")));
+        assertThat(video.attachment().type()).isEqualTo("VIDEO");
+        verify(photoStorage).put(argThat(key -> key.endsWith(".mov")), any(), eq("video/quicktime"));
+        chat.sendAttachment(id, UUID.randomUUID(), file("clip.mp4", "video/mp4", mp4("isom")));
+        verify(photoStorage).put(argThat(key -> key.endsWith(".mp4")), any(), eq("video/mp4"));
+
+        // The other person is told what kind of file arrived; the link is fetched with the chat.
+        var announced = facts.events.stream()
+                .filter(ErrandMessagePostedEvent.class::isInstance)
+                .map(event -> ((ErrandMessagePostedEvent) event).payload().attachmentType())
+                .toList();
+        assertThat(announced).containsExactly("IMAGE", "VIDEO", "VIDEO");
+        as(requester);
+        assertThat(chat.chat(id).messages())
+                .extracting(message -> message.attachment().type())
+                .containsExactly("IMAGE", "VIDEO", "VIDEO");
+    }
+
+    @Test
+    void unsupportedFilesAndStrangersAreRefusedAndLateFilesRemoved() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(courier);
+        // Not a real video, whatever its name says.
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("x.mp4", "video/mp4", new byte[64])))
+                .isInstanceOfSatisfying(
+                        DeliveryPhotoException.class,
+                        e -> assertThat(e.getStatus().value()).isEqualTo(415));
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(photoStorage, never()).put(any(), any(), any());
+
+        // The errand closes while the file uploads: the message is refused and the file removed again.
+        as(courier);
+        doAnswer(call -> jdbc.update("UPDATE errands SET status='CANCELLED' WHERE id=?", id))
+                .when(photoStorage)
+                .put(any(), any(), any());
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(OrderConflictException.class);
+        var stored = ArgumentCaptor.forClass(String.class);
+        verify(photoStorage).put(stored.capture(), any(), any());
+        verify(photoStorage).delete(stored.getValue());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM errand_messages", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void afterConfirmationNoFilesCanBeSent() {
+        var id = open();
+        var courier = acceptedChat(id);
+        // After confirmation nothing more can be sent.
+        as(courier);
+        service.pickUp(id);
+        deliver(id);
+        as(requester);
+        service.complete(id);
+        as(courier);
+        clearInvocations(photoStorage);
+        assertThatThrownBy(() -> chat.sendAttachment(id, UUID.randomUUID(), file("a.png", "image/png", new byte[] {9})))
+                .isInstanceOf(OrderConflictException.class);
+        verify(photoStorage, never()).put(any(), any(), any());
+    }
+
+    @Test
+    void readReceiptsOnlyMoveForwardAndAreAnnouncedToBoth() {
+        var id = open();
+        var courier = acceptedChat(id);
+        as(requester);
+        clock.time.set(START.plusSeconds(10));
+        var first = say(id, "Hi");
+        clock.time.set(START.plusSeconds(20));
+        var second = say(id, "Are you there?");
+        // Reading your own messages changes nothing.
+        chat.markRead(id, second.id());
+        assertThat(chat.chat(id).reads()).isEmpty();
+
+        as(courier);
+        chat.markRead(id, second.id());
+        chat.markRead(id, first.id()); // an older message never moves it back
+        chat.markRead(id, second.id()); // nor does reading the same one again
+        assertThat(chat.chat(id).reads()).containsExactly(new ChatDto.Read(courier, second.sentAt()));
+        var receipts = facts.events.stream()
+                .filter(ErrandChatReadEvent.class::isInstance)
+                .map(event -> ((ErrandChatReadEvent) event).payload())
+                .toList();
+        assertThat(receipts)
+                .containsExactly(
+                        new ErrandChatReadEvent.Payload(id, courier, List.of(requester, courier), second.sentAt()));
+
+        as(UUID.randomUUID());
+        assertThatThrownBy(() -> chat.markRead(id, second.id())).isInstanceOf(AccessDeniedException.class);
+        as(courier);
+        var other = open();
+        assertThatThrownBy(() -> chat.markRead(other, second.id())).isInstanceOf(RuntimeException.class);
+    }
+
     @Test
     void databaseRejectsInvalidBaseFields() {
         var id = open();
@@ -1163,6 +1375,16 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         public void expired(ErrandExpiredEvent e) {
             events.add(e);
         }
+
+        @EventListener
+        public void messagePosted(ErrandMessagePostedEvent e) {
+            events.add(e);
+        }
+
+        @EventListener
+        public void chatRead(ErrandChatReadEvent e) {
+            events.add(e);
+        }
     }
 
     @TestConfiguration
@@ -1172,6 +1394,8 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @Import({
         OrderService.class,
         DeliveryService.class,
+        ChatService.class,
+        ChatVideoValidator.class,
         OrderDisputeService.class,
         CurrentUserService.class,
         AuthenticationContextService.class,

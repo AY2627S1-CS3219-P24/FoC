@@ -15,7 +15,8 @@ it serves the frontend, terminates HTTPS, and proxies to the backend services.
 `mail_from` is the account-email sender and does not have to match `domain_name`.
 
 Realtime runs on port 8084, behind the gateway's `/socket.io/` route. Its dedicated
-SQS queue subscribes to `SupplierChangedEvent` on the supplier SNS topic, with raw
+SQS queue subscribes to `SupplierChangedEvent` on the supplier SNS topic and to
+`ErrandMessagePostedEvent` and `ErrandChatReadEvent` (errand chat) on the order SNS topic, with raw
 message delivery, encryption, and a DLQ. Its task role can consume from
 that queue and decrypt through SQS; it has no publishing or database access.
 The gateway uses Cloud Map SRV discovery for realtime, matching the existing

@@ -18,6 +18,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+import tools.jackson.databind.JsonNode;
 
 class ServiceFlowsTests extends AbstractEndToEndTest {
     @AutoClose
@@ -183,6 +184,20 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             awaitBalance(courier, 15);
             var id = create(requester, supplier, 5);
             request("POST", "/api/orders/" + id + "/accept", courier.token(), null, 200);
+            // The chat opens once a courier accepts.
+            say(id, requester, "Less ice please", 200);
+            var gotIt = say(id, courier, "Got it", 200);
+            assertThat(sendChatPhoto(id, courier.token(), 200)
+                            .get("attachment")
+                            .get("type")
+                            .asString())
+                    .isEqualTo("IMAGE");
+            request(
+                    "POST",
+                    "/api/orders/" + id + "/messages/read",
+                    requester.token(),
+                    Map.of("messageId", gotIt.get("id").asString()),
+                    204);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 409);
             request("POST", "/api/orders/" + id + "/pick-up", courier.token(), null, 200);
             // The requester can only confirm after the courier has delivered it with a photo.
@@ -197,6 +212,15 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             deliver(id, courier.token(), 409);
             request("POST", "/api/orders/" + id + "/complete", courier.token(), null, 403);
             request("POST", "/api/orders/" + id + "/complete", requester.token(), null, 200);
+            // after confirmation the chat is read-only
+            say(id, requester, "Thanks!", 409);
+            var chat = request("GET", "/api/orders/" + id + "/messages", courier.token(), null, 200);
+            assertThat(chat.get("messages").size()).isEqualTo(3);
+            assertThat(chat.get("messages").get(0).get("body").asString()).isEqualTo("Less ice please");
+            assertThat(chat.get("messages").get(2).get("attachment").get("url").asString())
+                    .contains("chat/" + id + "/");
+            assertThat(chat.get("reads").get(0).get("userId").asString())
+                    .isEqualTo(requester.id().toString());
             awaitOrder(id, "COMPLETED", "SETTLED");
             awaitBalance(requester, 10);
             awaitBalance(courier, 20);
@@ -204,7 +228,13 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                             .queryForObject(
                                     "SELECT count(*) FROM credit_transaction_log WHERE errand_id=?", Long.class, id))
                     .isEqualTo(2);
-            assertPublishedContracts(observations, "UserCreatedEvent", "ErrandCompletedEvent", "CreditPaidEvent");
+            assertPublishedContracts(
+                    observations,
+                    "UserCreatedEvent",
+                    "ErrandMessagePostedEvent",
+                    "ErrandChatReadEvent",
+                    "ErrandCompletedEvent",
+                    "CreditPaidEvent");
         } finally {
             deleteObservationQueue(observations);
         }
@@ -405,6 +435,15 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         awaitBalance(second, 15);
     }
 
+    private JsonNode say(UUID errand, TestUser sender, String body, int expected) {
+        return request(
+                "POST",
+                "/api/orders/" + errand + "/messages",
+                sender.token(),
+                Map.of("id", UUID.randomUUID().toString(), "body", body),
+                expected);
+    }
+
     private void assertPublishedContracts(String observations, String... expectedTypes) {
         var types = new HashSet<String>();
         await().pollInSameThread().atMost(Duration.ofSeconds(20)).untilAsserted(() -> {
@@ -437,6 +476,19 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                     case "ErrandCancelledEvent", "ErrandExpiredEvent" -> {
                         assertThat(payload.has("requesterId")).isTrue();
                         assertThat(payload.get("amount").isIntegralNumber()).isTrue();
+                    }
+                    case "ErrandMessagePostedEvent" -> {
+                        assertThat(payload.get("recipientIds").size()).isEqualTo(2);
+                        // Text, or a photo/video without text
+                        assertThat(
+                                        payload.get("body").isNull()
+                                                ? payload.get("attachmentType").asString()
+                                                : payload.get("body").asString())
+                                .isNotBlank();
+                    }
+                    case "ErrandChatReadEvent" -> {
+                        assertThat(payload.get("recipientIds").size()).isEqualTo(2);
+                        assertThat(payload.has("lastReadAt")).isTrue();
                     }
                     case "CreditPaidEvent", "CreditRefundedEvent" -> {
                         assertThat(payload.has("operationId")).isTrue();

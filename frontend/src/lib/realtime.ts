@@ -7,6 +7,9 @@ export const connectRealtime = (signal: AbortSignal): Socket => {
   const socket = io({ autoConnect: false, auth: { token: getAccessToken() } })
 
   const onConnectError = async () => {
+    // Network trouble: socket.io keeps retrying by itself. Only a rejected
+    // login (inactive socket) needs a fresh token and a manual reconnect.
+    if (socket.active) return
     try {
       const token = await refreshAccessToken()
       if (signal.aborted || !token) return

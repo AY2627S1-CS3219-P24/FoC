@@ -69,7 +69,9 @@ class OrderDisputePersistenceTests extends AbstractIntegrationTest {
 
     @BeforeEach
     void prepare() {
-        new JdbcTemplate(dataSource).execute("TRUNCATE order_disputes, errands, delivery_photos, event_publication");
+        new JdbcTemplate(dataSource)
+                .execute(
+                        "TRUNCATE order_disputes, errands, delivery_photos, errand_messages, errand_chat_reads, event_publication");
         facts.events.clear();
         reset(credit, suppliers, users);
         when(credit.reserve(any())).thenReturn(new CreditReservationResponse("RESERVED"));

@@ -1,6 +1,7 @@
 package com.cs3219.foc.order.controller;
 
 import com.cs3219.foc.order.model.dto.*;
+import com.cs3219.foc.order.service.ChatService;
 import com.cs3219.foc.order.service.DeliveryService;
 import com.cs3219.foc.order.service.OrderService;
 import jakarta.validation.Valid;
@@ -22,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class OrderController {
     private final OrderService orderService;
     private final DeliveryService deliveryService;
+    private final ChatService chatService;
 
     @PostMapping
     public ResponseEntity<CreateErrandResponse> create(@Valid @RequestBody CreateErrandRequest request) {
@@ -84,6 +86,29 @@ public class OrderController {
     @GetMapping("/{id}/delivery-photos")
     public List<DeliveryPhotoDto> deliveryPhotos(@PathVariable UUID id) {
         return deliveryService.photos(id);
+    }
+
+    @GetMapping("/{id}/messages")
+    public ChatDto chat(@PathVariable UUID id) {
+        return chatService.chat(id);
+    }
+
+    @PostMapping("/{id}/messages")
+    public ErrandMessageDto sendMessage(@PathVariable UUID id, @Valid @RequestBody SendMessageRequest request) {
+        return chatService.send(id, request);
+    }
+
+    // A photo or video message: multi parts, code id + file
+    @PostMapping(path = "/{id}/messages/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ErrandMessageDto sendAttachment(
+            @PathVariable UUID id, @RequestParam("id") UUID messageId, @RequestPart("file") MultipartFile file) {
+        return chatService.sendAttachment(id, messageId, file);
+    }
+
+    @PostMapping("/{id}/messages/read")
+    public ResponseEntity<Void> markRead(@PathVariable UUID id, @Valid @RequestBody MarkReadRequest request) {
+        chatService.markRead(id, request.messageId());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/complete")

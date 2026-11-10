@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(new ErrorResponse("DELIVERY_PHOTO_INVALID", e.getMessage()));
     }
 
-    /** One handler for both kinds of upload (Spring allows only one): AI voice recordings and delivery photos. */
+    /** One handler for every upload (Spring allows only one): AI voice recordings, delivery photos, chat files. */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ErrorResponse> uploadTooLarge(HttpServletRequest request) {
         if (request.getRequestURI().endsWith("/orders/ai/transcriptions")) {
@@ -61,7 +61,7 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(new ErrorResponse(
-                        "DELIVERY_PHOTO_INVALID", "Each photo must be at most 5 MB, and at most 5 photos"));
+                        "DELIVERY_PHOTO_INVALID", "The file is too large: photos up to 5 MB, videos up to 20 MB"));
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)

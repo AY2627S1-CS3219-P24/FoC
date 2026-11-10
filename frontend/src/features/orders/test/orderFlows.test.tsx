@@ -80,8 +80,15 @@ vi.mock('#/features/users/hooks/useUsersQuery', () => ({
 vi.mock('#/features/users/hooks/useUserQuery', () => ({
   useUserQuery: () => ({ data: { name: 'Alex', email: 'alex@example.com' } }),
 }))
+vi.mock('#/lib/realtime', () => ({
+  connectRealtime: () => ({ on: vi.fn(), off: vi.fn() }),
+}))
 vi.mock('../api/orders.api', () => ({
   getOrder: vi.fn(),
+  getChat: vi.fn(async () => ({ messages: [], reads: [] })),
+  sendMessage: vi.fn(),
+  sendChatFile: vi.fn(),
+  markChatRead: vi.fn(),
   getDeliveryPhotos: vi.fn(),
   deliverOrder: vi.fn(),
   listMyOrders: vi.fn(),
