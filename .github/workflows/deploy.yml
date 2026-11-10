@@ -36,31 +36,42 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      services: ${{ steps.select.outputs.services }}
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - name: Select services
         id: select
         env:
           SELECTED_SERVICE: ${{ inputs.service }}
+          VITE_CARTO_API_KEY: ${{ vars.VITE_CARTO_API_KEY }}
         run: |
           set -euo pipefail
 
-          services=$(jq -cn --arg selected "$SELECTED_SERVICE" '
-            ["user", "supplier", "order", "credit", "realtime", "gateway"]
-            | if $selected == "all" then .
-              elif index($selected) != null then [$selected]
-              else error("Unknown service: " + $selected)
-              end
+          matrix=$(jq -cn --arg selected "$SELECTED_SERVICE" --arg carto "$VITE_CARTO_API_KEY" '
+            [
+              {service: "user", dockerfile: "Dockerfile", target: "user-service"},
+              {service: "supplier", dockerfile: "Dockerfile", target: "supplier-service"},
+              {service: "order", dockerfile: "Dockerfile", target: "order-service"},
+              {service: "credit", dockerfile: "Dockerfile", target: "credit-service"},
+              {service: "realtime", dockerfile: "Dockerfile", target: "realtime-service"},
+              {
+                service: "gateway",
+                dockerfile: "frontend/Dockerfile",
+                target: "runtime",
+                build_args: ("VITE_CARTO_API_KEY=" + $carto)
+              }
+            ]
+            | map(select($selected == "all" or .service == $selected))
+            | if length == 0 then error("Unknown service: " + $selected)
+              else {include: .} end
           ')
-          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: select-services
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        service: ${{ fromJSON(needs.select-services.outputs.services) }}
+      matrix: ${{ fromJSON(needs.select-services.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -107,9 +118,9 @@ jobs:
         if: steps.existing.outputs.exists == 'false'
         with:
           context: .
-          file: ${{ matrix.service == 'gateway' && 'frontend/Dockerfile' || 'Dockerfile' }}
-          target: ${{ matrix.service == 'gateway' && 'runtime' || format('{0}-service', matrix.service) }}
-          build-args: ${{ matrix.service == 'gateway' && format('VITE_CARTO_API_KEY={0}', vars.VITE_CARTO_API_KEY) || '' }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           provenance: false
           push: true
@@ -123,8 +134,7 @@ jobs:
     environment: production
     strategy:
       fail-fast: false
-      matrix:
-        service: ${{ fromJSON(needs.select-services.outputs.services) }}
+      matrix: ${{ fromJSON(needs.select-services.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
