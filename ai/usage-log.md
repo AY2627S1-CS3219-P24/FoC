@@ -547,3 +547,573 @@ Implemented response submission, persistence and frontend controls for the other
 ### Author Notes:
 
 The dispute implementation and its tests received further integration updates after the credit event changes.
+
+## LI KEHAN
+
+## Supplier CRUD — Backend and Admin Pages
+
+### Date/Time:
+
+2026-09-25 to 2026-09-26
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement the supplier CRUD (create, list, edit, delete) for admins, following the requirements I set: the supplier details to manage (name, category, location, opening hours, image) and admin-only access. I chose the UI library (Base UI, after trying Mantine) and the NUS blue and orange colours.
+
+### Output Summary:
+
+Implemented the CRUD API with exception handling, a Flyway migration with seed data, controller tests, and the admin pages: routes, sidebar, listing, create and edit forms with validation, a preview card and toast notifications.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code, unit tests and boilerplate; learning support (I asked for explanations of DTOs, repositories, Flyway and role checks). I asked for layout and toast colour changes after reviewing the pages.
+
+---
+
+## Supplier Search, Filters and Admin Dashboard
+
+### Date/Time:
+
+2026-09-26 to 2026-09-30
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement supplier search and category filtering, and the admin dashboard following our team's UI design. Then apply the review comments on PR #14 that I decided to accept.
+
+### Output Summary:
+
+Implemented the search endpoint and tests, filters kept in the URL, the overview dashboard (stat cards and suppliers table), weekly opening-hour editing with validation, and returning to the previous page. Moved the real supplier data into the seed migration.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and unit tests. I chose which review comments to address, edited the SQL and comments myself, and removed the sample-data label.
+
+---
+
+## Supplier Image Upload
+
+### Date/Time:
+
+2026-10-01 to 2026-10-02
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Change supplier images from pasting a URL to uploading from the admin's device (JPEG or PNG), with a simple choose, replace and remove field that only saves on "Save changes", as I specified.
+
+### Output Summary:
+
+Implemented the image upload and image endpoints, removed the URL option and simplified the field. Moved components into their pages and loaded order data through a hook.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and refactoring; learning support (I asked how the images are stored and why generated file keys are used). I resolved a routing conflict with main.
+
+---
+
+## Supplier Service — Presentation Script
+
+### Date/Time:
+
+2026-10-02
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Help me prepare my part of the milestone presentation on the Supplier Service: an order to present it in and a draft script describing what was built.
+
+### Output Summary:
+
+Suggested a presentation order and a draft script describing the implemented features.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: specific style writing (presentation wording). I checked each point against our code and rewrote the script in my own words; the design reasons in the talk are my own.
+
+---
+
+## Admin Login Redirect
+
+### Date/Time:
+
+2026-10-17 to 2026-10-19
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement the redirect I specified: after login, admins go to the admin dashboard and other users go to the app. Explain how to verify it.
+
+### Output Summary:
+
+Implemented the redirect with tests and explained how to test it with a student and an admin account.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code, unit tests and test suggestions. I tested it manually and ran the full checks before pushing.
+
+---
+
+## NUS Outlet Supplier Data
+
+### Date/Time:
+
+2026-10-19
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Add real NUS outlets as supplier seed data, replacing the sample suppliers.
+
+### Output Summary:
+
+Added 53 NUS outlets with locations, categories and opening hours to the seed data.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: boilerplate (seed data). I checked the data in my local database before opening the PR.
+
+---
+
+## Errand History and Request Again
+
+### Date/Time:
+
+2026-10-19 to 2026-10-21
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement errand history and request-again from our design drafts, following my requirements: see past errands, request one again with a warning if the same request is in progress, edit before posting, separate requester and courier views following the home page role switch, no request-again for couriers, and a cancelled status.
+
+### Output Summary:
+
+Implemented the history page, request-again with the duplicate warning and editable form, the requester and courier views, and the cancelled status, on top of a teammate's errand creation branch so the code matched.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and tests. I asked for layout and wording changes after reviewing the screens.
+
+---
+
+## Errand History — Search and Layout Improvements
+
+### Date/Time:
+
+2026-10-23
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+After syncing with main, apply the changes I decided on for errand history: search by item or location instead of the filter, follow the home role switch, show the expiry time clearly, and use more of the page width. Add demo accounts, sample errands and category images.
+
+### Output Summary:
+
+Implemented the search, role following and layout changes, removed a stray focus outline, and added the demo data and category images.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and boilerplate (demo data). I decided the layout details (credits, status, expiry time position).
+
+---
+
+## Errand History and Real-time Chat — Presentation Diagrams and Scripts
+
+### Date/Time:
+
+2026-10-23
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Draw request-flow diagrams and an image of the planned real-time chat, and draft scripts for the errand history and chat slides.
+
+### Output Summary:
+
+Created SVG diagrams, a chat lifecycle image and draft scripts in the order of our slides.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: specific style writing and formatting. The chat lifecycle (opens when accepted, closes after delivery, history kept) was my requirement. I rewrote the scripts myself, and the reasoning in them is my own.
+
+---
+
+## Errand History — Review Fixes
+
+### Date/Time:
+
+2026-11-02 to 2026-11-03
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Apply the teammates' review comments I accepted on my errand history work.
+
+### Output Summary:
+
+Kept the errand search filter during page navigation and in sync with the search box, and updated the supplier seeding commands in the docs.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and documentation. I ran the CI formatting checks before pushing.
+
+---
+
+## Proof of Delivery — Implementation
+
+### Date/Time:
+
+2026-11-05 to 2026-11-06
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement Proof of Delivery (FOC-49) following my requirements: after pick-up the courier marks the errand delivered with photos, the requester can only confirm receipt after that, and photos are stored in S3 like our other images.
+
+### Output Summary:
+
+Implemented a DELIVERED status, photo upload to S3 with links to view them, and the confirm-after-delivery rule, with the matching Floci, Compose and Terraform configuration and tests. Fixed the e2e configuration, where supplier-service had no events topic.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code, tests, configuration and debugging; learning support. I asked Claude Code about the architecture concepts for storing photos securely (separate photo table, private bucket, short-lived links, removing location data) to understand the approaches, then made the design decision myself. I reworded the comments and tested with two accounts.
+
+---
+
+## Proof of Delivery — Review Before Submit
+
+### Date/Time:
+
+2026-11-05
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Change the photo flow to my new requirement: the courier reviews 1 to 5 photos (adding or removing any) before submitting, and nothing can change afterwards. Explain why one photo failed to upload.
+
+### Output Summary:
+
+Implemented review-before-submit with an all-or-nothing upload. Found that the upload failed because my local order service was still the old version and the new migration had not run.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and debugging. Restarting the service fixed the upload.
+
+---
+
+## Real-time Chat — Implementation
+
+### Date/Time:
+
+2026-11-06
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Implement real-time chat (FOC-47) following my requirements: the requester and courier can chat once the errand is accepted, the chat becomes read-only after confirmation, and the history is kept. Use our existing order service and realtime service.
+
+### Output Summary:
+
+Implemented message storage in the order service, the events it publishes, delivery through the realtime service to the two participants, the chat panel and tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: implementation code and tests; learning support. I asked Claude Code about the architecture concepts for storing chat messages and their events to understand the approaches, then made the design decision myself. I changed the closed-chat wording.
+
+---
+
+## Real-time Chat — Live Updates, Time Labels and Seen Indicator
+
+### Date/Time:
+
+2026-11-06 to 2026-11-07
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Fix messages only appearing after a page refresh, and add the features I asked for after testing: time labels only after a gap (like WeChat) and a "Seen" indicator for the sender.
+
+### Output Summary:
+
+The refresh problem was the realtime service not being started in IntelliJ; it also found and fixed Floci keeping old subscription filters and the socket refreshing its token on every network error. Implemented the time labels and "Seen".
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: debugging and implementation code. I verified the fixes by chatting from two browsers.
+
+---
+
+## Real-time Chat — Photos, Videos and Testing Fixes
+
+### Date/Time:
+
+2026-11-07 to 2026-11-09
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Fix the issues I found in testing (second photo misaligned, the courier side needing a refresh, "Seen" appearing slowly) and add the photo and video messages I asked for, with "Seen" counted only while the chat is actually being viewed.
+
+### Output Summary:
+
+Fixed the layout and live updates, made "Seen" depend on the chat being on screen in a focused window, and added photo (up to 5 MB) and video (up to 20 MB) messages with tests.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: debugging and implementation code. Order-service (112), realtime (13), frontend (301), e2e (17) and Terraform tests passed.
+
+---
+
+## Proof of Delivery — Presentation Slide
+
+### Date/Time:
+
+2026-11-10
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Create a slide for our "Nice to Have" section showing the Proof of Delivery feature, in the same style as our Real-time Chat slide.
+
+### Output Summary:
+
+Created a slide describing the delivery steps, the photo rules and an example screen, with speaker notes.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: specific style writing and formatting. I checked the content against the implemented feature.
+
+---
+
+## Real-time Chat — Attachment Link Renewal
+
+### Date/Time:
+
+2026-11-10
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Fix a reviewer-reported bug: chat photo and video links expire 10 minutes after the chat closes because refreshing stops.
+
+### Output Summary:
+
+A closed chat with attachments now refreshes every 60 seconds, and links with more than 2 minutes left are kept so photos do not reload. Added tests and confirmed the key test fails without the fix.
+
+### Action Taken:
+
+- [x] Accepted as-is
+- [ ] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: debugging and implementation code. Frontend tests (304), linting, type checking, the build and the full Gradle check passed. I replied to the reviewer.
+
+---
+
+## Merge Conflict Resolution — Proof of Delivery
+
+### Date/Time:
+
+2026-11-10
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Explain and help resolve the merge conflicts between main and proof-of-delivery (PR #59).
+
+### Output Summary:
+
+Resolved 11 conflicting files and fixed problems Git could not detect: duplicate Flyway versions, duplicate upload-size handlers and multipart settings, and outdated test cleanup lists. It also pointed out that disputes did not recognise the new DELIVERED status.
+
+### Action Taken:
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: debugging and code integration; learning support. I asked Claude Code about the possible approaches for handling this, then decided myself to allow disputes on delivered errands and pause delivery during an open dispute, and informed the dispute feature's author. I ran the merge myself; 148 order-service, 17 e2e, 322 frontend and 7 Terraform tests passed.
+
+---
+
+## Merge Conflict Resolution — Real-time Chat
+
+### Date/Time:
+
+2026-11-10
+
+### Tool:
+
+Claude Code (Claude Opus 5.5)
+
+### Prompt/Command:
+
+Help resolve the merge conflicts between main and the chat branch after proof of delivery was merged.
+
+### Output Summary:
+
+Resolved 6 conflicting files, renumbered the chat migrations to V7 and V8, raised the shared upload limit to 20 MB for videos, and updated two dispute tests that now render the chat.
+
+### Action Taken:
+
+- [x] Accepted as-is
+- [ ] Modified
+- [ ] Rejected
+
+### Author Notes:
+
+Use: debugging and code integration. I ran the merge myself; 160 order-service, 17 e2e, 340 frontend, 7 Terraform and 13 realtime tests passed.
