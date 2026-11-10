@@ -48,6 +48,7 @@ public class DeliveryService {
     private final DeliveryPhotoStorage photoStorage;
     private final DeliveryPhotoStorageProperties storageProperties;
     private final ErrandMapper mapper;
+    private final OrderDisputeService disputes;
     private final Clock clock;
     private final TransactionTemplate transactions;
 
@@ -59,6 +60,7 @@ public class DeliveryService {
             DeliveryPhotoStorage photoStorage,
             DeliveryPhotoStorageProperties storageProperties,
             ErrandMapper mapper,
+            OrderDisputeService disputes,
             Clock clock,
             PlatformTransactionManager transactionManager) {
         this.repository = repository;
@@ -68,6 +70,7 @@ public class DeliveryService {
         this.photoStorage = photoStorage;
         this.storageProperties = storageProperties;
         this.mapper = mapper;
+        this.disputes = disputes;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
     }
@@ -80,7 +83,10 @@ public class DeliveryService {
         }
         UUID actor = currentUserService.requireCurrentUserId();
         // check if anything failed and not upload
-        transactions.executeWithoutResult(tx -> requireDeliverable(find(id), actor));
+        transactions.executeWithoutResult(tx -> {
+            requireDeliverable(find(id), actor);
+            disputes.requireNoActiveDispute(id);
+        });
 
         // process check for every photo first, see if any photo failed
         List<byte[]> jpegs = photoFiles.stream().map(photoProcessor::toJpeg).toList();
@@ -95,6 +101,7 @@ public class DeliveryService {
                 var locked = repository.findForUpdateById(id).orElseThrow(() -> new OrderNotFoundException(id));
                 // re-check if there has another request delivered or changed it at the same time
                 requireDeliverable(locked, actor);
+                disputes.requireNoActiveDispute(id);
                 var now = now();
                 for (int i = 0; i < keys.size(); i++) {
                     var photo = new DeliveryPhoto();

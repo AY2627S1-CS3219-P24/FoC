@@ -234,7 +234,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                     "ErrandMessagePostedEvent",
                     "ErrandChatReadEvent",
                     "ErrandCompletedEvent",
-                    "CreditSettlementResultEvent");
+                    "CreditPaidEvent");
         } finally {
             deleteObservationQueue(observations);
         }
@@ -303,8 +303,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             request("POST", "/api/orders/" + id + "/cancel", requester.token(), null, 200);
             awaitOrder(id, "CANCELLED", "RELEASED");
             awaitBalance(requester, 15);
-            assertPublishedContracts(
-                    observations, "UserCreatedEvent", "ErrandCancelledEvent", "CreditSettlementResultEvent");
+            assertPublishedContracts(observations, "UserCreatedEvent", "ErrandCancelledEvent", "CreditRefundedEvent");
         } finally {
             deleteObservationQueue(observations);
         }
@@ -322,8 +321,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
             sql("orders").update("UPDATE errands SET expires_at=created_at + interval '1 millisecond' WHERE id=?", id);
             awaitOrder(id, "EXPIRED", "RELEASED");
             awaitBalance(requester, 15);
-            assertPublishedContracts(
-                    observations, "UserCreatedEvent", "ErrandExpiredEvent", "CreditSettlementResultEvent");
+            assertPublishedContracts(observations, "UserCreatedEvent", "ErrandExpiredEvent", "CreditRefundedEvent");
         } finally {
             deleteObservationQueue(observations);
         }
@@ -396,7 +394,7 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
         awaitFailedPublication("orders", "order-completed", id);
         publisherAvailable("credit", false);
         publisherAvailable("order", true);
-        awaitFailedPublication("credits", "credit-settlement", id);
+        awaitFailedPublication("credits", "credit-paid", id);
         awaitBalance(courier, 20);
         restart("credit-service", 8083);
         publisherAvailable("credit", true);
@@ -492,9 +490,10 @@ class ServiceFlowsTests extends AbstractEndToEndTest {
                         assertThat(payload.get("recipientIds").size()).isEqualTo(2);
                         assertThat(payload.has("lastReadAt")).isTrue();
                     }
-                    case "CreditSettlementResultEvent" -> {
+                    case "CreditPaidEvent", "CreditRefundedEvent" -> {
                         assertThat(payload.has("operationId")).isTrue();
-                        assertThat(payload.get("outcome").asString()).isIn("PAID", "REFUNDED");
+                        assertThat(payload.has("outcome")).isFalse();
+                        assertThat(payload.has("settlementType")).isFalse();
                     }
                     default -> throw new AssertionError("Unexpected integration contract: " + type);
                 }

@@ -22,5 +22,6 @@ export const orderFixture = (overrides: Partial<Errand> = {}): Errand => ({
   createRequestId: null,
   deliveredAt: null,
   hasDeliveryPhoto: false,
+  dispute: null,
   ...overrides,
 })

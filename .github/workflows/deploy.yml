@@ -2,6 +2,20 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
+    inputs:
+      service:
+        description: Service to deploy
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - user
+          - supplier
+          - order
+          - credit
+          - realtime
+          - gateway
 
 permissions:
   contents: read
@@ -18,32 +32,46 @@ env:
   RELEASE_SHA: ${{ github.sha }}
 
 jobs:
-  publish:
+  select-services:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Select services
+        id: select
+        env:
+          SELECTED_SERVICE: ${{ inputs.service }}
+          VITE_CARTO_API_KEY: ${{ vars.VITE_CARTO_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          matrix=$(jq -cn --arg selected "$SELECTED_SERVICE" --arg carto "$VITE_CARTO_API_KEY" '
+            [
+              {service: "user", dockerfile: "Dockerfile", target: "user-service"},
+              {service: "supplier", dockerfile: "Dockerfile", target: "supplier-service"},
+              {service: "order", dockerfile: "Dockerfile", target: "order-service"},
+              {service: "credit", dockerfile: "Dockerfile", target: "credit-service"},
+              {service: "realtime", dockerfile: "Dockerfile", target: "realtime-service"},
+              {
+                service: "gateway",
+                dockerfile: "frontend/Dockerfile",
+                target: "runtime",
+                build_args: ("VITE_CARTO_API_KEY=" + $carto)
+              }
+            ]
+            | map(select($selected == "all" or .service == $selected))
+            | if length == 0 then error("Unknown service: " + $selected)
+              else {include: .} end
+          ')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: select-services
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: user
-            dockerfile: Dockerfile
-            target: user-service
-          - service: supplier
-            dockerfile: Dockerfile
-            target: supplier-service
-          - service: order
-            dockerfile: Dockerfile
-            target: order-service
-          - service: credit
-            dockerfile: Dockerfile
-            target: credit-service
-          - service: realtime
-            dockerfile: Dockerfile
-            target: realtime-service
-          - service: gateway
-            dockerfile: frontend/Dockerfile
-            target: runtime
-            build_args: VITE_CARTO_API_KEY=${{ vars.VITE_CARTO_API_KEY }}
+      matrix: ${{ fromJSON(needs.select-services.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -101,13 +129,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   deploy:
-    needs: publish
+    needs: [select-services, publish]
     runs-on: ubuntu-latest
     environment: production
     strategy:
       fail-fast: false
-      matrix:
-        service: [user, supplier, order, credit, realtime, gateway]
+      matrix: ${{ fromJSON(needs.select-services.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:

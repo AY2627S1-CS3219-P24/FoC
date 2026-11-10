@@ -2,6 +2,7 @@ package com.cs3219.foc.order.exception;
 
 import com.cs3219.foc.order.model.dto.ErrorResponse;
 import com.cs3219.foc.order.model.dto.ErrorResponseWithFieldErrors;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.TreeMap;
 import org.slf4j.Logger;
@@ -22,6 +23,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(ErrandAiException.class)
+    ResponseEntity<ErrorResponse> ai(ErrandAiException e) {
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(e.getCode(), e.getMessage()));
+    }
 
     @ExceptionHandler(OrderCreationAttemptException.class)
     ResponseEntity<ErrorResponse> creationAttempt(OrderCreationAttemptException e) {
@@ -46,8 +52,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(new ErrorResponse("DELIVERY_PHOTO_INVALID", e.getMessage()));
     }
 
+    /** One handler for every upload (Spring allows only one): AI voice recordings, delivery photos, chat files. */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    ResponseEntity<ErrorResponse> uploadTooLarge(MaxUploadSizeExceededException e) {
+    ResponseEntity<ErrorResponse> uploadTooLarge(HttpServletRequest request) {
+        if (request.getRequestURI().endsWith("/orders/ai/transcriptions")) {
+            return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                    .body(new ErrorResponse("AI_AUDIO_TOO_LARGE", "Recording exceeds the audio size limit."));
+        }
         return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
                 .body(new ErrorResponse(
                         "DELIVERY_PHOTO_INVALID", "The file is too large: photos up to 5 MB, videos up to 20 MB"));

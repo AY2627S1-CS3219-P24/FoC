@@ -1,3 +1,5 @@
+import type { OrderDispute } from './dispute.types'
+
 export const ERRAND_STATUSES = [
   'CREATING',
   'CREATE_FAILED',
@@ -36,6 +38,7 @@ export type Errand = {
   createRequestId: string | null
   deliveredAt: string | null
   hasDeliveryPhoto: boolean
+  dispute: OrderDispute | null
 }
 // get the courier's photos of the delivery to view with a short live link
 export type DeliveryPhoto = { id: string; url: string; expiresAt: string }

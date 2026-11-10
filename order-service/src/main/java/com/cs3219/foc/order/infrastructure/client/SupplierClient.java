@@ -5,6 +5,8 @@ import com.cs3219.foc.order.model.dto.SupplierPickupDto;
 import com.cs3219.foc.order.security.AuthenticationContextService;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -12,6 +14,7 @@ import org.springframework.security.authentication.AuthenticationCredentialsNotF
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
@@ -29,6 +32,20 @@ public class SupplierClient {
                 .baseUrl(properties.supplierUrl())
                 .requestFactory(factory)
                 .build();
+    }
+
+    public List<SupplierPickupDto> listActive() {
+        if (!(authenticationContextService.requireAuthentication() instanceof JwtAuthenticationToken authentication)) {
+            throw new AuthenticationCredentialsNotFoundException("JWT is required for supplier lookup");
+        }
+        var result = client.get()
+                .uri("/suppliers")
+                .headers(headers ->
+                        headers.setBearerAuth(authentication.getToken().getTokenValue()))
+                .retrieve()
+                .body(SupplierPickupDto[].class);
+        if (result == null) throw new RestClientException("Empty supplier response");
+        return Arrays.stream(result).filter(SupplierPickupDto::active).toList();
     }
 
     public SupplierPickupDto get(UUID id) {

@@ -26,6 +26,7 @@ public record ErrandDto(
         OffsetDateTime endedAt,
         UUID createRequestId,
         OffsetDateTime deliveredAt,
-        boolean hasDeliveryPhoto) {
+        boolean hasDeliveryPhoto,
+        OrderDisputeDto dispute) {
     public record PickupDto(String name, String address) {}
 }

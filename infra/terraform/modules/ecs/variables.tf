@@ -36,15 +36,18 @@ variable "core_instance_type" {
 variable "services" {
   description = "Service definitions and ECS task settings."
   type = map(object({
-    port       = number
-    cpu        = number
-    memory     = number
-    runtime    = string
-    database   = optional(string)
-    username   = optional(string)
-    jwt        = optional(bool, false)
-    mail       = optional(bool, false)
-    bucket_env = optional(string)
+    port                   = number
+    cpu                    = number
+    memory                 = number
+    runtime                = string
+    database               = optional(string)
+    username               = optional(string)
+    jwt                    = optional(bool, false)
+    mail                   = optional(bool, false)
+    bucket_env             = optional(string)
+    ai_enabled             = optional(bool, false)
+    ai_model               = optional(string)
+    ai_transcription_model = optional(string)
   }))
   validation {
     condition = alltrue([

@@ -86,11 +86,8 @@ subscribe() {
   }
 }
 EOF
-  subscription_arn=$(aws_local sns subscribe --cli-input-json file:///tmp/foc-subscribe.json --query SubscriptionArn --output text)
-  # An existing subscription keeps its old filter, so always apply the current one.
-  printf '%s' "$filter" | sed 's/\\"/"/g' > /tmp/foc-filter.json
-  aws_local sns set-subscription-attributes --subscription-arn "$subscription_arn" \
-    --attribute-name FilterPolicy --attribute-value file:///tmp/foc-filter.json
+  subscription_arn=$(aws_local sns subscribe --cli-input-json file:///tmp/foc-subscribe.json --query 'SubscriptionArn' --output text)
+  aws_local sns set-subscription-attributes --subscription-arn "$subscription_arn" --attribute-name FilterPolicy --attribute-value "$(printf '%s' "$filter" | sed 's/\\"/"/g')" >/dev/null
 }
 
 user_topic=$(topic_arn_for user)
@@ -104,7 +101,7 @@ subscribe supplier realtime '{\"eventType\":[\"SupplierChangedEvent\"]}'
 subscribe order realtime '{\"eventType\":[\"ErrandMessagePostedEvent\",\"ErrandChatReadEvent\"]}'
 subscribe user credit '{\"eventType\":[\"UserCreatedEvent\"]}'
 subscribe order credit '{\"eventType\":[\"ErrandCancelledEvent\",\"ErrandExpiredEvent\",\"ErrandCompletedEvent\"]}'
-subscribe credit order '{\"eventType\":[\"CreditSettlementResultEvent\"]}'
+subscribe credit order '{\"eventType\":[\"CreditPaidEvent\",\"CreditPaymentDeclinedEvent\",\"CreditRefundedEvent\",\"CreditRefundDeclinedEvent\"]}'
 
 rm -f /tmp/foc-queue-attributes.json /tmp/foc-redrive-allow.json /tmp/foc-queue-policy.json /tmp/foc-subscribe.json /tmp/foc-filter.json
 touch /tmp/foc-resources-ready

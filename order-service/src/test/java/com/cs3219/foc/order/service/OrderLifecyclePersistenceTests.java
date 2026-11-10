@@ -110,7 +110,8 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @BeforeEach
     void prepare() {
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("TRUNCATE errands, delivery_photos, errand_messages, errand_chat_reads, event_publication");
+        jdbc.execute(
+                "TRUNCATE order_disputes, errands, delivery_photos, errand_messages, errand_chat_reads, event_publication");
         clock.time.set(START);
         facts.events.clear();
         reset(suppliers, users, credit, photoProcessor, photoStorage);
@@ -272,7 +273,9 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         return facts.events.stream().filter(type::isInstance).count();
     }
 
-    private CreditSettlementResultEvent pendingSettlement(boolean payout) {
+    private record CreditOperation(UUID operationId, UUID errandId, UUID requesterId, long amount, UUID courierId) {}
+
+    private CreditOperation pendingSettlement(boolean payout) {
         UUID id = open();
         UUID courier = payout ? UUID.randomUUID() : null;
         if (payout) {
@@ -286,18 +289,42 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
             service.cancel(id);
         }
         UUID operationId = jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
-        return new CreditSettlementResultEvent(
-                UUID.randomUUID(),
-                1,
-                OffsetDateTime.now(clock),
-                new CreditSettlementResultEvent.Payload(
-                        operationId,
-                        id,
-                        requester,
-                        5,
-                        payout ? "PAID" : "REFUNDED",
-                        payout ? "PAYOUT" : "REFUND",
-                        courier));
+        return new CreditOperation(operationId, id, requester, 5, courier);
+    }
+
+    private void confirm(boolean payout, CreditOperation p) {
+        if (payout) {
+            service.confirmPayment(new CreditPaidEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(clock),
+                    new CreditPaidEvent.Payload(
+                            p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId())));
+        } else {
+            service.confirmRefund(new CreditRefundedEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(clock),
+                    new CreditRefundedEvent.Payload(p.operationId(), p.errandId(), p.requesterId(), p.amount())));
+        }
+    }
+
+    private void decline(boolean payout, CreditOperation p, String reason) {
+        if (payout) {
+            service.recordPaymentDeclined(new CreditPaymentDeclinedEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(clock),
+                    new CreditPaymentDeclinedEvent.Payload(
+                            p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId(), reason)));
+        } else {
+            service.recordRefundDeclined(new CreditRefundDeclinedEvent(
+                    UUID.randomUUID(),
+                    1,
+                    OffsetDateTime.now(clock),
+                    new CreditRefundDeclinedEvent.Payload(
+                            p.operationId(), p.errandId(), p.requesterId(), p.amount(), reason)));
+        }
     }
 
     @Test
@@ -503,14 +530,13 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
         SecurityContextHolder.clearContext();
-        var result = new CreditSettlementResultEvent(
+        var result = new CreditPaidEvent(
                 UUID.randomUUID(),
                 1,
                 OffsetDateTime.now(clock),
-                new CreditSettlementResultEvent.Payload(
-                        completed.eventId(), id, requester, 5, "PAID", "PAYOUT", courier));
-        service.handleSettlementResult(result);
-        service.handleSettlementResult(result);
+                new CreditPaidEvent.Payload(completed.eventId(), id, requester, 5, courier));
+        service.confirmPayment(result);
+        service.confirmPayment(result);
         as(requester);
         assertThat(service.complete(id).creditState().name()).isEqualTo("SETTLED");
         assertThat(count(ErrandCompletedEvent.class)).isEqualTo(1);
@@ -577,14 +603,13 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                 .map(ErrandCancelledEvent.class::cast)
                 .findFirst()
                 .orElseThrow();
-        var refund = new CreditSettlementResultEvent(
+        var refund = new CreditRefundedEvent(
                 UUID.randomUUID(),
                 1,
                 OffsetDateTime.now(clock),
-                new CreditSettlementResultEvent.Payload(
-                        cancelled.eventId(), id, requester, 5, "REFUNDED", "REFUND", null));
-        service.handleSettlementResult(refund);
-        service.handleSettlementResult(refund);
+                new CreditRefundedEvent.Payload(cancelled.eventId(), id, requester, 5));
+        service.confirmRefund(refund);
+        service.confirmRefund(refund);
         assertThat(service.cancel(id).creditState().name()).isEqualTo("RELEASED");
         assertThat(count(ErrandCancelledEvent.class)).isEqualTo(1);
     }
@@ -592,59 +617,53 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void mismatchedSettlementResultsDoNotConfirmFunds(boolean payout) {
-        var valid = pendingSettlement(payout);
-        var original = valid.payload();
+        var original = pendingSettlement(payout);
         var before = service.get(original.errandId());
         int eventCount = facts.events.size();
-        for (String mismatch :
-                List.of("operationId", "requesterId", "amount", "courierId", "settlementType", "outcome")) {
-            var result = new CreditSettlementResultEvent(
-                    UUID.randomUUID(),
-                    1,
-                    OffsetDateTime.now(clock),
-                    new CreditSettlementResultEvent.Payload(
-                            mismatch.equals("operationId") ? UUID.randomUUID() : original.operationId(),
-                            original.errandId(),
-                            mismatch.equals("requesterId") ? UUID.randomUUID() : original.requesterId(),
-                            mismatch.equals("amount") ? original.amount() + 1 : original.amount(),
-                            mismatch.equals("outcome") ? "UNEXPECTED" : original.outcome(),
-                            mismatch.equals("settlementType") ? "UNEXPECTED" : original.settlementType(),
-                            mismatch.equals("courierId") ? UUID.randomUUID() : original.courierId()));
-            assertThatThrownBy(() -> service.handleSettlementResult(result))
+        for (String mismatch : List.of("operationId", "requesterId", "amount", "eventType")) {
+            var changed = new CreditOperation(
+                    mismatch.equals("operationId") ? UUID.randomUUID() : original.operationId(),
+                    original.errandId(),
+                    mismatch.equals("requesterId") ? UUID.randomUUID() : original.requesterId(),
+                    mismatch.equals("amount") ? original.amount() + 1 : original.amount(),
+                    original.courierId());
+            assertThatThrownBy(() -> confirm(mismatch.equals("eventType") ? !payout : payout, changed))
                     .as("payout=%s, mismatch=%s", payout, mismatch)
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() ->
+                            decline(mismatch.equals("eventType") ? !payout : payout, changed, "TERMINAL_CONFLICT"))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(service.get(original.errandId())).isEqualTo(before);
             assertThat(facts.events).hasSize(eventCount);
         }
-        service.handleSettlementResult(valid);
+        if (payout) {
+            var changed = new CreditOperation(
+                    original.operationId(),
+                    original.errandId(),
+                    original.requesterId(),
+                    original.amount(),
+                    UUID.randomUUID());
+            assertThatThrownBy(() -> confirm(true, changed)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> decline(true, changed, "TERMINAL_CONFLICT"))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> decline(payout, original, "UNEXPECTED")).isInstanceOf(IllegalArgumentException.class);
+        confirm(payout, original);
         assertThat(service.get(original.errandId()).creditState().name()).isEqualTo(payout ? "SETTLED" : "RELEASED");
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void businessConflictsLeaveSettlementPendingWithoutPublishingAnotherFact(boolean payout) {
-        var valid = pendingSettlement(payout);
-        var original = valid.payload();
+        var original = pendingSettlement(payout);
         var before = service.get(original.errandId());
         int eventCount = facts.events.size();
-        for (String outcome : List.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")) {
-            var conflict = new CreditSettlementResultEvent(
-                    UUID.randomUUID(),
-                    1,
-                    OffsetDateTime.now(clock),
-                    new CreditSettlementResultEvent.Payload(
-                            original.operationId(),
-                            original.errandId(),
-                            original.requesterId(),
-                            original.amount(),
-                            outcome,
-                            original.settlementType(),
-                            original.courierId()));
-            assertThatCode(() -> service.handleSettlementResult(conflict)).doesNotThrowAnyException();
+        for (String reason : List.of("RESERVATION_MISMATCH", "NO_RESERVATION", "TERMINAL_CONFLICT")) {
+            assertThatCode(() -> decline(payout, original, reason)).doesNotThrowAnyException();
             assertThat(service.get(original.errandId())).isEqualTo(before);
             assertThat(facts.events).hasSize(eventCount);
         }
-        service.handleSettlementResult(valid);
+        confirm(payout, original);
         assertThat(service.get(original.errandId()).creditState().name()).isEqualTo(payout ? "SETTLED" : "RELEASED");
     }
 
@@ -968,18 +987,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
                     boolean payout = targetStatus.equals("COMPLETED");
                     UUID operation =
                             jdbc.queryForObject("SELECT settlement_event_id FROM errands WHERE id=?", UUID.class, id);
-                    service.handleSettlementResult(new CreditSettlementResultEvent(
-                            UUID.randomUUID(),
-                            1,
-                            OffsetDateTime.now(clock),
-                            new CreditSettlementResultEvent.Payload(
-                                    operation,
-                                    id,
-                                    requester,
-                                    req.creditReward(),
-                                    payout ? "PAID" : "REFUNDED",
-                                    payout ? "PAYOUT" : "REFUND",
-                                    courier)));
+                    confirm(payout, new CreditOperation(operation, id, requester, req.creditReward(), courier));
                 }
                 as(requester);
                 ErrandDto advanced = service.get(id);
@@ -1388,6 +1396,7 @@ class OrderLifecyclePersistenceTests extends AbstractIntegrationTest {
         DeliveryService.class,
         ChatService.class,
         ChatVideoValidator.class,
+        OrderDisputeService.class,
         CurrentUserService.class,
         AuthenticationContextService.class,
         AuthenticatedUserResolver.class

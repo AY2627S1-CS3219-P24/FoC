@@ -17,7 +17,8 @@ public class SqsCreditEventConsumer {
     private final ObjectMapper objectMapper;
     private final EventValidator eventValidator;
     private final UserCreatedConsumer userCreatedConsumer;
-    private final ErrandSettlementConsumer errandSettlementConsumer;
+    private final ErrandPaymentConsumer errandPaymentConsumer;
+    private final ErrandRefundConsumer errandRefundConsumer;
 
     @SqsListener(value = "${events.messaging.queue-name}", acknowledgementMode = "ON_SUCCESS")
     public void consume(@Header("eventType") String eventType, String body) {
@@ -28,15 +29,15 @@ public class SqsCreditEventConsumer {
             }
             case ErrandCancelledEvent.TYPE -> {
                 var event = readValidatedEvent(body, ErrandCancelledEvent.class);
-                errandSettlementConsumer.releaseReservedCredits(event);
+                errandRefundConsumer.releaseReservedCredits(event);
             }
             case ErrandExpiredEvent.TYPE -> {
                 var event = readValidatedEvent(body, ErrandExpiredEvent.class);
-                errandSettlementConsumer.releaseReservedCredits(event);
+                errandRefundConsumer.releaseReservedCredits(event);
             }
             case ErrandCompletedEvent.TYPE -> {
                 var event = readValidatedEvent(body, ErrandCompletedEvent.class);
-                errandSettlementConsumer.transferReservedCredits(event);
+                errandPaymentConsumer.transferReservedCredits(event);
             }
             default -> throw new IllegalArgumentException("Unexpected event type: " + eventType);
         }
