@@ -1,5 +1,148 @@
 # AI Usage Log
 
+---
+
+LOH WAI KIT
+
+## Date/Time
+
+2026-09-23 to 2026-09-28
+
+### Tool
+
+Codex
+
+### Prompt/Command
+
+Implement frontend authentication integration, including login, session restoration, protected routes, authenticated requests, and logout. Apply subsequent changes requested during review.
+
+### Output Summary
+
+Implemented login integration, in-memory access-token storage, shared refresh requests, protected routing, and logout handling. Updated Axios interception to refresh after a 401 response and retry the request once. Subsequently separated token storage and authentication coordination, removed the previous session module, and updated related tests and documentation.
+
+### Action Taken
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes
+
+I reviewed the implementation and requested simplification based on teammate feedback. The retained implementation restores sessions through refresh cookies and retries business requests once after a 401 response. A subsequent logout revision was reverted after review. Automated tests and manual integration checks were completed during implementation.
+
+---
+
+## Date/Time
+
+2026-09-30 23:32 to 2026-10-01 00:18
+
+### Tool
+
+Codex
+
+### Prompt/Command
+
+Restrict registration to NUS email addresses ending in @u.nus.edu or @nus.edu.sg. Add frontend validation and backend enforcement without adding further restrictions to login or session refresh.
+
+### Output Summary
+
+Added registration email-domain validation, backend enforcement, error handling, and focused tests. Applied the domain policy to the existing backend email-update operation. Adjusted the registration validation message following UI review.
+
+### Action Taken
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes
+
+I reviewed the implementation and requested adjustments to the placement of the validation message. Registration accepts the two agreed NUS email domains, with matching backend enforcement. Backend checks and manual integration testing passed.
+
+---
+
+## Date/Time
+
+2026-10-08 to 2026-10-17
+
+### Tool
+
+Codex
+
+### Prompt/Command
+
+Implement registration email verification using Spring Mail and Gmail SMTP. Add verification links, automatic confirmation, and a resend option. Require verification before login and address subsequent review feedback.
+
+### Output Summary
+
+Implemented email-token persistence, mail delivery, verification and resend endpoints, registration and login changes, and the frontend verification page. Prevented direct email changes through the ordinary profile-update endpoint. Added local Gmail SMTP instructions in SETUP.md, automated tests, and subsequent review fixes.
+
+### Action Taken
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes
+
+I reviewed the implementation and requested UI, documentation, and test adjustments. Users verify their registered email through an emailed link and can request another verification email when needed. Automated checks and CI passed. I also completed manual integration testing using Gmail SMTP.
+
+---
+
+## Date/Time
+
+2026-10-10 to 2026-10-17
+
+### Tool
+
+Codex
+
+### Prompt/Command
+
+Implement verified email changes from the profile page. Send a verification link to the proposed address, update the email after confirmation, and preserve the current login session. Apply subsequent review fixes.
+
+### Output Summary
+
+Implemented email-change request and confirmation endpoints, profile-page controls, and confirmation-page handling using the existing email-token functionality. Added notification to the previous email address and required verification for administrative email updates. Grouped email-change endpoints under /users and updated tests and documentation.
+
+### Action Taken
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes
+
+I reviewed the implementation and requested simpler form handling, fewer redundant tests, and fixes responding to teammate feedback. The existing email remains active until the new address is verified, and confirmation preserves the current login session. Automated checks and CI passed. Manual integration testing confirmed the email-change functionality.
+
+---
+
+## Date/Time
+
+2026-10-11 to 2026-10-18
+
+### Tool
+
+Codex
+
+### Prompt/Command
+
+Implement Forgot Password from the login page using emailed password-reset links. Reuse existing email-token and password-update functionality, and address independent and teammate review findings.
+
+### Output Summary
+
+Added password-reset request and submission endpoints, frontend request and reset pages, and password-reset emails. Reused password validation and password-saving logic. Revoked refresh tokens and pending password-reset and email-change links after password changes. Added uniform cooldown responses, explicit error handling, reset-completion notifications, and focused tests. Allowed password recovery for unverified accounts and marked the email verified after a successful reset.
+
+### Action Taken
+
+- [ ] Accepted as-is
+- [x] Modified
+- [ ] Rejected
+
+### Author Notes
+
+I reviewed the implementation and requested fixes based on independent and teammate feedback. Users reset their password through an emailed link and then log in with the new password. A successful reset revokes existing refresh tokens and pending recovery or email-change links. Automated checks and CI passed. I manually verified the normal reset flow and completion notification; the remaining suggested manual scenarios were not tested.
+
+
 ## Date/Time
 
 2026-11-02 22:48 to 2026-11-03 11:39
@@ -81,3 +224,5 @@ Resolved five merge conflicts, integrated AI draft application with the updated 
 ### Author Notes
 
 The merge result passed 307 frontend tests, 26 order-service AI-related tests, and 7 Terraform mock tests. Frontend build and ESLint checks also passed. I subsequently completed local integration testing with the project's OpenAI key and reported that it passed on November 6 at 11:05.
+
+---
