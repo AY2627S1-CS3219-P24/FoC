@@ -48,6 +48,7 @@ public class OrderService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final OrderProperties properties;
+    private final OrderDisputeService disputes;
     private final TransactionTemplate transactions;
 
     public OrderService(
@@ -60,6 +61,7 @@ public class OrderService {
             ApplicationEventPublisher events,
             Clock clock,
             OrderProperties properties,
+            OrderDisputeService disputes,
             PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.currentUserService = currentUserService;
@@ -70,6 +72,7 @@ public class OrderService {
         this.events = events;
         this.clock = clock;
         this.properties = properties;
+        this.disputes = disputes;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -219,13 +222,13 @@ public class OrderService {
         CurrentUser actor = currentUserService.requireCurrentUser();
         Errand errand =
                 transactions.execute(tx -> repository.findById(id).orElseThrow(() -> new OrderNotFoundException(id)));
-        if (!actor.hasRole("ADMIN")
-                && !actor.userId().equals(errand.getRequesterId())
-                && !actor.userId().equals(errand.getCourierId())
-                && !(errand.getStatus() == OPEN && now().isBefore(errand.getExpiresAt()))) {
+        boolean canViewDispute = actor.hasRole("ADMIN")
+                || actor.userId().equals(errand.getRequesterId())
+                || actor.userId().equals(errand.getCourierId());
+        if (!canViewDispute && !(errand.getStatus() == OPEN && now().isBefore(errand.getExpiresAt()))) {
             throw new AccessDeniedException("Order is not visible to this user");
         }
-        return dtos(List.of(errand), actor.userId()).getFirst();
+        return dtos(List.of(errand), actor.userId(), canViewDispute).getFirst();
     }
 
     public ErrandActionResponse accept(UUID id) {
@@ -256,6 +259,7 @@ public class OrderService {
                 throw new AccessDeniedException("Only the assigned courier can pick up");
             if (lockedErrand.getStatus() != ACCEPTED)
                 throw new OrderConflictException("Order must be accepted before pickup");
+            disputes.requireNoActiveDispute(id);
             var now = now();
             lockedErrand.setStatus(PICKED_UP);
             lockedErrand.setPickedUpAt(now);
@@ -273,6 +277,7 @@ public class OrderService {
             if (lockedErrand.getStatus() == COMPLETED) return lockedErrand;
             if (lockedErrand.getStatus() != PICKED_UP)
                 throw new OrderConflictException("Order must be picked up before completion");
+            disputes.requireNoActiveDispute(id);
             end(lockedErrand, COMPLETED, SETTLEMENT_PENDING);
             events.publishEvent(new ErrandCompletedEvent(
                     lockedErrand.getSettlementEventId(),
@@ -322,6 +327,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
             confirmSettlement(errand, p.operationId(), SETTLEMENT_PENDING, SETTLED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "PAID");
         });
     }
 
@@ -330,6 +336,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = paymentOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount(), p.courierId());
             recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
         });
     }
 
@@ -338,6 +345,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
             confirmSettlement(errand, p.operationId(), RELEASE_PENDING, RELEASED);
+            disputes.confirmSettlement(errand.getId(), p.operationId(), "REFUNDED");
         });
     }
 
@@ -346,6 +354,7 @@ public class OrderService {
         transactions.executeWithoutResult(tx -> {
             var errand = refundOrder(p.operationId(), p.errandId(), p.requesterId(), p.amount());
             recordCreditConflict(errand, p.operationId(), p.reason());
+            disputes.confirmSettlement(errand.getId(), p.operationId(), p.reason());
         });
     }
 
@@ -463,10 +472,10 @@ public class OrderService {
     }
 
     private List<ErrandDto> dtos(List<Errand> errands) {
-        return dtos(errands, null);
+        return dtos(errands, null, false);
     }
 
-    private List<ErrandDto> dtos(List<Errand> errands, UUID detailViewer) {
+    private List<ErrandDto> dtos(List<Errand> errands, UUID detailViewer, boolean includeDispute) {
         Set<UUID> ids = errands.stream()
                 .flatMap(errand -> Stream.of(errand.getRequesterId(), errand.getCourierId()))
                 .filter(Objects::nonNull)
@@ -480,7 +489,8 @@ public class OrderService {
                                 ? null
                                 : names.getOrDefault(
                                         errand.getCourierId(), new UserBriefDto(errand.getCourierId(), null)),
-                        errand.getRequesterId().equals(detailViewer) ? errand.getCreateRequestId() : null))
+                        errand.getRequesterId().equals(detailViewer) ? errand.getCreateRequestId() : null,
+                        includeDispute ? disputes.forOrder(errand.getId()) : null))
                 .toList();
     }
 

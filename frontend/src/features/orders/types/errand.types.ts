@@ -1,3 +1,5 @@
+import type { OrderDispute } from './dispute.types'
+
 export const ERRAND_STATUSES = [
   'CREATING',
   'CREATE_FAILED',
@@ -33,6 +35,7 @@ export type Errand = {
   pickedUpAt: string | null
   endedAt: string | null
   createRequestId: string | null
+  dispute: OrderDispute | null
 }
 export type OrderErrorResponse = {
   code: string

@@ -6,6 +6,7 @@ import { OrderDetails } from '../../components/OrderDetails/OrderDetails'
 import { OrderTimeline } from '../../components/OrderTimeline/OrderTimeline'
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge'
 import { OrderActions } from '../../components/OrderActions/OrderActions'
+import { OrderDispute } from '../../components/OrderDispute/OrderDispute'
 import {
   OrderFeedback,
   OrderNotice,
@@ -112,6 +113,11 @@ export const OrderDetailPage = () => {
           <p className={styles.muted} title={`Errand ID ${order.id}`}>
             Errand #{shortOrderId(order.id)}
           </p>
+          <OrderDispute
+            key={`${query.userId}:${order.id}`}
+            order={order}
+            userId={query.userId}
+          />
           <div className={styles.detailGrid}>
             <OrderDetails order={order} />
             {/* the errand order progress */}
